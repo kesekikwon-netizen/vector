@@ -1,6 +1,6 @@
 # J005 — 범례 = 레이어
 
-상태: verify (빌드 끝, 2026-10-11) · 기준 커밋 `5ac2a6ca5000f9071f1e8555b9e9d5b59104c9bd` · **◆ 파일 형식**(레이어에 `legend` 필드) · **◆ 수치**(선종 대시 길이, 굵기 반올림, 대시 판정 허용치)
+상태: review (검증 끝, 2026-10-11) · 기준 커밋 `5ac2a6ca5000f9071f1e8555b9e9d5b59104c9bd` · **◆ 파일 형식**(레이어에 `legend` 필드) · **◆ 수치**(선종 대시 길이, 굵기 반올림, 대시 판정 허용치)
 
 ## 목표
 
@@ -216,3 +216,54 @@ cargo check --target wasm32-unknown-unknown -p vectorcraft-web
 | 카드 | `red8-cards.log` 5 실패 | `green8-cards.log` 3 통과·2 실패(카드 아래가 잘림: egui Area가 지난 크기만 내줌 → `set_max_height`) → `green8b-cards.log` 4 통과·1 실패(위 벗어난 점 4) → `green8c-trowel.log` Trowel 41 통과 |
 | 카드 번역 | `red9-i18n.log`(카드 글자 50개 번역 없음) | `green9-i18n-trowel.log` 78 통과 |
 | 팔레트·메뉴·컨트롤 바 | `red10-palette-menu-control.log` 5 실패(선종·범례 단추가 준비 중, 메뉴 항목 꺼짐, 목록이 색 패치) | `green10-palette-menu-control.log` Trowel·번역 83 통과 |
+
+## 검증 (verify)
+
+2026-10-11, 대상 커밋 `c14a4ab`(빌드한 작업 트리를 그대로 커밋, 작업 브랜치에 올림). 명령은 `/home/claude/vector`에서 `CARGO_PROFILE_DEV_DEBUG=0`. 로그는 빌드 절과 같은 폴더.
+
+| 명령 | 시각(UTC) | 종료 코드 | 결과 | 로그 |
+|---|---|---|---|---|
+| `cargo xtask ci` 1회차 | 18:50:56–18:52:18 | 1 | fmt 통과, clippy 실패: `type_complexity` 2건(`tests_legend.rs` 535·561줄, 이번 변경의 시험 코드) → `type RowLook` 별칭으로 고침 | `ci1-xtask.log` |
+| `cargo clippy --workspace --all-targets -- -D warnings` | 18:53 | 0 | 경고 없음 | `clippy2.log` |
+| `cargo xtask ci` 2회차 | 18:53:50–19:04:37 | 0 | 7단계 모두 통과(fmt, clippy, test, assets, brands, layers, wasm). 시험 바이너리 118개, 5,171 통과·0 실패·4 무시(전부터 `#[ignore]`) | `ci2-xtask.log` |
+| `cargo check --target wasm32-unknown-unknown -p vectorcraft-web` | 19:04:52–19:05:26 | 0 | 경고 2개는 이번에 손대지 않은 파일(`dialogs/missing_links.rs:69`, `i18n/mod.rs:272`: wasm에서 안 쓰는 함수)이고 기준 커밋부터 있던 것 | `web-check.log` |
+| `cargo build -p vectorcraft` | 19:05:54–19:08:30 | 0 | 화면 확인용 실행 파일 | `build-app.log` |
+
+검증 방법 절의 대상 시험은 2회차 전체 시험 안에서 돌았다(`ci2-xtask.log`에서 셈): doc `legend::` 6, format `tests/legend.rs` 4, engine `tests_legend::` 21 + `every_command_has_unique_id_and_doc` 1, `command_sweep` 15, ui-egui `trowel::` 46 · `theme::` 6 · `i18n::` 37, 모두 통과.
+
+완료 기준별 확인:
+
+| 기준 | 확인 | 결과 |
+|---|---|---|
+| 1–3 문서·형식 | doc `legend::` 6, format `tests/legend.rs` 4(저장·열기, 범례 없는 레이어는 키 없음, 모르는 필드 무시, 옛 파일), engine `inspect_reports_the_legend` | 통과 |
+| 4–10 엔진 명령 | engine `tests_legend::` 21, `command_sweep` 15(새 명령 포함 무작위 인자), 명령 목록 시험 | 통과 |
+| 11–21 화면 | ui-egui `trowel::` 46(J003 시험 + J005 새 시험), `theme::tests::every_preset_has_the_caution_tokens` | 통과 |
+| 22 번역 | `i18n::tests::every_tw_literal_is_translated_in_korean` 외 `i18n::` 37 | 통과 |
+| 23 J003 시험 변경 | 빌드 절 표, 커밋 메시지 `시험 변경:` 6줄 | 기록함 |
+| 24 실제 화면 | 아래 | 확인함(차이 목록) |
+| 25 고전 화면·wasm·관문 | 전체 시험 실패 0, 웹 앱 wasm check 0, `cargo xtask ci` 0 | 통과 |
+
+실제 화면(기준 24): `scratchpad/j005/drive5.py`(J003 `drive3.py`를 늘림, Xvfb, `VECTORCRAFT_LOCALE=ko VECTORCRAFT_NO_PREFS=1`, 제어 채널 7993)로 1600 × 988 창에 새 문서 「1호 주거지 평면」 → `legend.addGroup {group: plan}` → 기본 레이어 지움 → 줄마다 `legend.pick` 뒤 도형을 그림(굴광선 줄의 「2호 수혈」만 0.5 pt로 바꿔 따로 1) → 조사구역 경계·기준점 잠금 → 굴광선 줄을 고르고 펜. 찍은 그림(커밋하지 않음): `/mnt/project-files/design/trowel-run/J005-plan.png`(평면 화면), `J005-override.png`(굴광선 줄 펼침, 「0.5 따로 ↺」), `J005-row-card.png`(줄을 두 번 누름, 0.12초 간격의 제어 채널 누르기 두 번), `J005-weights-card.png`(바닥 「모든 굵기 ×0.8 …」), 시안과 나란히 `J005-side-by-side.png`(`win-plan.png` 옆), `J005-cards-side-by-side.png`(그림 ②③ 옆).
+
+화면에서 확인한 동작: 묶음 넣기 15줄, 두 묶음 제목과 ★ 줄 먼저, 잠긴 줄의 자물쇠, 「따로 1」 표와 펼친 줄의 「0.5 따로 ↺」, 바닥 「따로 1 → 범례대로」, 두 번 누르기로 카드가 줄 높이에 뜸(닫기 세 가지는 화면에서 따로 확인하지 않음, 시험 `double_clicking_a_row_opens_its_editor`가 확인), 굵기 한 번에 카드의 미리 보기(같은 값 줄 묶음, 「선 14개가 바뀝니다」, 잠긴 선 1개 알림).
+
+시안과 남은 차이(검증에서 내가 찾은 것, 독립 검토 전):
+
+| 곳 | 시안 | 앱 | 판단 |
+|---|---|---|---|
+| 기호 줄 보기(기준점 △, 유물 출토 위치 ③) | △는 12 × 11 px 선 그림, ③은 11 px 글자 | 둘 다 글꼴 글자 11 pt라 △가 5 px 남짓으로 작음 | **고칠 것**(검토 뒤 재작업에서) |
+| 굴광선 줄 이름 | 「굴광선」 | 「굴광선 (유구 면)」(§7 표 이름)이 「따로 1」 표 때문에 「굴광선 (유구…」로 줄어듦 | 이름은 표대로. 줄인 이름의 전체를 보는 방법은 검토 의견을 봄 |
+| 유구 선 (구·벽구) 보기 | 납작한 사각형 | 선 | §7 표의 「보기」(선)를 따름 |
+| 내부 시설·경사 표시 보기 | 점·세로줄 무늬 | 빈 사각형 | 무늬·빗금은 J014 |
+| 줄 순서 | 레이어 순서 | ★ 줄이 묶음 맨 위 | 명세 위험 절 결정 3 |
+| 바닥선의 묶음 | 조사 데이터 | 그리기 · Trowel | 명세 12(Strata 키로 나눔, 바닥선은 키 없음) |
+| 펼친 객체 줄 순서 | 1호 · 2호 · 3호 | 3호 · 2호 · 1호(위에 있는 것 먼저) | J003 레이어 판 규칙 그대로 |
+| 객체 줄 면적 「32.91 ㎡」·「그리는 중」 | 있음 | 없음 | J009 |
+| 「0.5 따로 ↺」 | 글자 12 px | 10 px 남짓, ↺가 더 굵음 | nit |
+| 줄 고치기 카드 | ✕ 없음(본문 그림), Strata 고르기, 추정·빗금·글자·저장이 쓸 수 있는 모양 | ✕, Strata 읽기만, 흐린 준비 중, 「굵기 없음」·「지금은 이 도면 파일에 저장됩니다」·「레이어 옵션…」 더함 | 명세 17, J004·J009·J012·J014·J018·J019, 빌드 벗어난 점 3 |
+| 줄 고치기 카드 「= 0.28 mm」 | 14 px | 11 px 남짓 | nit |
+| 굵기 한 번에 표 | 줄 높이 약 35 px, 「Ctrl+Z」 키 상자 | 약 26 px, 그냥 글자 | nit |
+| 굵기 한 번에 「도면집 전체」 | 쓸 수 있는 모양 | 흐림 | J004 |
+| 캔버스 | 스캔·TM 좌표·방위표 | 시험용 도형, mm 눈금자 | J006·J008·J012(J003 표와 같음) |
+
+GitHub 「Trowel CI」: `c14a4ab`의 run 38166616175가 19:06:35Z에 시작(결과는 승인 절에 적는다).
