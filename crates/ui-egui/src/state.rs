@@ -292,6 +292,12 @@ pub struct UiState {
     pub status: String,
     pub palette_open: bool,
     pub palette_query: String,
+    /// Trowel's own window (design 2.1 §3) instead of the classic chrome: the Trowel workspace's
+    /// layout ([`crate::workspaces::start_trowel`]).
+    pub trowel: bool,
+    /// The first start of a version with Trowel's window has switched to it
+    /// ([`crate::workspaces::start_trowel`]): later starts keep the user's workspace.
+    pub trowel_started: bool,
     /// Screen mode: 0 normal, 1 full screen with menu, 2 full screen, 3 presentation. Not saved:
     /// the app always starts in Normal Screen Mode, with its menus and panels (#472: a saved
     /// Presentation Mode came back on restart with no way out).
@@ -515,6 +521,8 @@ impl Default for UiState {
             flyout: None,
             group_tool: vectorcraft_tools::TOOL_GROUPS.iter().map(|g| g[0].id.to_string()).collect(),
             status: String::new(),
+            trowel: false,
+            trowel_started: false,
             palette_open: false,
             palette_query: String::new(),
             screen_mode: 0,

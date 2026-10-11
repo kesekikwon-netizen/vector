@@ -109,6 +109,15 @@ pub struct Tokens {
     pub axis_x: Color32,
     pub axis_y: Color32,
     pub axis_z: Color32,
+    /// Trowel (design 2.1): the inset ring of a ribbon tile whose view is shown (Grid, Magnet).
+    pub ring: Color32,
+    /// Trowel: the well of the one action waiting for the user (Save with unsaved changes), and
+    /// the glyph drawn on it.
+    pub action: Color32,
+    pub on_action: Color32,
+    /// Trowel: a favourite's star and unsaved marks, and a favourite legend entry's name.
+    pub clay: Color32,
+    pub clay_text: Color32,
 }
 
 impl Tokens {
@@ -161,6 +170,11 @@ impl Tokens {
             axis_x: hex(0xef6058),
             axis_y: hex(0x45af63),
             axis_z: hex(0x378ef0),
+            ring: hex(0x6a6a6a),
+            action: hex(0x1473e6),
+            on_action: Color32::WHITE,
+            clay: hex(0xef6058),
+            clay_text: hex(0xf0a283),
         };
         match b {
             Brightness::Dark => base,
@@ -216,6 +230,9 @@ impl Tokens {
                 ruler: hex(0xc2c2c2),
                 ruler_tick: hex(0x4a4a4a),
                 button: hex(0xcacaca),
+                ring: hex(0x8c8c8c),
+                clay: hex(0xd97757),
+                clay_text: hex(0x9c4a2f),
                 ..base
             },
             Brightness::Light => Tokens {
@@ -243,6 +260,9 @@ impl Tokens {
                 ruler: hex(0xeaeaea),
                 ruler_tick: hex(0x5a5a5a),
                 button: hex(0xe0e0e0),
+                ring: hex(0xb4b4b4),
+                clay: hex(0xd97757),
+                clay_text: hex(0x9c4a2f),
                 ..base
             },
             // Quiet Plate: Trowel's own light theme (ivory ground, ink text, a clay accent on the
@@ -298,6 +318,11 @@ impl Tokens {
                 axis_x: hex(0xd97757),
                 axis_y: hex(0x3f6b31),
                 axis_z: hex(0x6a9bcc),
+                ring: hex(0xb0aea5),
+                action: hex(0xb5573a),
+                on_action: Color32::WHITE,
+                clay: hex(0xd97757),
+                clay_text: hex(0x9c4a2f),
             },
         }
     }
@@ -457,6 +482,23 @@ mod tests {
         assert_eq!(plate.pressed, hex(0xE8E6DC));
         assert_eq!(plate.rest_border, plate.input_border);
         assert_eq!(plate.mark_cr(), CornerRadius::same(4));
+    }
+
+    /// Design 2.1's marks beyond the shared plate: the ring around a shown ribbon tile, the save
+    /// tile's well and glyph, the clay star and the clay text of a favourite legend row.
+    #[test]
+    fn plate_has_the_trowel_tokens() {
+        let plate = Tokens::for_brightness(Brightness::Plate);
+        assert_eq!(plate.ring, hex(0xB0AEA5));
+        assert_eq!(plate.action, hex(0xB5573A));
+        assert_eq!(plate.on_action, hex(0xFFFFFF));
+        assert_eq!(plate.clay, hex(0xD97757));
+        assert_eq!(plate.clay_text, hex(0x9C4A2F));
+        for b in Brightness::ALL {
+            let t = Tokens::for_brightness(b);
+            assert!(contrast(t.on_action, t.action) >= 3.0, "{b:?}: the save glyph on its well");
+            assert!(contrast(t.clay_text, t.panel) >= 3.0, "{b:?}: a favourite's name on the panel");
+        }
     }
 
     /// The four Illustrator levels keep the values measured from public screenshots: the new

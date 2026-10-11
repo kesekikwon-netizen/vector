@@ -569,3 +569,18 @@ fn family_display_name_follows_show_font_names_in_english() {
     let face = db.face("ヒラギノ角ゴシック", "Regular").unwrap();
     assert_eq!(face.family, "Hiragino Sans");
 }
+
+/// Hangul the loaded fonts lack comes from a Korean UI family when one is installed (Noto Sans KR,
+/// Nanum Gothic…), not from whichever font file covering it sorts first (a bitmap-style font such
+/// as Unifont on Linux): Korean menus and labels read like the rest of the interface.
+#[test]
+fn hangul_falls_back_to_a_korean_ui_family_when_one_is_installed() {
+    let korean = ["Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK SC", "Noto Sans CJK JP", "Noto Sans CJK KR", "Noto Sans KR", "NanumGothic"];
+    let db = FontDb::with_font_dirs(system_font_dirs());
+    if !korean.iter().any(|f| db.has_family(f)) {
+        eprintln!("skipped: no Korean UI family installed");
+        return;
+    }
+    let face = db.face_covering('한').unwrap();
+    assert!(korean.iter().any(|f| face.family.eq_ignore_ascii_case(f)), "{}", face.family);
+}

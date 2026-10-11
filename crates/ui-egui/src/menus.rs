@@ -2727,9 +2727,30 @@ pub fn ruler_menu_body(app: &VectorcraftApp, ui: &mut egui::Ui, clicked: &mut Op
     });
 }
 
+/// A menu a window adds to the bar (Trowel's Drawing menu): its title, shown before the top-level
+/// menu titled `before` (in English), and what its popup holds.
+pub(crate) struct ExtraMenu<'a> {
+    pub before: &'a str,
+    pub title: &'a str,
+    pub body: &'a dyn Fn(&mut egui::Ui),
+}
+
 /// Render the menu bar.
 /// The in-window menu bar. Returns where its titles end (x): the bar itself takes the full width.
 pub fn menu_bar(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> f32 {
+    menu_bar_with(app, ui, 13.0, None, None).0
+}
+
+/// [`menu_bar`] with its titles `size` points, each `pad` points either side of its name and none
+/// between them (egui's spacing without it), and an `extra` menu; also returns where the extra
+/// menu's title is.
+pub(crate) fn menu_bar_with(
+    app: &mut VectorcraftApp,
+    ui: &mut egui::Ui,
+    size: f32,
+    pad: Option<f32>,
+    extra: Option<&ExtraMenu>,
+) -> (f32, Option<egui::Rect>) {
     let t = Tokens::get(ui.ctx());
     let ctx = ui.ctx().clone();
     // The press that opens a menu takes the keyboard from a focused text field: the field and its
@@ -2751,14 +2772,36 @@ pub fn menu_bar(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> f32 {
     // No application menu in the window (as in Illustrator): the bar starts at File on every
     // platform. The VectorCraft menu stays in the tree: the native Mac bar takes it from there.
     let tree: Vec<(&str, Vec<Item>)> = tree.into_iter().filter(|(title, _)| *title != crate::brand::APP_NAME).collect();
-    let (end, open) = egui::MenuBar::new()
+    let bar = match pad {
+        Some(pad) => egui::MenuBar::new().style(move |s: &mut egui::Style| {
+            egui::containers::menu::menu_style(s);
+            s.spacing.button_padding = egui::vec2(pad, 0.0);
+            s.spacing.item_spacing.x = 0.0;
+        }),
+        None => egui::MenuBar::new(),
+    };
+    let (end, open, extra_title) = bar
         .ui(ui, |ui| {
-            let mut titles = Vec::with_capacity(tree.len());
+            let mut titles = Vec::with_capacity(tree.len() + 1);
+            let mut extra_title = None;
             for (title, items) in tree.iter() {
-                let text = egui::RichText::new(tl!(title)).size(13.0).color(t.text);
+                if let Some(x) = extra.filter(|x| x.before == *title) {
+                    let text = egui::RichText::new(x.title).size(size).color(t.text);
+                    let resp = ui
+                        .menu_button(text, |ui| {
+                            widgets::menu_scroll(ui, |ui| {
+                                ui.set_min_width(230.0);
+                                (x.body)(ui);
+                            })
+                        })
+                        .response;
+                    extra_title = Some(resp.rect);
+                    titles.push(resp);
+                }
+                let text = egui::RichText::new(tl!(title)).size(size).color(t.text);
                 titles.push(ui.menu_button(text, |ui| menu_body(app, ui, items, &mut clicked)).response);
             }
-            (ui.cursor().min.x, switch_on_hover(ui.ctx(), &titles))
+            (ui.cursor().min.x, switch_on_hover(ui.ctx(), &titles), extra_title)
         })
         .inner;
     let field = ctx.data(|d| d.get_temp::<Field>(field_key));
@@ -2774,7 +2817,7 @@ pub fn menu_bar(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> f32 {
             None => invoke(app, &id, p),
         }
     }
-    end
+    (end, extra_title)
 }
 
 /// Whether the pointer at `p` is really over the menu title `title`: inside it, and with no

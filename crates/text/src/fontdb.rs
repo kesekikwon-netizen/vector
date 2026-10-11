@@ -410,6 +410,10 @@ const SYSTEM_FALLBACKS: &[&str] = &[
     "Malgun Gothic",
     "Noto Sans CJK SC",
     "Noto Sans CJK JP",
+    // Korean, where none of the above is installed (Linux without Noto CJK).
+    "Noto Sans CJK KR",
+    "Noto Sans KR",
+    "NanumGothic",
     "Arial Unicode MS",
     "Apple Symbols",
     "Segoe UI Symbol",

@@ -551,6 +551,8 @@ fn main() -> std::process::ExitCode {
             Box::new(move |cc| {
                 let mut app = VectorcraftApp::new(Session::new(), services(cc.winit_window().cloned()));
                 load_prefs(&mut app, saved);
+                // The first start of a version with Trowel's window switches to it, once.
+                vectorcraft_ui_egui::workspaces::start_trowel(&mut app.ui);
                 // Fit the window to its monitor, or put it back where it was (still hidden).
                 if let Some(w) = cc.winit_window() {
                     app.ui.window = Some(window::restore(w, saved_window));

@@ -119,7 +119,12 @@ async fn run(host: Host, canvas: web_sys::HtmlCanvasElement, moving: Option<Movi
                         app.status("The graphics were lost and have been restarted");
                         app
                     }
-                    None => VectorcraftApp::new(Session::new(), services),
+                    None => {
+                        let mut app = VectorcraftApp::new(Session::new(), services);
+                        // The web app keeps no preferences: it opens in Trowel's window.
+                        vectorcraft_ui_egui::workspaces::start_trowel(&mut app.ui);
+                        app
+                    }
                 };
                 Ok(Box::new(WebShell { app: Some(app), host, canvas: page, loss }))
             }),

@@ -23,6 +23,12 @@ fn column_left_id() -> egui::Id {
     egui::Id::new("dock-icon-column-left")
 }
 
+/// Where a popped-out panel's right edge goes (6 points left of `x`): Trowel's right column, which
+/// stands in for the icon column.
+pub(crate) fn set_column_left(ctx: &egui::Context, x: f32) {
+    ctx.data_mut(|d| d.insert_temp(column_left_id(), x));
+}
+
 /// Collapse the tabbed group to icons or expand it again (`window.collapseDock`). Expanding while
 /// one of its panels is popped out shows that panel's tab instead.
 pub fn set_collapsed(app: &mut VectorcraftApp, collapsed: bool) {

@@ -400,8 +400,41 @@ fn every_tl_literal_is_translated() {
     }
 }
 
+/// Every `tw!("…")` literal (Trowel's own window, design 2.1) has a Korean entry, in the `trowel`
+/// context or plain: Trowel is drawn in Korean, and its other languages show the English source
+/// until they get rows of their own. Names and units shown as they are: [`TW_KEEP_AS_IS`].
+#[test]
+fn every_tw_literal_is_translated_in_korean() {
+    let literals = macro_literals("tw!(\"");
+    assert!(literals.len() > 100, "scan found only {} tw! literals", literals.len());
+    let cat = Lang::from_code("ko").expect("ko registered").catalog();
+    let missing: Vec<_> =
+        literals.iter().filter(|s| !TW_KEEP_AS_IS.contains(&s.as_str()) && cat.contextual("trowel", s).is_none() && cat.plain(s).is_none()).collect();
+    assert!(missing.is_empty(), "ko: {} untranslated tw! strings: {missing:#?}", missing.len());
+}
+
+/// `tw!` literals that Korean shows as they are: file formats and app names.
+const TW_KEEP_AS_IS: &[&str] = &["PDF", "DXF", "Trowel", "Strata"];
+
+/// The labels the tools put on the art are interface text, so Korean has them all: the smart
+/// guides' (`vectorcraft_tools::guides`: what the pointer is on, "align"), the Selection tool's
+/// hover label and Puppet Warp's warning.
+#[test]
+fn canvas_labels_are_translated_in_korean() {
+    let ko = Lang::from_code("ko").expect("ko registered");
+    for label in ["anchor", "center", "path", "artboard", "bleed", "guide", "align", "Pins go on the artwork"] {
+        assert_ne!(label_or_name(ko, label, true), label, "ko: {label:?}");
+    }
+}
+
 /// Every `tl!("…")` literal in this crate's sources (test modules aside).
 pub fn tl_literals() -> std::collections::BTreeSet<String> {
+    macro_literals("tl!(\"")
+}
+
+/// Every literal after `open` (`tl!("`, `tw!("`) in this crate's sources, `lib.rs` (where the macros
+/// are defined) and test modules aside.
+fn macro_literals(open: &str) -> std::collections::BTreeSet<String> {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut literals = std::collections::BTreeSet::new();
     let mut stack = vec![dir];
@@ -415,8 +448,8 @@ pub fn tl_literals() -> std::collections::BTreeSet<String> {
                 let text = std::fs::read_to_string(&path).unwrap_or_default();
                 let code = text.split("#[cfg(test)]").next().unwrap_or("");
                 let mut rest = code;
-                while let Some(at) = rest.find("tl!(\"") {
-                    rest = &rest[at + 5..];
+                while let Some(at) = rest.find(open) {
+                    rest = &rest[at + open.len()..];
                     let mut end = 0;
                     let bytes = rest.as_bytes();
                     while end < bytes.len() && !(bytes[end] == b'"' && (end == 0 || bytes[end - 1] != b'\\')) {

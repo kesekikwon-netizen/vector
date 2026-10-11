@@ -306,6 +306,43 @@ Generated-in-code art is original and has no file to list. This covers the defau
 | `assets/icons/tornado.svg` | Lucide Icons and Contributors | https://lucide.dev (lucide-static v1.49.0; header kept in file) | ISC (`assets/icons/LICENSE-lucide.txt`) |  |
 | `assets/icons/trash-2.svg` | Lucide Icons and Contributors | https://lucide.dev (lucide-static v1.49.0; header kept in file) | ISC; derived from Feather, also MIT (`assets/icons/LICENSE-lucide.txt`) |  |
 | `assets/icons/triangle.svg` | Lucide Icons and Contributors | https://lucide.dev (lucide-static v1.49.0; header kept in file) | ISC; derived from Feather, also MIT (`assets/icons/LICENSE-lucide.txt`) |  |
+| `assets/icons/tw-align.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-bucket.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-direct.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-dropper.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-dxf.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-find-number.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-finds.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-grid.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-hachure.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-hand.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-import.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-legend.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-line.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-magnet.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-north.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-open.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-pdf.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-pen.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-pencil.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-plan.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-posthole.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-rect.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-rotate.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-save.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-scale.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-scale-bar.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-scissors.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-section.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-section-line.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-select.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-sheet.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-spot-height.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-strata.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-title-block.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-type.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-underlay.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-zoom.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/type.svg` | Lucide Icons and Contributors | https://lucide.dev (lucide-static v1.49.0; header kept in file) | ISC; derived from Feather, also MIT (`assets/icons/LICENSE-lucide.txt`) |  |
 | `assets/icons/undo-2.svg` | Lucide Icons and Contributors | https://lucide.dev (lucide-static v1.49.0; header kept in file) | ISC (`assets/icons/LICENSE-lucide.txt`) |  |
 | `assets/icons/ungroup.svg` | Lucide Icons and Contributors | https://lucide.dev (lucide-static v1.49.0; header kept in file) | ISC (`assets/icons/LICENSE-lucide.txt`) |  |

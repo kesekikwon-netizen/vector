@@ -121,7 +121,7 @@ fn rename_id() -> egui::Id {
 const GHOST_OPACITY: f32 = 0.5;
 
 /// The colour of the layer holding `id`.
-fn layer_colour(doc: &Document, id: NodeId) -> Color32 {
+pub(crate) fn layer_colour(doc: &Document, id: NodeId) -> Color32 {
     let [r, g, b] = doc.layer_color(id);
     Color32::from_rgb(r, g, b)
 }
@@ -189,7 +189,7 @@ impl Place {
 /// The name painted for a row in `lang`: a generated `<Kind>` name is translated, anything else is
 /// user data (an unnamed text object shows its text, which can look like `<Path>`; only an empty
 /// one is called `<Text>`).
-fn painted_name(n: &Node, name: &str, lang: crate::i18n::Lang) -> String {
+pub(crate) fn painted_name(n: &Node, name: &str, lang: crate::i18n::Lang) -> String {
     let generated = n.name.is_none() && !matches!(&n.kind, NodeKind::Text(t) if t.runs.iter().any(|r| !r.text.is_empty()));
     if generated && let Some(inner) = name.strip_prefix('<').and_then(|s| s.strip_suffix('>')) {
         return format!("<{}>", crate::i18n::tr(lang, inner));

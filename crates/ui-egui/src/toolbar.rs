@@ -215,7 +215,9 @@ fn body(app: &mut VectorcraftApp, ui: &mut Ui, cols: usize, floating: Option<egu
                         let c = rect.center() + vec2(12.5, 10.0);
                         ui.painter().add(egui::Shape::convex_polygon(vec![c, c + vec2(-3.5, 0.0), c + vec2(0.0, -3.5)], t.icon, Stroke::NONE));
                     }
-                    let press = if slot.len() > 1 { flyout_press(ui, &resp, rect) } else { None };
+                    // The triangle's corner: the bottom-right third of the button.
+                    let corner = egui::Rect::from_min_max(rect.center() + vec2(6.0, 4.0), rect.max);
+                    let press = if slot.len() > 1 { flyout_press(ui, &resp, Some(corner)) } else { None };
                     let alt = ui.input(|inp| inp.modifiers.alt);
                     if press.is_some() {
                         if is_floating(app, slot[0]) {
@@ -246,20 +248,25 @@ fn body(app: &mut VectorcraftApp, ui: &mut Ui, cols: usize, floating: Option<egu
             raise_floating(ui.ctx(), key);
         }
         if let Some((slot, rect)) = open_flyout {
-            app.ui.flyout = Some(0);
-            ui.data_mut(|d| {
-                d.insert_temp(egui::Id::new("flyout-anchor"), rect);
-                d.insert_temp(egui::Id::new("flyout-tools"), slot.iter().map(|s| s.to_string()).collect::<Vec<String>>());
-            });
+            self::open_flyout(app, ui.ctx(), &slot, rect);
         }
         ui.add_space(8.0);
         bottom_controls(app, ui, &t);
     });
 }
 
+/// Open the flyout of the group `tools` (first = its default) beside the button at `rect`.
+pub(crate) fn open_flyout(app: &mut VectorcraftApp, ctx: &egui::Context, tools: &[&str], rect: egui::Rect) {
+    app.ui.flyout = Some(0);
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::new("flyout-anchor"), rect);
+        d.insert_temp(egui::Id::new("flyout-tools"), tools.iter().map(|s| s.to_string()).collect::<Vec<String>>());
+    });
+}
+
 /// How a press on a tool group's button opens its flyout.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum FlyoutPress {
+pub(crate) enum FlyoutPress {
     /// A right press (it opens at once, before the release).
     Secondary,
     /// A primary press on the corner triangle, or one held [`LONG_PRESS`] seconds: its release
@@ -267,20 +274,19 @@ enum FlyoutPress {
     Primary,
 }
 
-/// Whether this frame's pointer state on a tool button opens its group's flyout. A primary press
+/// Whether this frame's pointer state on a tool button opens its group's flyout: a right press, a
+/// long press, or a press on its `corner` (the triangle, where the button has one). A primary press
 /// still short of a long one asks for the frame where it becomes long: egui draws only on input,
 /// so a still mouse would otherwise never get there.
-fn flyout_press(ui: &Ui, resp: &egui::Response, rect: egui::Rect) -> Option<FlyoutPress> {
+pub(crate) fn flyout_press(ui: &Ui, resp: &egui::Response, corner: Option<egui::Rect>) -> Option<FlyoutPress> {
     if resp.hovered() && ui.input(|inp| inp.pointer.button_pressed(egui::PointerButton::Secondary)) {
         return Some(FlyoutPress::Secondary);
     }
     if !resp.is_pointer_button_down_on() || !ui.input(|inp| inp.pointer.primary_down()) {
         return None;
     }
-    // The triangle's corner: the bottom-right third of the button.
-    let corner = egui::Rect::from_min_max(rect.center() + vec2(6.0, 4.0), rect.max);
     let (origin, held) = ui.input(|inp| (inp.pointer.press_origin(), inp.pointer.press_start_time().map(|s| inp.time - s)));
-    if origin.is_some_and(|p| corner.contains(p)) {
+    if origin.is_some_and(|p| corner.is_some_and(|c| c.contains(p))) {
         return Some(FlyoutPress::Primary);
     }
     let held = held.unwrap_or(0.0);
@@ -490,7 +496,7 @@ pub fn float_group(app: &mut VectorcraftApp, tool: &str, floating: Option<bool>)
 }
 
 /// Whether the group whose first tool is `key` floats as its own panel.
-fn is_floating(app: &VectorcraftApp, key: &str) -> bool {
+pub(crate) fn is_floating(app: &VectorcraftApp, key: &str) -> bool {
     app.ui.floating_flyouts.iter().any(|f| f.tools.first().is_some_and(|k| k == key))
 }
 
@@ -500,7 +506,7 @@ fn floating_area(key: &str) -> egui::Id {
 }
 
 /// Bring a floating flyout to the front and flash its border.
-fn raise_floating(ctx: &egui::Context, key: &str) {
+pub(crate) fn raise_floating(ctx: &egui::Context, key: &str) {
     let id = floating_area(key);
     ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, id));
     let now = ctx.input(|i| i.time);
@@ -641,7 +647,8 @@ fn press_travel(ctx: &egui::Context) -> Option<egui::Vec2> {
     ctx.input(|i| i.pointer.press_origin().zip(i.pointer.interact_pos()).map(|(a, b)| b - a))
 }
 
-fn flyout(app: &mut VectorcraftApp, ctx: &egui::Context) {
+/// The open flyout of a tool group (`app.ui.flyout`), beside the button that opened it.
+pub(crate) fn flyout(app: &mut VectorcraftApp, ctx: &egui::Context) {
     if app.ui.flyout.is_none() {
         return;
     }
@@ -690,7 +697,7 @@ fn flyout(app: &mut VectorcraftApp, ctx: &egui::Context) {
 }
 
 /// The flyouts torn off the toolbar, each floating where its bar was dragged; its × puts it back.
-fn floating(app: &mut VectorcraftApp, ctx: &egui::Context) {
+pub(crate) fn floating(app: &mut VectorcraftApp, ctx: &egui::Context) {
     if app.ui.floating_flyouts.is_empty() {
         return;
     }

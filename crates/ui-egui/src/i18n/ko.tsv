@@ -377,7 +377,7 @@
 	Click an anchor point	앵커 포인트를 클릭하세요
 	Click or drag	클릭하거나 드래그하세요
 	Click the art with the Gradient tool to add or select points.	그라데이션 도구로 작업물을 클릭하여 점을 추가하거나 선택하세요.
-	Click the first point	첫 번째 점을 클릭하세요
+	Click the first point	첫 번째 점 클릭
 	Click the ramp or a type button to apply a gradient.	그라데이션 램프 또는 유형 버튼을 클릭하여 그라데이션을 적용하세요.
 	Click to add a tab stop, drag to move it, drag it off the ruler to delete it	클릭하면 탭 정지점을 추가하고, 드래그하면 이동하며, 눈금자 밖으로 드래그하면 삭제합니다.
 	Click to choose a swatch, Shift-click to mix a colour	클릭하면 견본을 선택하고, Shift+클릭하면 색상을 혼합합니다.
@@ -3194,14 +3194,14 @@
 @plural	{n} stroke|{n} strokes	획 {n}개|획 {n}개
 	 the object to select  |  	 객체를 선택  |  
 	 to select multiple objects  |  	 여러 객체를 선택  |  
-	 the object to duplicate	 복제할 객체
-	 an anchor or path segment to select it  |  	 앵커 또는 패스 세그먼트를 선택하려면  |  
-	 to move  |  	 이동하려면  |  
-	 to add	 추가하려면
+	 the object to duplicate	 객체 복제
+	 an anchor or path segment to select it  |  	 앵커 또는 패스 세그먼트 선택  |  
+	 to move  |  	 이동  |  
+	 to add	 추가
 	 to add a corner point  |  	 코너 점 추가  |  
 	 to add a smooth point  |  	 부드러운 점 추가  |  
-	 to close  |  	 닫으려면  |  
-	 to finish	 완료하려면
+	 to close  |  	 닫기  |  
+	 to finish	 완료
 	 to add smooth points  |  	 부드러운 점들 추가  |  
 	 to toggle corner  |  	 코너 전환  |  
 	 to create point type  |  	 포인트 문자 만들기  |  
@@ -4081,3 +4081,103 @@ lighting	Light	조명
 	Stroke Pressure	획 압력
 	Right Diagonal	오른쪽 대각선
 	Left Diagonal	왼쪽 대각선
+# Labels the tools put on the art (smart guides, the Selection tool's hover, Puppet Warp).
+	anchor	앵커
+	center	중심
+	path	패스
+	artboard	아트보드
+	bleed	블리드
+	guide	안내선
+	align	정렬
+	Pins go on the artwork	핀은 아트워크 위에만 놓을 수 있습니다
+# Trowel's own window (design 2.1, `tw!`): context `trowel`, its archaeology-drawing wording, ahead of
+# the plain rows above (굵기, 실선, 허용치, 선종, 맞추기 where the plain rows say 두께, 단색, 허용 오차, 선, 정렬).
+trowel	Add to Legend	범례에 더하기
+trowel	Align	맞추기
+trowel	Align Underlay…	밑그림 맞추기…
+trowel	All saved	모두 저장됨
+trowel	Alternate	번갈아
+trowel	Archaeology	고고학
+trowel	Area and Perimeter	면적·둘레 계산
+trowel	Back to the Legend	범례대로
+trowel	Bucket	칠통
+trowel	Change All Weights…	모든 굵기 바꾸기…
+trowel	Change Weights at Once…	굵기 한 번에 바꾸기…
+trowel	Choose	고르세요
+trowel	Coming soon · {job}	준비 중 · {job}
+trowel	Coordinate system not set	좌표계 정하지 않음
+trowel	Cut Face	잘린 면
+trowel	Dash-dot	일점쇄선
+trowel	Dotted	점선
+trowel	Draw on this layer	이 레이어에 그리기
+trowel	Drawing	도면
+trowel	Drawing Elements	도면 요소
+trowel	Drawing Palette	그리기 팔레트
+trowel	Drawing Set	도면집
+trowel	Estimated (Dashed)	추정 (파선)
+trowel	Find Number	유물 번호
+trowel	Find a command	명령 찾기
+trowel	Finds	유물
+trowel	Fold the properties	속성 접기
+trowel	Follow Pressure	필압 따라
+trowel	Hatch	빗금
+trowel	Hide the objects	개체 목록 접기
+trowel	Import	가져오기
+trowel	Insert Legend Table	범례표 넣기
+trowel	Insert Title Block	표제란 넣기
+trowel	Layers panel	레이어 패널
+trowel	Layers: {n}	레이어 {n}개
+trowel	Legend	범례
+trowel	Legend Table	범례표
+trowel	Legend · Layers	범례 · 레이어
+trowel	Line	선종
+trowel	Make Level Lines	해발선 만들기
+trowel	New Drawing	새 도면
+trowel	New drawing	새 도면
+trowel	New layer	새 레이어
+trowel	Next line · pt	다음에 그릴 선 · pt
+trowel	No dashes	끊지 않은 선
+trowel	No.	번호
+trowel	North Arrow	방위
+trowel	Not saved	저장 안 됨
+trowel	Open Drawings	열린 도면
+trowel	Overrides to Legend	따로 → 범례대로
+trowel	Pen	펜
+trowel	Pen Pressure	펜 필압
+trowel	Period	시대
+trowel	Plan	평면
+trowel	Plate	도판
+trowel	Posthole Depth	주혈 깊이
+trowel	Properties panel	속성 패널
+trowel	Required	필요
+trowel	Same Weight	굵기 그대로
+trowel	Scale Bar	축척
+trowel	Scale and Coordinate System…	축척과 좌표계…
+trowel	Scale and coordinate system not set	축척·좌표계 정하지 않음
+trowel	Scale not set	축척 정하지 않음
+trowel	Section	단면
+trowel	Section Line	단면선
+trowel	Selected lines · pt	고른 선 · pt
+trowel	Send to Strata…	Strata로 보내기…
+trowel	Show the objects	개체 목록 펼치기
+trowel	Show the properties	속성 펼치기
+trowel	Slope Hachure	경사 표시
+trowel	Snap	자석
+trowel	Snap off	자석 끔
+trowel	Snap on	자석 켬
+trowel	Solid	실선
+trowel	Spot Height	표고
+trowel	The layer and weight the next line is drawn with	다음 선을 그릴 레이어와 굵기
+trowel	This drawing	이 도면
+trowel	This drawing's layers	이 도면의 레이어
+trowel	Title Block	표제란
+trowel	To Strata	Strata로
+trowel	Tolerance	허용치
+trowel	Tool	도구
+trowel	Underlay	밑그림
+trowel	Weight	굵기
+trowel	Weight, hatch and line type: in the Drawing Palette at the right	굵기 · 빗금 · 선종은 오른쪽 「그리기 팔레트」에서
+trowel	Weights at once	굵기 한 번에
+trowel	When Closed	닫으면
+trowel	{n} not saved	저장 안 됨 {n}건
+trowel	{n} objects	객체 {n}개

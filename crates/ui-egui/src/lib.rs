@@ -13,6 +13,15 @@ macro_rules! tl {
     };
 }
 
+/// Translate a string of Trowel's own window (design 2.1): its `trowel` catalog entry, else the
+/// plain one. Only Korean has rows for them so far; other languages show the English source.
+#[macro_export]
+macro_rules! tw {
+    ($s:expr) => {
+        $crate::i18n::tr_ctx($crate::i18n::current(), "trowel", $s)
+    };
+}
+
 pub mod background;
 mod brand;
 pub use brand::APP_NAME;
@@ -53,6 +62,7 @@ pub mod theme;
 pub mod titlebar;
 pub mod toolbar;
 mod touch;
+mod trowel;
 mod ui_fonts;
 pub mod unsaved;
 pub mod widgets;
@@ -1138,29 +1148,33 @@ impl VectorcraftApp {
         scrub::begin_frame(self, &ctx);
         font_menu::end_stale_preview(self, &ctx);
         floating::track(self, &ctx);
-        let t = theme::Tokens::get(&ctx);
-        if self.ui.screen_mode < 2 {
-            chrome::app_bar(self, ui);
-            if self.ui.control_bar {
-                chrome::control_bar(self, ui);
+        if self.ui.trowel {
+            trowel::frame(self, ui);
+        } else {
+            let t = theme::Tokens::get(&ctx);
+            if self.ui.screen_mode < 2 {
+                chrome::app_bar(self, ui);
+                if self.ui.control_bar {
+                    chrome::control_bar(self, ui);
+                }
             }
-        }
-        if self.ui.status_bar && self.ui.screen_mode < 3 {
-            chrome::status_bar(self, ui);
-            chrome::hint_bar(self, ui);
-        }
-        if self.ui.toolbar && self.ui.screen_mode < 3 {
-            toolbar::show(self, ui);
-        }
-        if self.ui.dock && self.ui.screen_mode < 3 {
-            dock::show(self, ui);
-        }
-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.pasteboard)).show(ui, |ui| {
-            if self.ui.screen_mode < 3 {
-                chrome::doc_tabs(self, ui);
+            if self.ui.status_bar && self.ui.screen_mode < 3 {
+                chrome::status_bar(self, ui);
+                chrome::hint_bar(self, ui);
             }
-            canvas::show(self, ui);
-        });
+            if self.ui.toolbar && self.ui.screen_mode < 3 {
+                toolbar::show(self, ui);
+            }
+            if self.ui.dock && self.ui.screen_mode < 3 {
+                dock::show(self, ui);
+            }
+            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.pasteboard)).show(ui, |ui| {
+                if self.ui.screen_mode < 3 {
+                    chrome::doc_tabs(self, ui);
+                }
+                canvas::show(self, ui);
+            });
+        }
         dock::floating_panel(self, &ctx);
         floating::show(self, &ctx);
         panels::library_panel::show_window(self, &ctx);

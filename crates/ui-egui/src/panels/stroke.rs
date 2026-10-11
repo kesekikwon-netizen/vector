@@ -97,7 +97,7 @@ fn arrow_label(a: Option<Arrowhead>) -> &'static str {
 
 /// Apply Stroke panel options (`stroke.set` params): while the Type tool edits text, to the
 /// selected characters' stroke.
-fn set(app: &mut VectorcraftApp, p: Value) {
+pub(crate) fn set(app: &mut VectorcraftApp, p: Value) {
     if character::text_editing(app).is_some() {
         character::range_style(app, json!({ "strokeOptions": p }));
     } else {

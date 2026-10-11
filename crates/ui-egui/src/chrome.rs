@@ -113,13 +113,13 @@ pub fn system_title_bar(app: &VectorcraftApp) -> bool {
     !app.custom_titlebar && app.session.prefs.system_title_bar && !cfg!(any(target_os = "macos", target_arch = "wasm32"))
 }
 
-/// The OS window title: the active document's name suffixed with the app name (a `*` prefix
-/// marks unsaved changes, like the `*` in the document tabs), or just the app name with no
+/// The OS window title: the active document's name, " *" after it while it has unsaved changes (as
+/// Strata's title marks them, design 2.1 §3), then the app name; just the app name with no
 /// document open.
 pub fn window_title(app: &VectorcraftApp) -> String {
     app.session
         .active()
-        .map(|d| format!("{}{} \u{2014} {}", if d.is_dirty() { "*" } else { "" }, d.title(), crate::brand::APP_NAME))
+        .map(|d| format!("{}{} - {}", d.title(), if d.is_dirty() { " *" } else { "" }, crate::brand::APP_NAME))
         .unwrap_or_else(|| crate::brand::APP_NAME.into())
 }
 
@@ -220,105 +220,112 @@ pub fn control_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
                 for i in 0..5 {
                     ui.painter().circle_filled(g.center_top() + vec2(0.0, 2.0 + i as f32 * 4.0), 0.9, t.text_disabled);
                 }
-                let Some(st) = app.session.active() else {
-                    ui.label(egui::RichText::new(tl!("No Document")).color(t.text_dim));
-                    return;
-                };
-                let sel = st.selection.objects.clone();
-                let units = app.session.general_unit();
-                let first = sel.first().and_then(|id| st.doc.node(*id)).cloned();
-                let anchors = anchor_controls(app);
-                let label = match &first {
-                    Some(_) if sel.len() == 1 && anchors != AnchorControls::None => tl!("Anchor Point"),
-                    Some(vectorcraft_doc::Node { kind: NodeKind::Image(im), .. }) if sel.len() == 1 => {
-                        if im.link.is_some() {
-                            tl!("Linked File")
-                        } else {
-                            tl!("Embedded")
-                        }
-                    }
-                    Some(n) if sel.len() == 1 && crate::panels::image_trace::is_trace(n) => tl!("Image Tracing"),
-                    _ => tl!(crate::panels::appearance::object_label(app)),
-                };
-                ui.label(egui::RichText::new(label).font(theme::semibold(12.0)).color(t.text));
-                if anchors != AnchorControls::None {
-                    anchor_buttons(app, ui, anchors);
-                }
-                ui.add_space(6.0);
-                // An image or an Image Trace object shows its own controls in place of Fill and Stroke.
-                let image = crate::place::control_bar_details(app, ui) || crate::panels::image_trace::control_bar(app, ui);
-                crate::toolbar::control_bar_options(app, ui);
-                crate::dialogs::envelope::control_bar(app, ui);
-                let opacity = if first.is_some() { crate::panels::current_transparency(app).map_or(1.0, |t| t.0) } else { 1.0 };
-                if !image {
-                    let shown_stroke = crate::panels::current_stroke(app);
-                    let mixed = crate::panels::stroke_mixed(app, ui.ctx());
-                    let weight = stroke_panel::shown_weight(app, shown_stroke.as_ref(), &mixed);
-                    crate::panels::paint_chip(app, ui, false, 22.0, true);
-                    crate::panels::paint_chip(app, ui, true, 22.0, true);
-                    // The link opens the Stroke panel as a popover under it; then the weight spinner
-                    // (with presets) and the width profile.
-                    stroke_panel::link(app, ui, tl!("Stroke:"));
-                    stroke_panel::weight_field(app, ui, "cb-stroke", weight, 100.0);
-                    if let Some(id) = stroke_panel::profile_dropdown(app, ui, shown_stroke.as_ref().and_then(|s| s.profile.as_ref())) {
-                        app.run("stroke.set", json!({"profile": id})).ok();
-                    }
-                    ui.add_space(4.0);
-                    ui.separator();
-                }
-                if ui.link(egui::RichText::new(tl!("Opacity:")).size(12.0).color(t.text).underline()).clicked() {
-                    app.ui.open_panel = Some("transparency".into());
-                }
-                if let Some(o) = widgets::plain_field(ui, "cb-opacity", opacity as f64 * 100.0, "%", 0, 56.0)
-                    && !sel.is_empty()
-                {
-                    app.run("transparency.set", json!({"opacity": o.clamp(0.0, 100.0)})).ok();
-                }
-                if !sel.is_empty() {
-                    // Style picker: the selection's graphic style; its menu applies another.
-                    ui.add_space(4.0);
-                    if ui.link(egui::RichText::new(tl!("Style:")).size(12.0).color(t.text).underline()).clicked() {
-                        app.ui.open_panel = Some("graphicStyles".into());
-                    }
-                    let resp = widgets::chip_button(ui, 22.0, true, |ui, r| crate::panels::graphic_styles::paint_linked(app, ui, r))
-                        .on_hover_text(tl!("Graphic Style"));
-                    egui::Popup::menu(&resp).show(|ui| crate::panels::graphic_styles::picker(app, ui));
-                }
-                ui.separator();
-                crate::panels::character::control_bar(app, ui);
-                if sel.is_empty() {
-                    if widgets::flat_button(ui, tl!("Document Setup"), 112.0).clicked() {
-                        app.run("file.documentSetup", json!({})).ok();
-                    }
-                    if widgets::flat_button(ui, tl!("Preferences"), 90.0).clicked() {
-                        app.run("edit.preferences", json!({})).ok();
-                    }
-                    return;
-                }
-                crate::panels::align::align_buttons(app, ui, 24.0);
-                ui.separator();
-                // The Transform link opens the whole Transform panel (reference point, rotate,
-                // shear, options) in a popover; X/Y/W/H follow inline while the bar has room.
-                crate::panels::transform::link(app, ui);
-                // The bounding box, rotated with rotated objects: its centre and its own sides.
-                if let Some(b) = app.selection_box()
-                    && ui.available_width() >= INLINE_TRANSFORM_WIDTH
-                {
-                    let c = b.center();
-                    let link = app.session.prefs.constrain_proportions;
-                    for (k, lbl, v) in [("x", "X:", c.x), ("y", "Y:", c.y), ("width", "W:", b.rect.width()), ("height", "H:", b.rect.height())] {
-                        // The W/H link sits between W and H.
-                        if k == "height" {
-                            crate::panels::transform::constrain_link(app, ui);
-                        }
-                        widgets::field_label(ui, egui::RichText::new(tl!(lbl)).size(12.0).color(t.text_dim));
-                        if let Some(nv) = widgets::num_field(ui, ("cb", k), Some(v), units, 80.0) {
-                            app.run("object.setBounds", json!({k: nv, "reference": 4, "proportional": link})).ok();
-                        }
-                    }
-                }
+                control_bar_contents(app, ui);
             });
         });
+}
+
+/// The Control bar's controls for the selection and the active tool, after its gripper: Trowel's
+/// Control bar shows them too, for the tools it has no layout of its own for.
+pub(crate) fn control_bar_contents(app: &mut VectorcraftApp, ui: &mut Ui) {
+    let t = Tokens::get(ui.ctx());
+    let Some(st) = app.session.active() else {
+        ui.label(egui::RichText::new(tl!("No Document")).color(t.text_dim));
+        return;
+    };
+    let sel = st.selection.objects.clone();
+    let units = app.session.general_unit();
+    let first = sel.first().and_then(|id| st.doc.node(*id)).cloned();
+    let anchors = anchor_controls(app);
+    let label = match &first {
+        Some(_) if sel.len() == 1 && anchors != AnchorControls::None => tl!("Anchor Point"),
+        Some(vectorcraft_doc::Node { kind: NodeKind::Image(im), .. }) if sel.len() == 1 => {
+            if im.link.is_some() {
+                tl!("Linked File")
+            } else {
+                tl!("Embedded")
+            }
+        }
+        Some(n) if sel.len() == 1 && crate::panels::image_trace::is_trace(n) => tl!("Image Tracing"),
+        _ => tl!(crate::panels::appearance::object_label(app)),
+    };
+    ui.label(egui::RichText::new(label).font(theme::semibold(12.0)).color(t.text));
+    if anchors != AnchorControls::None {
+        anchor_buttons(app, ui, anchors);
+    }
+    ui.add_space(6.0);
+    // An image or an Image Trace object shows its own controls in place of Fill and Stroke.
+    let image = crate::place::control_bar_details(app, ui) || crate::panels::image_trace::control_bar(app, ui);
+    crate::toolbar::control_bar_options(app, ui);
+    crate::dialogs::envelope::control_bar(app, ui);
+    let opacity = if first.is_some() { crate::panels::current_transparency(app).map_or(1.0, |t| t.0) } else { 1.0 };
+    if !image {
+        let shown_stroke = crate::panels::current_stroke(app);
+        let mixed = crate::panels::stroke_mixed(app, ui.ctx());
+        let weight = stroke_panel::shown_weight(app, shown_stroke.as_ref(), &mixed);
+        crate::panels::paint_chip(app, ui, false, 22.0, true);
+        crate::panels::paint_chip(app, ui, true, 22.0, true);
+        // The link opens the Stroke panel as a popover under it; then the weight spinner
+        // (with presets) and the width profile.
+        stroke_panel::link(app, ui, tl!("Stroke:"));
+        stroke_panel::weight_field(app, ui, "cb-stroke", weight, 100.0);
+        if let Some(id) = stroke_panel::profile_dropdown(app, ui, shown_stroke.as_ref().and_then(|s| s.profile.as_ref())) {
+            app.run("stroke.set", json!({"profile": id})).ok();
+        }
+        ui.add_space(4.0);
+        ui.separator();
+    }
+    if ui.link(egui::RichText::new(tl!("Opacity:")).size(12.0).color(t.text).underline()).clicked() {
+        app.ui.open_panel = Some("transparency".into());
+    }
+    if let Some(o) = widgets::plain_field(ui, "cb-opacity", opacity as f64 * 100.0, "%", 0, 56.0)
+        && !sel.is_empty()
+    {
+        app.run("transparency.set", json!({"opacity": o.clamp(0.0, 100.0)})).ok();
+    }
+    if !sel.is_empty() {
+        // Style picker: the selection's graphic style; its menu applies another.
+        ui.add_space(4.0);
+        if ui.link(egui::RichText::new(tl!("Style:")).size(12.0).color(t.text).underline()).clicked() {
+            app.ui.open_panel = Some("graphicStyles".into());
+        }
+        let resp =
+            widgets::chip_button(ui, 22.0, true, |ui, r| crate::panels::graphic_styles::paint_linked(app, ui, r)).on_hover_text(tl!("Graphic Style"));
+        egui::Popup::menu(&resp).show(|ui| crate::panels::graphic_styles::picker(app, ui));
+    }
+    ui.separator();
+    crate::panels::character::control_bar(app, ui);
+    if sel.is_empty() {
+        if widgets::flat_button(ui, tl!("Document Setup"), 112.0).clicked() {
+            app.run("file.documentSetup", json!({})).ok();
+        }
+        if widgets::flat_button(ui, tl!("Preferences"), 90.0).clicked() {
+            app.run("edit.preferences", json!({})).ok();
+        }
+        return;
+    }
+    crate::panels::align::align_buttons(app, ui, 24.0);
+    ui.separator();
+    // The Transform link opens the whole Transform panel (reference point, rotate,
+    // shear, options) in a popover; X/Y/W/H follow inline while the bar has room.
+    crate::panels::transform::link(app, ui);
+    // The bounding box, rotated with rotated objects: its centre and its own sides.
+    if let Some(b) = app.selection_box()
+        && ui.available_width() >= INLINE_TRANSFORM_WIDTH
+    {
+        let c = b.center();
+        let link = app.session.prefs.constrain_proportions;
+        for (k, lbl, v) in [("x", "X:", c.x), ("y", "Y:", c.y), ("width", "W:", b.rect.width()), ("height", "H:", b.rect.height())] {
+            // The W/H link sits between W and H.
+            if k == "height" {
+                crate::panels::transform::constrain_link(app, ui);
+            }
+            widgets::field_label(ui, egui::RichText::new(tl!(lbl)).size(12.0).color(t.text_dim));
+            if let Some(nv) = widgets::num_field(ui, ("cb", k), Some(v), units, 80.0) {
+                app.run("object.setBounds", json!({k: nv, "reference": 4, "proportional": link})).ok();
+            }
+        }
+    }
 }
 
 /// A document tab's title: "Name* @ 66.67 % (RGB/Preview)", or while an opacity mask is edited
@@ -339,7 +346,7 @@ const CLOSE_BEFORE_TITLE: bool = cfg!(target_os = "macos");
 
 /// The first of tabs `widths` wide that the strip shows in `room`: the first one, or a later one so
 /// that the `active` tab fits.
-fn first_tab_shown(widths: &[f32], active: Option<usize>, room: f32) -> usize {
+pub(crate) fn first_tab_shown(widths: &[f32], active: Option<usize>, room: f32) -> usize {
     let Some(a) = active else { return 0 };
     let mut first = 0;
     while first < a && widths.get(first..=a).map_or(0.0, |w| w.iter().sum::<f32>()) > room {
@@ -809,6 +816,21 @@ fn hint_segments(tool: &str) -> Vec<(Cow<'static, str>, bool)> {
         .collect()
 }
 
+/// What the hint bar says now: the 3D gizmo's hint while Revolve's options are open, else the active
+/// tool's (the Zoom tool's as its drag zooms) as (text, bold) segments.
+pub(crate) fn current_hint(app: &VectorcraftApp) -> Vec<(Cow<'static, str>, bool)> {
+    if let Some(d) = app.ui.dialog.as_ref().filter(|d| crate::dialogs::revolve_gizmo::active(d)) {
+        return vec![(crate::dialogs::revolve_gizmo::hint(d).into(), false)];
+    }
+    let tool = app.session.tool_id();
+    let hint = match tool {
+        "zoom" if crate::canvas::zoom_drag_left_in(&app.session.prefs) => ANIMATED_ZOOM_LEFT_HINT,
+        "zoom" if crate::canvas::animated_zoom(&app.session.prefs) => ANIMATED_ZOOM_HINT,
+        _ => tool,
+    };
+    hint_segments(hint)
+}
+
 pub fn hint_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     egui::Panel::bottom("hint_bar")
@@ -821,18 +843,7 @@ pub fn hint_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
                 ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "?", theme::semibold(11.0), t.text);
                 ui.add_space(6.0);
                 let mut job = egui::text::LayoutJob::default();
-                let segments = if let Some(d) = app.ui.dialog.as_ref().filter(|d| crate::dialogs::revolve_gizmo::active(d)) {
-                    vec![(crate::dialogs::revolve_gizmo::hint(d).into(), false)]
-                } else {
-                    let tool = app.session.tool_id();
-                    let hint = match tool {
-                        "zoom" if crate::canvas::zoom_drag_left_in(&app.session.prefs) => ANIMATED_ZOOM_LEFT_HINT,
-                        "zoom" if crate::canvas::animated_zoom(&app.session.prefs) => ANIMATED_ZOOM_HINT,
-                        _ => tool,
-                    };
-                    hint_segments(hint)
-                };
-                for (txt, bold) in segments {
+                for (txt, bold) in current_hint(app) {
                     let font = if bold { theme::semibold(12.5) } else { egui::FontId::proportional(12.5) };
                     job.append(&txt, 0.0, egui::TextFormat { font_id: font, color: if bold { t.text_strong } else { t.text }, ..Default::default() });
                 }
@@ -1041,10 +1052,10 @@ mod tests {
     fn window_title_follows_the_active_file() {
         let mut app = title_test_app(true);
         app.run("file.new", json!({"width": 100, "height": 100, "name": "foo.svg"})).unwrap();
-        assert_eq!(super::window_title(&app), "foo.svg \u{2014} Trowel");
-        // Unsaved changes gain a `*` prefix, like the `*` in the document tabs.
+        assert_eq!(super::window_title(&app), "foo.svg - Trowel");
+        // Unsaved changes add " *" after the name, as Strata's title does (design 2.1 §3).
         app.run("shape.rectangle", json!({"x": 0, "y": 0, "width": 10, "height": 10})).unwrap();
-        assert_eq!(super::window_title(&app), "*foo.svg \u{2014} Trowel");
+        assert_eq!(super::window_title(&app), "foo.svg * - Trowel");
     }
 
     #[test]
@@ -1091,6 +1102,6 @@ mod tests {
         assert!(!cmds.iter().any(|c| matches!(c, egui::ViewportCommand::Title(_))), "repeat Title: {cmds:?}");
         app.run("file.new", json!({"width": 100, "height": 100, "name": "foo.svg"})).unwrap();
         super::sync_window_title(&mut app, &ctx);
-        assert_eq!(app.last_window_title, "foo.svg \u{2014} Trowel");
+        assert_eq!(app.last_window_title, "foo.svg - Trowel");
     }
 }

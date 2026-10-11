@@ -33,6 +33,8 @@ pub struct Workspace {
     pub floating_panels: Vec<FloatingPanels>,
     /// Where the Tools panel floats (built-in workspaces: docked).
     pub toolbar_pos: Option<[f32; 2]>,
+    /// Trowel's own window (design 2.1 §3) instead of the classic chrome.
+    pub trowel: bool,
 }
 
 impl Default for Workspace {
@@ -43,6 +45,20 @@ impl Default for Workspace {
 }
 
 pub const ESSENTIALS: &str = "Essentials";
+/// Trowel's own window: the last built-in workspace.
+pub const TROWEL: &str = "Trowel";
+
+/// Switch to Trowel's window on the first start of a version that has it, once: later starts keep
+/// whatever workspace the user chose. The hosts call it after restoring the saved UI state.
+pub fn start_trowel(ui: &mut UiState) {
+    if ui.trowel_started {
+        return;
+    }
+    ui.trowel_started = true;
+    if let Some(w) = find(ui, TROWEL) {
+        apply(ui, &w);
+    }
+}
 
 /// Built-in workspaces, in Illustrator's menu order (Essentials first).
 pub fn builtins() -> Vec<Workspace> {
@@ -104,6 +120,15 @@ pub fn builtins() -> Vec<Workspace> {
             x.toolbar_advanced = true;
             x.open_panel = Some("symbols".into());
         }),
+        // Design 2.1 §3: the ribbon, the tool column, the drawing set and the right column; the
+        // dock's own panels pop out beside the right column.
+        w(TROWEL, &|x| {
+            x.trowel = true;
+            x.control_bar = true;
+            x.rulers = true;
+            x.task_bar = false;
+            x.dock_collapsed = true;
+        }),
     ]
 }
 
@@ -129,6 +154,7 @@ pub fn capture(ui: &UiState, name: &str) -> Workspace {
         floating_flyouts: ui.floating_flyouts.clone(),
         floating_panels: ui.floating_panels.clone(),
         toolbar_pos: ui.toolbar_pos,
+        trowel: ui.trowel,
     }
 }
 
@@ -148,6 +174,7 @@ pub fn apply(ui: &mut UiState, w: &Workspace) {
     ui.floating_flyouts = w.floating_flyouts.clone();
     ui.floating_panels = w.floating_panels.clone();
     ui.toolbar_pos = w.toolbar_pos;
+    ui.trowel = w.trowel;
     FloatingPanels::sanitize(&mut ui.floating_panels, &mut ui.toolbar_pos);
     ui.flyout = None;
     ui.workspace = w.name.clone();
@@ -465,6 +492,40 @@ mod tests {
         assert_eq!(ui.workspace, "B");
         delete(&mut ui, "B").unwrap();
         assert_eq!(ui.workspace, ESSENTIALS);
+    }
+
+    /// Trowel's own window (design 2.1 §3) is the last built-in workspace. The first start of
+    /// this version switches to it once; another workspace brings the classic chrome back, and a
+    /// later start leaves the user's choice alone.
+    #[test]
+    fn trowel_starts_once_and_the_classic_layout_comes_back() {
+        assert_eq!(builtins().last().map(|w| w.name.clone()), Some(TROWEL.to_string()));
+        let mut ui = UiState::default();
+        assert!(!ui.trowel && !ui.trowel_started, "the classic chrome until started");
+        start_trowel(&mut ui);
+        assert!(ui.trowel && ui.trowel_started);
+        assert_eq!(ui.workspace, TROWEL);
+        assert!(ui.view.rulers && ui.control_bar && ui.toolbar && ui.dock && ui.status_bar);
+        assert!(!ui.task_bar && ui.dock_collapsed && !ui.toolbar_advanced && !ui.toolbar_double);
+        let essentials = find(&ui, ESSENTIALS).unwrap();
+        apply(&mut ui, &essentials);
+        assert!(!ui.trowel, "Essentials is the classic chrome");
+        start_trowel(&mut ui);
+        assert!(!ui.trowel, "a later start keeps the user's choice");
+        assert_eq!(ui.workspace, ESSENTIALS);
+        // Saved by an older version: neither key, so the classic chrome until started.
+        let old: UiState = serde_json::from_str("{}").unwrap();
+        assert!(!old.trowel && !old.trowel_started);
+        let saved: Workspace = serde_json::from_value(json!({"name": "Mine", "controlBar": true})).unwrap();
+        assert!(!saved.trowel);
+        // A workspace saved in Trowel's window keeps it.
+        let mut ui = UiState::default();
+        start_trowel(&mut ui);
+        let mine = capture(&ui, "Mine");
+        assert!(mine.trowel);
+        let mut other = UiState::default();
+        apply(&mut other, &mine);
+        assert!(other.trowel);
     }
 
     #[test]

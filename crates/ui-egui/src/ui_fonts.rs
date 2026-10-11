@@ -16,6 +16,9 @@ use egui::epaint::text::{FontInsert, FontPriority, InsertFontFamily};
 use egui::{FontData, FontFamily, FontId, LayerId};
 use vectorcraft_text::{FontDb, FontFace};
 
+/// A fallback face and its family's bold (for bold UI text), if the family has one.
+type Fallback = (Arc<FontFace>, Option<Arc<FontFace>>);
+
 #[derive(Default)]
 pub(crate) struct UiFonts {
     /// Characters looked at already: the UI fonts have them, a fallback was added (or is being
@@ -23,9 +26,10 @@ pub(crate) struct UiFonts {
     seen: HashSet<char>,
     /// The fonts added to egui, by name.
     added: HashSet<String>,
-    /// The faces covering the characters being looked for (native: looked for on a thread).
+    /// The faces covering the characters being looked for, each with its bold (native: looked for
+    /// on a thread).
     #[cfg(not(target_arch = "wasm32"))]
-    pending: Option<std::sync::mpsc::Receiver<Vec<Arc<FontFace>>>>,
+    pending: Option<std::sync::mpsc::Receiver<Vec<Fallback>>>,
 }
 
 impl UiFonts {
@@ -42,12 +46,14 @@ impl UiFonts {
             return;
         }
         let find = move || {
-            let mut faces: Vec<Arc<FontFace>> = vec![];
+            let db = FontDb::global();
+            let mut faces: Vec<Fallback> = vec![];
             for c in missing {
-                if let Some(f) = FontDb::global().face_covering(c)
-                    && !faces.iter().any(|x| x.id() == f.id())
+                if let Some(f) = db.face_covering(c)
+                    && !faces.iter().any(|(x, _)| x.id() == f.id())
                 {
-                    faces.push(f);
+                    let bold = bold_face(db, &f);
+                    faces.push((f, bold));
                 }
             }
             faces
@@ -109,24 +115,34 @@ impl UiFonts {
         missing
     }
 
-    /// Add `faces` to every egui family, after the fonts it has.
-    fn install(&mut self, ctx: &egui::Context, faces: &[Arc<FontFace>]) {
-        let families: Vec<FontFamily> = ctx.fonts(|f| f.definitions().families.keys().cloned().collect());
-        for face in faces {
-            let name = format!("{} {} #{}", face.family, face.style, face.face_index());
-            if !self.added.insert(name.clone()) {
-                continue;
+    /// Add `faces` to every egui family, after the fonts it has; a face's bold goes before it in the
+    /// semibold family (bold UI text).
+    fn install(&mut self, ctx: &egui::Context, faces: &[Fallback]) {
+        let all: Vec<FontFamily> = ctx.fonts(|f| f.definitions().families.keys().cloned().collect());
+        let semibold = [FontFamily::Name(crate::theme::FONT_UI_SEMIBOLD.into())];
+        for (face, bold) in faces {
+            if let Some(bold) = bold {
+                self.add(ctx, bold, &semibold);
             }
-            // The face's file data, shared with the process-wide font database (which keeps every
-            // face it loads for the session) instead of copied: one handle is leaked per font added.
-            let face: &'static FontFace = Box::leak(Box::new(face.clone()));
-            let data = FontData { index: face.face_index(), ..FontData::from_static(face.file_data()) };
-            let families = families.iter().map(|family| InsertFontFamily { family: family.clone(), priority: FontPriority::Lowest }).collect();
-            ctx.add_font(FontInsert { name, data, families });
+            self.add(ctx, face, &all);
         }
         if !faces.is_empty() {
             ctx.request_repaint();
         }
+    }
+
+    /// Add `face` to `families`, after the fonts they have (once).
+    fn add(&mut self, ctx: &egui::Context, face: &Arc<FontFace>, families: &[FontFamily]) {
+        let name = format!("{} {} #{}", face.family, face.style, face.face_index());
+        if !self.added.insert(name.clone()) {
+            return;
+        }
+        // The face's file data, shared with the process-wide font database (which keeps every face
+        // it loads for the session) instead of copied: one handle is leaked per font added.
+        let face: &'static FontFace = Box::leak(Box::new(face.clone()));
+        let data = FontData { index: face.face_index(), ..FontData::from_static(face.file_data()) };
+        let families = families.iter().map(|family| InsertFontFamily { family: family.clone(), priority: FontPriority::Lowest }).collect();
+        ctx.add_font(FontInsert { name, data, families });
     }
 
     /// Wait for the font search running, if any, and add what it found (tests).
@@ -136,6 +152,11 @@ impl UiFonts {
             self.install(ctx, &faces);
         }
     }
+}
+
+/// The bold of a fallback `face`: its family's Bold style (SemiBold and up), if it has one.
+fn bold_face(db: &FontDb, face: &FontFace) -> Option<Arc<FontFace>> {
+    db.face(&face.family, "Bold").filter(|b| b.family.eq_ignore_ascii_case(&face.family) && !b.italic && b.weight >= 600.0 && b.id() != face.id())
 }
 
 /// Call `f` with the text of `shape` and the shapes it holds.
@@ -239,5 +260,44 @@ mod tests {
         // Looked for once: a later frame starts no search.
         frame(&ctx, &mut fonts, text);
         assert!(fonts.pending.is_none());
+    }
+
+    /// A fallback face's bold is its family's Bold style; a family without a bold style has none
+    /// (the bold UI text then uses the regular face).
+    #[test]
+    fn a_fallback_faces_bold_is_its_familys_bold_style() {
+        let db = FontDb::with_font_dirs(vec![]);
+        let face = |family: &str| db.face(family, "Regular").filter(|f| f.family == family).unwrap();
+        let bold = bold_face(&db, &face("Source Sans 3")).unwrap();
+        assert_eq!((bold.family.as_str(), bold.style.as_str()), ("Source Sans 3", "Bold"));
+        // JetBrains Mono comes in Regular only.
+        assert!(bold_face(&db, &face("JetBrains Mono")).is_none());
+    }
+
+    /// Bold UI text (the semibold family: titles, the current layer) in a script the UI fonts lack
+    /// is drawn in the bold face of the installed family covering it; the other families keep its
+    /// regular face.
+    #[test]
+    fn the_semibold_family_draws_with_the_fallback_familys_bold_face() {
+        let db = FontDb::with_font_dirs(vec![]);
+        let regular = db.face("Source Sans 3", "Regular").unwrap();
+        let bold = db.face("Source Sans 3", "Bold").unwrap();
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx);
+        let mut fonts = UiFonts::default();
+        frame(&ctx, &mut fonts, "Layer 1");
+        fonts.install(&ctx, &[(regular.clone(), Some(bold.clone()))]);
+        // The fonts arrive with the next frame.
+        frame(&ctx, &mut fonts, "Layer 1");
+        let stack = |family: FontFamily| ctx.fonts(|f| f.definitions().families.get(&family).cloned().unwrap_or_default());
+        let name = |f: &FontFace| format!("{} {} #{}", f.family, f.style, f.face_index());
+        let (regular, bold) = (name(&regular), name(&bold));
+        let semibold = stack(FontFamily::Name(crate::theme::FONT_UI_SEMIBOLD.into()));
+        let at = |n: &str| semibold.iter().position(|x| x == n);
+        assert!(at(&bold).is_some_and(|b| at(&regular).is_none_or(|r| b < r)), "bold before regular: {semibold:?}");
+        for family in [FontFamily::Proportional, FontFamily::Name(crate::theme::FONT_UI.into()), FontFamily::Name(crate::theme::FONT_MONO.into())] {
+            let s = stack(family.clone());
+            assert!(s.contains(&regular) && !s.contains(&bold), "{family:?}: {s:?}");
+        }
     }
 }
