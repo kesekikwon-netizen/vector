@@ -166,6 +166,7 @@
 	Angle:	각도:
 	Angles	각도
 	Animated Zoom	애니메이션 확대/축소
+	Drag left to zoom in (Animated Zoom)	왼쪽으로 끌면 확대 (애니메이션 줌)
 	Anti-alias	안티앨리어스
 	Anti-Alias	안티앨리어스
 	Anti-alias Rasters	래스터 안티앨리어스
@@ -3218,7 +3219,8 @@
 	 to zoom out  |  	 축소  |  
 	 to zoom into an area	 영역 확대
 	Hold	누른 채
-	 right or left to zoom in or out  |  	 좌우 화살표로 확대 또는 축소  |  
+	 right or left to zoom in or out  |  	 오른쪽으로 끌면 확대, 왼쪽으로 끌면 축소  |  
+	 left or right to zoom in or out  |  	 왼쪽으로 끌면 확대, 오른쪽으로 끌면 축소  |  
 	 to keep zooming	 계속 확대/축소
 	 an object to copy its attributes  |  	 객체를 눌러 속성 복사  |  
 	 to apply the selection's to it  |  	 선택 항목의 속성을 여기에 적용  |  

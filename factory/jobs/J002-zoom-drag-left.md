@@ -95,3 +95,46 @@ J002b 설계(리더 맵 그대로; 스펙 작성 시 그대로 쓴다): `shortcu
 ## 기준 커밋
 
 `2d297f89db8652317922cc5830e20addbb979645` (`git -C /home/claude/vector rev-parse HEAD`, 브랜치 `claude/project-thread-5e8gjw`, 2026-10-11)
+
+실제 작업 기준(빌드 때 갱신): `b190b6e1f95462fc220f298e9ffd44e13a89b84a` — J001 커밋 위. 겹치는 파일(`prefs_dialog.rs`, `prefscmds.rs`, `engine/lib.rs`, `ko.tsv`)은 서로 다른 줄이라 충돌 없음; 명세의 줄 번호는 그대로 맞았고 `ko.tsv`의 조각 행만 3220 → 3221이었다.
+
+## 구현 요약
+
+2026-10-11, 기준 커밋 `b190b6e`(J001 위, 브랜치 `claude/project-thread-5e8gjw`), 커밋 1개(`J002: …`; SHA는 빌드 보고에).
+
+### 바뀐 것 (완료 기준 번호)
+
+1. `crates/engine/src/lib.rs` — `Prefs`에 `pub zoom_drag_left_in: bool`(`animated_zoom` 다음, 문서 주석), `Default`에 `zoom_drag_left_in: true`. serde `default`+`camelCase` 덕에 키 `zoomDragLeftIn`, 옛 파일은 기본값. `crates/engine/src/tests_prefs.rs`에 `zoom_drag_left_in_defaults_on_and_resets_with_performance`(기본 true, get/set, `"false"` 문자열, `1`/`"yes"`/`null` 오류·값 불변, 옛 파일 역직렬화, `prefs.list` 행의 category/section/label/kind, Performance 재설정).
+2. `crates/engine/src/cmd/prefscmds.rs` — `animatedZoom` 행 다음에 `p!("zoomDragLeftIn", "Performance", "GPU Performance", "Drag left to zoom in (Animated Zoom)", bool)`. 기존 세 시험 통과.
+3. `crates/ui-egui/src/canvas.rs` — `ZoomScrub` 드래그 arm: `dt` 옆에서 `let left_in = zoom_drag_left_in(&app.session.prefs)`를 `app.view_mut()` 차용 전에 읽고, `pointer.delta().x * SCRUB_ZOOM * if left_in { -1.0 } else { 1.0 }`. Alt 부호·상수 4개 불변. 시험 `animated_zoom_scrubs_and_holds_else_the_zoom_tool_zooms_to_an_area`: 기본 `press(-100)` → 2배·고정점, `press(+100)` → 복귀; 클릭 단계·40프레임 누르기·고정점 그대로; `zoomDragLeftIn=false` 뒤 `press(+100)` 2배·`press(-100)` 복귀 추가; 기존 ZoomBox 루프 그대로.
+4. `crates/ui-egui/src/chrome.rs` — `ANIMATED_ZOOM_LEFT_HINT = "zoom.animatedLeft"`, `hint_for` 표에 같은 8조각(여섯째 `" left or right to zoom in or out  |  "`), `hint_strings()`가 두 힌트를 모두 체인, `hint_bar`가 `match tool { "zoom" if zoom_drag_left_in(..) => LEFT, "zoom" if animated_zoom(..) => ANIMATED, _ => tool }`. 시험 `the_zoom_hint_follows_animated_zoom`: 기본 left-or-right+Hold → `zoomDragLeftIn=false` right-or-left+Hold → `animatedZoom=false` 영역 줌·Hold 없음.
+5. `canvas.rs` — `pub(crate) fn zoom_drag_left_in(p) -> bool { animated_zoom(p) && p.zoom_drag_left_in }`(`animated_zoom` 바로 아래), `ZoomScrub`·`SCRUB_ZOOM` 문서 주석에 방향은 환경설정을 따른다고 적음. `grep` → 4줄.
+6. `crates/ui-egui/src/prefs_dialog.rs` — `animatedZoom` arm 다음에 `PrefKind::Bool if sp.key == "zoomDragLeftIn" => ui.add_enabled_ui(d.bool("gpuPerformance") && d.bool("animatedZoom"), …)`. 시험 `zoom_direction_row_shows_under_animated_zoom`(Performance 두 프레임 뒤 레이블 글자 존재, `animatedZoom=false`로 둔 대화상자에서도 글자 존재). `prefs_persist_through_ui_state`·`graphics_processor_preference_shows_and_persists` 통과.
+7. i18n — complete 카탈로그 10개(ja, ko, de, es, fr, it, ru, uk, zh-hant, zh-hans)에 빈 컨텍스트 행 2개씩: 레이블은 `Animated Zoom` 행 다음, 조각은 `right or left` 조각 다음(앞 공백 1개·뒤 `  |  ` 바이트 동일). ko는 명세 문장(`왼쪽으로 끌면 확대 (애니메이션 줌)`, ` 왼쪽으로 끌면 확대, 오른쪽으로 끌면 축소  |  `)이고 기존 조각 행을 ` 오른쪽으로 끌면 확대, 왼쪽으로 끌면 축소  |  `로 교정. 나머지 9개 언어의 번역은 빌더가 썼다(기존 조각의 어순을 뒤집고 레이블은 각 언어의 `Drag …`·`Animated Zoom` 표현을 따름; CJK 셋은 기존 조각처럼 앞 공백 없음). cs·pt-br는 손대지 않음. 다섯 카탈로그 시험 통과.
+8. 바뀌지 않는 동작의 시험(`cmd_space_zooms…`, `space_pressed_mid_drag…`, `shortcuts` 전부, `tests_synthetic`, `graphics_processor…`)은 수정 없이 통과.
+9. `docs/target-app-parity.md` — Animated Zoom 문장을 「left zooms in and right out by default (Drag left to zoom in); off, Illustrator's right = in」으로, 상태 줄의 Change를 J002로(J001 내용은 earlier로), 개정 이력 한 줄. `grep -c 'Drag left to zoom in'` → 3.
+10. `cargo xtask ci` — 테스트 러너가 돌린다(아래 메모).
+
+손댄 파일: `crates/engine/src/{lib.rs,cmd/prefscmds.rs,tests_prefs.rs}`, `crates/ui-egui/src/{canvas.rs,chrome.rs,prefs_dialog.rs}`, `crates/ui-egui/src/i18n/{ja,ko,de,es,fr,it,ru,uk,zh-hant,zh-hans}.tsv`, `docs/target-app-parity.md`, 이 명세.
+
+스펙에서 벗어난 점: 없음. 시험 변경은 명세가 요구한 기본 방향 뒤집기(canvas·chrome 시험 기댓값)뿐이다.
+
+### 검사 (종료 코드; 로그 `/tmp/claude-0/-home-claude/79152f61-3d49-5a1c-acde-dc6cabf2d3d7/scratchpad/factory-logs/J002-build-*.log`)
+
+| 명령 | 종료 |
+|---|---|
+| `cargo fmt --all` / `cargo fmt --all -- --check` | 0 / 0 |
+| `cargo clippy --workspace --all-targets -- -D warnings` (`J002-build-clippy.log`) | 0 |
+| `cargo test -p vectorcraft-engine -- tests_prefs` (명세 그대로) | 101: 통합 시험 바이너리 4개 링크 중 디스크 부족(`No space left on device`, ld signal 7) — 시험 실패가 아니라 빌드 환경 |
+| `cargo test -p vectorcraft-engine --lib -- tests_prefs` (`J002-build-test-engine.log`) | 0 (29 통과, 새 시험 포함) |
+| `cargo test -p vectorcraft-engine --lib` (`J002-build-test-engine-lib-full.log`) | 0 (1660 통과) |
+| `cargo test -p vectorcraft-ui-egui --lib -- canvas::tests::animated_zoom canvas::tests::cmd_space canvas::tests::space_pressed chrome::tests::the_zoom_hint prefs_dialog::tests i18n shortcuts tests_synthetic` (`J002-build-test-ui-targeted.log`) | 0 (72 통과) |
+| `cargo test -p vectorcraft-ui-egui` (`J002-build-test-ui-full.log`) | 0 (933 통과) |
+| `grep -n 'LN_2 / 100.0\|SCRUB_SLOP: f32 = 3.0\|HOLD_DELAY: f32 = 0.3\|HOLD_ZOOM: f64 = std::f64::consts::LN_2' crates/ui-egui/src/canvas.rs` | 4줄 |
+| `grep -c 'Drag left to zoom in' docs/target-app-parity.md` | 3 |
+
+### 열린 것·메모
+
+- 디스크: 이 상자의 루트 파일시스템은 실질 ~40 GB이고 `target/`이 30 GB였다. `target/debug/incremental`(7.2 GB)을 지워 공간을 비웠고, 엔진 통합 시험 바이너리(각 ~800 MB, 15개)를 모두 링크하는 `cargo test -p vectorcraft-engine`(필터 없이)·`cargo xtask ci`·`cargo xtask wasm`은 여기서 돌릴 수 없다(남은 공간 2.9 GB). 러너가 `cargo xtask ci`를 돌리려면 더 큰 디스크나 `target/` 정리가 필요하다. 코드 변경은 플랫폼 독립이라 wasm에 영향 줄 곳이 없다.
+- 기본값 뒤집기: 옛 환경설정 파일(키 없음)은 serde 기본값 `true`를 받아 업그레이드 즉시 Animated Zoom 방향이 바뀐다 — 명세의 사용자 결정(의도됨), 커밋 본문에 적음.
+- 환경설정 대화상자의 흐려짐은 시험에서 글자 존재만 확인(명세대로); 스크린샷 확인은 하지 않았다(`ui.screenshot`은 표시된 프레임이 필요).

@@ -159,6 +159,7 @@
 	Angle:	Winkel:
 	Angles	Winkel
 	Animated Zoom	Animierter Zoom
+	Drag left to zoom in (Animated Zoom)	Nach links ziehen zoomt ein (Animierter Zoom)
 	Anti-alias	Glätten
 	Anti-Alias	Glätten
 	Anti-alias Rasters	Pixelbilder glätten
@@ -3129,6 +3130,7 @@
 	 to zoom into an area	 zoomt auf einen Bereich
 	Hold	Halten
 	 right or left to zoom in or out  |  	 nach rechts oder links zoomt ein oder aus  |  
+	 left or right to zoom in or out  |  	 nach links oder rechts zoomt ein oder aus  |  
 	 to keep zooming	 zoomt weiter
 	 an object to copy its attributes  |  	 auf ein Objekt kopiert dessen Attribute  |  
 	 to apply the selection's to it  |  	 wendet die Attribute der Auswahl darauf an  |  

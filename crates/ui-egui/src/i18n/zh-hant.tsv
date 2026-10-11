@@ -146,6 +146,7 @@
 	Angle:	角度：
 	Angles	角度
 	Animated Zoom	動畫縮放
+	Drag left to zoom in (Animated Zoom)	向左拖曳可放大（動畫縮放）
 	Anti-alias	消除鋸齒
 	Anti-Alias	消除鋸齒
 	Anti-alias Rasters	點陣影像消除鋸齒
@@ -3218,6 +3219,7 @@
 	 to zoom into an area	可放大至指定區域
 	Hold	按住
 	 right or left to zoom in or out  |  	向右可放大、向左可縮小  |  
+	 left or right to zoom in or out  |  	向左可放大、向右可縮小  |  
 	 to keep zooming	可持續縮放
 	 an object to copy its attributes  |  	物件可複製其屬性  |  
 	 to apply the selection's to it  |  	可將選取範圍的屬性套用至該物件  |  

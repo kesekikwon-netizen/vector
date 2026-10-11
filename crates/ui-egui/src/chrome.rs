@@ -584,8 +584,10 @@ pub fn status_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
 
 /// Contextual hint for the active tool: segments of (text, bold). Keys in bold segments are
 /// written as shortcuts are ("Alt+Click"); [`hint_segments`] names them for the platform.
-/// The hint of the Zoom tool with Performance › Animated Zoom on.
+/// The hint of the Zoom tool with Performance › Animated Zoom on…
 const ANIMATED_ZOOM_HINT: &str = "zoom.animated";
+/// …and with Drag left to zoom in on too (the default).
+const ANIMATED_ZOOM_LEFT_HINT: &str = "zoom.animatedLeft";
 
 fn hint_for(tool: &str) -> Option<&'static [(&'static str, bool)]> {
     Some(match tool {
@@ -665,6 +667,16 @@ fn hint_for(tool: &str) -> Option<&'static [(&'static str, bool)]> {
             (" to zoom out  |  ", false),
             ("Drag", true),
             (" right or left to zoom in or out  |  ", false),
+            ("Hold", true),
+            (" to keep zooming", false),
+        ],
+        ANIMATED_ZOOM_LEFT_HINT => &[
+            ("Click", true),
+            (" to zoom in  |  ", false),
+            ("Alt+Click", true),
+            (" to zoom out  |  ", false),
+            ("Drag", true),
+            (" left or right to zoom in or out  |  ", false),
             ("Hold", true),
             (" to keep zooming", false),
         ],
@@ -754,7 +766,7 @@ fn hint_for(tool: &str) -> Option<&'static [(&'static str, bool)]> {
 /// can insist a complete language covers them.
 pub fn hint_strings() -> Vec<&'static str> {
     let mut v = Vec::new();
-    for tool in vectorcraft_tools::catalog::all_tools().map(|t| t.id).chain([ANIMATED_ZOOM_HINT]) {
+    for tool in vectorcraft_tools::catalog::all_tools().map(|t| t.id).chain([ANIMATED_ZOOM_HINT, ANIMATED_ZOOM_LEFT_HINT]) {
         for &(text, bold) in hint_for(tool).unwrap_or(&[]) {
             let text = if bold { text.rsplit_once('+').map_or(text, |(_, k)| k) } else { text };
             if !text.is_empty() && !text.chars().all(|c| c.is_ascii_digit()) && !v.contains(&text) {
@@ -813,7 +825,11 @@ pub fn hint_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
                     vec![(crate::dialogs::revolve_gizmo::hint(d).into(), false)]
                 } else {
                     let tool = app.session.tool_id();
-                    let hint = if tool == "zoom" && crate::canvas::animated_zoom(&app.session.prefs) { ANIMATED_ZOOM_HINT } else { tool };
+                    let hint = match tool {
+                        "zoom" if crate::canvas::zoom_drag_left_in(&app.session.prefs) => ANIMATED_ZOOM_LEFT_HINT,
+                        "zoom" if crate::canvas::animated_zoom(&app.session.prefs) => ANIMATED_ZOOM_HINT,
+                        _ => tool,
+                    };
                     hint_segments(hint)
                 };
                 for (txt, bold) in segments {
@@ -968,8 +984,9 @@ mod tests {
         assert!(title(&s).ends_with("(RGB/Preview)"));
     }
 
-    /// The Zoom tool's hint follows Performance › Animated Zoom (#394): a drag zooms as it goes,
-    /// or (off) zooms into the area dragged across.
+    /// The Zoom tool's hint follows Performance › Animated Zoom (#394) and Drag left to zoom in
+    /// (J002): a drag zooms as it goes, left in by default or (that off) right in, or (Animated
+    /// Zoom off) zooms into the area dragged across.
     #[test]
     fn the_zoom_hint_follows_animated_zoom() {
         fn texts(s: &egui::Shape, out: &mut String) {
@@ -991,7 +1008,10 @@ mod tests {
             shown
         };
         let on = hint(&mut app);
-        assert!(on.contains(" right or left to zoom in or out") && on.contains("Hold"), "{on}");
+        assert!(on.contains(" left or right to zoom in or out") && on.contains("Hold"), "{on}");
+        app.run("prefs.set", json!({"key": "zoomDragLeftIn", "value": false})).unwrap();
+        let right = hint(&mut app);
+        assert!(right.contains(" right or left to zoom in or out") && right.contains("Hold"), "{right}");
         app.run("prefs.set", json!({"key": "animatedZoom", "value": false})).unwrap();
         let off = hint(&mut app);
         assert!(off.contains(" to zoom into an area") && !off.contains("Hold"), "{off}");

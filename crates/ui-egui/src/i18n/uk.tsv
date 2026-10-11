@@ -171,6 +171,7 @@
 	Angle:	Кут:
 	Angles	Кути
 	Animated Zoom	Анімоване масштабування
+	Drag left to zoom in (Animated Zoom)	Перетягування ліворуч збільшує (Анімоване масштабування)
 	Anti-alias	Згладжування
 	Anti-Alias	Згладжування
 	Anti-alias Rasters	Згладжувати растрові зображення
@@ -3226,6 +3227,7 @@
 	 to zoom into an area	 для збільшення області
 	Hold	Утримувати
 	 right or left to zoom in or out  |  	 праворуч або ліворуч для збільшення чи зменшення  |  
+	 left or right to zoom in or out  |  	 ліворуч або праворуч для збільшення чи зменшення  |  
 	 to keep zooming	 для безперервного масштабування
 	 an object to copy its attributes  |  	 об’єкт для копіювання його атрибутів  |  
 	 to apply the selection's to it  |  	 для застосування атрибутів виділення щодо нього  |  

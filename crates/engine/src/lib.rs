@@ -534,6 +534,10 @@ pub struct Prefs {
     // Performance
     pub gpu_performance: bool,
     pub animated_zoom: bool,
+    /// Animated Zoom's direction (Drag left to zoom in): on, the default, the Zoom tool dragged
+    /// left zooms in and right out; off, Illustrator's right in and left out. Nothing without
+    /// Animated Zoom.
+    pub zoom_drag_left_in: bool,
     /// Which graphics processor the desktop app asks for at startup (it takes effect after a
     /// restart): `automatic`, `lowPower` (the integrated GPU on hybrid-graphics machines) or
     /// `highPerformance` (the discrete one). The canvas is rasterized on the CPU and only
@@ -748,6 +752,7 @@ impl Default for Prefs {
             system_title_bar: false,
             gpu_performance: true,
             animated_zoom: true,
+            zoom_drag_left_in: true,
             gpu_preference: s("automatic"),
             history_states: 500,
             real_time_drawing: true,

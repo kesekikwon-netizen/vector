@@ -286,6 +286,7 @@ pub const PREF_SPECS: &[PrefSpec] = &[
     // Performance
     p!("gpuPerformance", "Performance", "GPU Performance", "GPU Performance", bool),
     p!("animatedZoom", "Performance", "GPU Performance", "Animated Zoom", bool),
+    p!("zoomDragLeftIn", "Performance", "GPU Performance", "Drag left to zoom in (Animated Zoom)", bool),
     p!("gpuPreference", "Performance", "GPU Performance", "Graphics Processor", choice(GPU_PREFERENCES)),
     p!("historyStates", "Performance", "", "History States", int(5, 1000)),
     p!("realTimeDrawing", "Performance", "", "Real-time Drawing and Editing", bool),

@@ -74,7 +74,8 @@ enum Drag {
         start: Pos2,
     },
     /// A Zoom tool press with Animated Zoom ([`animated_zoom`]): dragged sideways it zooms about
-    /// `start`, held still (for `held` seconds so far) it zooms on, else it's a click.
+    /// `start` (which way zooms in follows [`zoom_drag_left_in`]), held still (for `held` seconds
+    /// so far) it zooms on, else it's a click.
     ZoomScrub {
         start: Pos2,
         held: f32,
@@ -624,10 +625,13 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
                 Drag::ZoomBox { start } => marquee(ui.painter(), egui::Rect::from_two_pos(start, p)),
                 Drag::ZoomScrub { start, held, moved } => {
                     let dt = ui.input(|i| i.unstable_dt).min(0.25);
+                    // Read before the view is borrowed below.
+                    let left_in = zoom_drag_left_in(&app.session.prefs);
                     let (held, moved) = (held + dt, moved || (p - start).length() > SCRUB_SLOP);
-                    // Dragged sideways it zooms with the pointer, held still it zooms on (Alt: out).
+                    // Dragged sideways it zooms with the pointer (left in by default; with Drag
+                    // left to zoom in off, right in), held still it zooms on (Alt: out).
                     let exponent = if moved {
-                        f64::from(pointer.delta().x) * SCRUB_ZOOM
+                        f64::from(pointer.delta().x) * SCRUB_ZOOM * if left_in { -1.0 } else { 1.0 }
                     } else if held > HOLD_DELAY {
                         f64::from(dt) * HOLD_ZOOM * if m.alt { -1.0 } else { 1.0 }
                     } else {
@@ -731,7 +735,8 @@ struct WheelTurn {
     /// The zoom (natural log) wheel notches still have to glide in.
     glide: f64,
 }
-/// Animated Zoom: how much one point of sideways drag zooms (100 points to the right double it).
+/// Animated Zoom: how much one point of sideways drag zooms (100 points double it; which way zooms
+/// in follows [`zoom_drag_left_in`]).
 const SCRUB_ZOOM: f64 = std::f64::consts::LN_2 / 100.0;
 /// Animated Zoom: how far the pointer moves before a press is a drag, in points.
 const SCRUB_SLOP: f32 = 3.0;
@@ -744,6 +749,13 @@ const HOLD_ZOOM: f64 = std::f64::consts::LN_2;
 /// as it is dragged sideways or held, instead of zooming to the area dragged across.
 pub(crate) fn animated_zoom(p: &vectorcraft_engine::Prefs) -> bool {
     p.animated_zoom && p.gpu_performance
+}
+
+/// Performance › Drag left to zoom in (Animated Zoom): the Zoom tool dragged left zooms in and
+/// right out (on by default); off, Illustrator's right in and left out. Nothing without
+/// [`animated_zoom`].
+pub(crate) fn zoom_drag_left_in(p: &vectorcraft_engine::Prefs) -> bool {
+    animated_zoom(p) && p.zoom_drag_left_in
 }
 
 /// Zoom for View → Actual Size (`view.actualSize`). With Preferences › General › Display Print
@@ -3021,8 +3033,9 @@ mod tests {
     }
 
     /// Performance › Animated Zoom (#394): the Zoom tool dragged sideways zooms about where it was
-    /// pressed (right in, left out), held still it zooms on, and a click still steps. Off, or with
-    /// GPU Performance off, a drag zooms to the area dragged across.
+    /// pressed (left in and right out by default; Drag left to zoom in off, Illustrator's right in
+    /// and left out, J002), held still it zooms on, and a click still steps. Off, or with GPU
+    /// Performance off, a drag zooms to the area dragged across.
     #[test]
     fn animated_zoom_scrubs_and_holds_else_the_zoom_tool_zooms_to_an_area() {
         use egui::Event;
@@ -3047,18 +3060,26 @@ mod tests {
         let doc_at = |app: &VectorcraftApp, p: Pos2| Xf::new(rect, app.view().unwrap()).to_doc(p);
         let pinned = doc_at(&app, at);
         let z0 = app.view().unwrap().zoom;
-        press(&mut app, vec2(100.0, 0.0), 0);
-        let z1 = app.view().unwrap().zoom;
-        assert!((z1 / z0 - 2.0).abs() < 1e-6, "100 points right doubles the zoom: {z0} → {z1}");
-        assert!(doc_at(&app, at).distance(pinned) < 1e-6, "about the press");
         press(&mut app, vec2(-100.0, 0.0), 0);
-        assert!((app.view().unwrap().zoom - z0).abs() < 1e-6, "and back to the left");
+        let z1 = app.view().unwrap().zoom;
+        assert!((z1 / z0 - 2.0).abs() < 1e-6, "100 points left doubles the zoom: {z0} → {z1}");
+        assert!(doc_at(&app, at).distance(pinned) < 1e-6, "about the press");
+        press(&mut app, vec2(100.0, 0.0), 0);
+        assert!((app.view().unwrap().zoom - z0).abs() < 1e-6, "and back to the right");
         press(&mut app, vec2(0.0, 0.0), 0);
         assert_eq!(app.view().unwrap().zoom, crate::state::next_zoom(z0, true), "a click steps");
         let z2 = app.view().unwrap().zoom;
         press(&mut app, vec2(0.0, 0.0), 40);
         assert!(app.view().unwrap().zoom > z2 * 1.2, "held, it zooms on");
         assert!(doc_at(&app, at).distance(pinned) < 1e-6, "about the press");
+        // Drag left to zoom in off: Illustrator's direction, right in and left out.
+        app.run("prefs.set", json!({"key": "zoomDragLeftIn", "value": false})).unwrap();
+        app.view_mut().unwrap().zoom = z0;
+        press(&mut app, vec2(100.0, 0.0), 0);
+        let z3 = app.view().unwrap().zoom;
+        assert!((z3 / z0 - 2.0).abs() < 1e-6, "off, 100 points right doubles the zoom: {z0} → {z3}");
+        press(&mut app, vec2(-100.0, 0.0), 0);
+        assert!((app.view().unwrap().zoom - z0).abs() < 1e-6, "off, and back to the left");
         // Off (or without GPU Performance): the area dragged across fills the view.
         for key in ["animatedZoom", "gpuPerformance"] {
             app.run("prefs.reset", json!({})).unwrap();

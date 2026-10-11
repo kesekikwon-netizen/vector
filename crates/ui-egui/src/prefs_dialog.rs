@@ -261,6 +261,10 @@ fn category_fields(ui: &mut egui::Ui, d: &mut Dialog, cat: &str) {
             PrefKind::Bool if sp.key == "animatedZoom" => {
                 ui.add_enabled_ui(d.bool("gpuPerformance"), |ui| bool_row(ui, d, sp.key, sp.label));
             }
+            // …and its direction needs Animated Zoom: dimmed while either is off.
+            PrefKind::Bool if sp.key == "zoomDragLeftIn" => {
+                ui.add_enabled_ui(d.bool("gpuPerformance") && d.bool("animatedZoom"), |ui| bool_row(ui, d, sp.key, sp.label));
+            }
             // Windows and Linux only: macOS always has the system's title bar, the web has none.
             PrefKind::Bool if sp.key == "systemTitleBar" => {
                 if cfg!(all(not(target_arch = "wasm32"), not(target_os = "macos"))) {
@@ -557,6 +561,38 @@ mod tests {
         assert_eq!(a.session.prefs.gpu_preference, "highPerformance");
         let saved: Value = serde_json::from_slice(&serde_json::to_vec(&a.ui).unwrap()).unwrap();
         assert_eq!(saved["engine_prefs"]["gpuPreference"], json!("highPerformance"));
+    }
+
+    /// Performance › Drag left to zoom in (Animated Zoom) (J002): shown under Animated Zoom, and
+    /// still there (dimmed, not gone) with Animated Zoom off.
+    #[test]
+    fn zoom_direction_row_shows_under_animated_zoom() {
+        fn texts(s: &egui::Shape, out: &mut Vec<String>) {
+            match s {
+                egui::Shape::Text(t) => out.push(t.galley.text().to_string()),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, out)),
+                _ => {}
+            }
+        }
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx);
+        let shown = |a: &mut VectorcraftApp| {
+            // The window sizes itself on the first frame and draws on the second.
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| show(a, ui.ctx()));
+            out.textures_delta.clear();
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| show(a, ui.ctx()));
+            out.textures_delta.clear();
+            let mut shown = vec![];
+            out.shapes.iter().for_each(|c| texts(&c.shape, &mut shown));
+            shown
+        };
+        let mut a = app();
+        open(&mut a, Some("Performance"));
+        let on = shown(&mut a);
+        assert!(on.iter().any(|t| t == "Drag left to zoom in (Animated Zoom)"), "{on:?}");
+        a.ui.dialog.as_mut().unwrap().fields.insert("animatedZoom".into(), json!(false));
+        let dimmed = shown(&mut a);
+        assert!(dimmed.iter().any(|t| t == "Drag left to zoom in (Animated Zoom)"), "dimmed, not gone: {dimmed:?}");
     }
 
     /// User Interface › System Title Bar: shown with its next-launch note, applied by OK and

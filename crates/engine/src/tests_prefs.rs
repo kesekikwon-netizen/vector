@@ -176,6 +176,38 @@ fn gpu_preference_defaults_to_automatic_and_validates() {
     assert_eq!(s.prefs.gpu_preference, "automatic");
 }
 
+/// Performance › Drag left to zoom in (Animated Zoom) (J002): on by default, so the Zoom tool
+/// dragged left zooms in (off, Illustrator's right = in); a bool like any other, the default in
+/// preference files written before it existed, and reset with the Performance category.
+#[test]
+fn zoom_drag_left_in_defaults_on_and_resets_with_performance() {
+    let mut s = Session::new();
+    assert!(s.prefs.zoom_drag_left_in);
+    assert_eq!(s.execute("prefs.get", &json!({"key": "zoomDragLeftIn"})).unwrap(), json!(true));
+    s.execute("prefs.set", &json!({"key": "zoomDragLeftIn", "value": false})).unwrap();
+    assert!(!s.prefs.zoom_drag_left_in);
+    s.execute("prefs.set", &json!({"key": "zoomDragLeftIn", "value": true})).unwrap();
+    assert!(s.prefs.zoom_drag_left_in);
+    s.execute("prefs.set", &json!({"key": "zoomDragLeftIn", "value": "false"})).unwrap();
+    assert!(!s.prefs.zoom_drag_left_in);
+    for bad in [json!(1), json!("yes"), json!(null)] {
+        assert!(s.execute("prefs.set", &json!({"key": "zoomDragLeftIn", "value": bad})).is_err(), "{bad}");
+        assert!(!s.prefs.zoom_drag_left_in, "{bad} changed it");
+    }
+    // Preference files written before the preference existed get the default.
+    let old: Prefs = serde_json::from_value(json!({"animatedZoom": true})).unwrap();
+    assert!(old.zoom_drag_left_in);
+    let l = s.execute("prefs.list", &json!({})).unwrap();
+    let row = l.as_array().unwrap().iter().find(|e| e["key"] == "zoomDragLeftIn").unwrap().clone();
+    assert_eq!(row["category"], "Performance");
+    assert_eq!(row["section"], "GPU Performance");
+    assert_eq!(row["label"], "Drag left to zoom in (Animated Zoom)");
+    assert_eq!(row["kind"], "bool");
+    assert!(!s.prefs.zoom_drag_left_in);
+    s.execute("prefs.reset", &json!({"category": "Performance"})).unwrap();
+    assert!(s.prefs.zoom_drag_left_in);
+}
+
 /// Selection & Anchor Display › Tolerance, Object Selection by Path Only and Command Click to
 /// Select Objects Behind, and General › Double Click To Isolate, as the Selection tool sees them
 /// (#394).

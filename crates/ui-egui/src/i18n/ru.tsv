@@ -175,6 +175,7 @@
 	Angle:	Угол:
 	Angles	Углы
 	Animated Zoom	Анимированное масштабирование
+	Drag left to zoom in (Animated Zoom)	Перетаскивание влево увеличивает (Анимированное масштабирование)
 	Anti-alias	Сглаживание
 	Anti-Alias	Сглаживание
 	Anti-alias Rasters	Сглаживать растровые изображения
@@ -3230,6 +3231,7 @@
 	 to zoom into an area	 для увеличения области
 	Hold	Удерживать
 	 right or left to zoom in or out  |  	 вправо или влево для увеличения или уменьшения  |  
+	 left or right to zoom in or out  |  	 влево или вправо для увеличения или уменьшения  |  
 	 to keep zooming	 для непрерывного масштабирования
 	 an object to copy its attributes  |  	 в объект для копирования его атрибутов  |  
 	 to apply the selection's to it  |  	 для применения атрибутов выделения к нему  |  

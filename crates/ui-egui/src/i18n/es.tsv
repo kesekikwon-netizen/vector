@@ -177,6 +177,7 @@
 	Angle:	Ángulo:
 	Angles	Ángulos
 	Animated Zoom	Zoom animado
+	Drag left to zoom in (Animated Zoom)	Arrastrar a la izquierda para acercar (Zoom animado)
 	Anti-alias	Suavizado
 	Anti-Alias	Suavizado
 	Anti-alias Rasters	Suavizar imágenes ráster
@@ -3234,6 +3235,7 @@
 	 to zoom into an area	 para acercar un área
 	Hold	Mantener pulsado
 	 right or left to zoom in or out  |  	 a la derecha o a la izquierda para acercar o alejar  |  
+	 left or right to zoom in or out  |  	 a la izquierda o a la derecha para acercar o alejar  |  
 	 to keep zooming	 para seguir haciendo zoom
 	 an object to copy its attributes  |  	 en un objeto para copiar sus atributos  |  
 	 to apply the selection's to it  |  	 para aplicarle los de la selección  |  

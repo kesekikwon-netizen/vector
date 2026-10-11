@@ -178,6 +178,7 @@
 	Angle:	Angle :
 	Angles	Angles
 	Animated Zoom	Zoom animé
+	Drag left to zoom in (Animated Zoom)	Faire glisser vers la gauche pour effectuer un zoom avant (Zoom animé)
 	Anti-alias	Lissage
 	Anti-Alias	Lissage
 	Anti-alias Rasters	Lisser les images pixellisées
@@ -3231,6 +3232,7 @@
 	 to zoom into an area	 pour zoomer sur une zone
 	Hold	Maintenir
 	 right or left to zoom in or out  |  	 vers la droite ou la gauche pour effectuer un zoom avant ou arrière  |  
+	 left or right to zoom in or out  |  	 vers la gauche ou la droite pour effectuer un zoom avant ou arrière  |  
 	 to keep zooming	 pour continuer le zoom
 	 an object to copy its attributes  |  	 sur un objet pour copier ses attributs  |  
 	 to apply the selection's to it  |  	 pour lui appliquer ceux de la sélection  |  
