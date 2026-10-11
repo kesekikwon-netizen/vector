@@ -53,6 +53,12 @@ pub(crate) fn wid(kind: &str, key: impl Hash + std::fmt::Debug) -> egui::Id {
     egui::Id::new(("trowel", kind, key))
 }
 
+/// Whether a press this pass only put away a card beside the right column ([`card::show`]): the
+/// canvas leaves it at that, so the tool in hand doesn't get it.
+pub(crate) fn card_took_press(ctx: &egui::Context) -> bool {
+    card::took_press(ctx)
+}
+
 /// Lay out Trowel's window. Screen mode 2 (full screen with the menu bar off) leaves out the bars
 /// above the canvas, screen mode 3 (full screen) everything but the canvas.
 pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {
@@ -168,15 +174,18 @@ fn field_box(ui: &Ui, r: Rect, fill: Color32, edge: Color32) {
     ui.painter().rect(r, CornerRadius::same(8), fill, Stroke::new(1.0, edge), StrokeKind::Inside);
 }
 
-/// A panel's head in `r` (32 points tall): its title, what it shows and a line under it. Room is
-/// left at the right for `buttons` [`head_button`]s.
-fn panel_head(ui: &Ui, r: Rect, title: &str, sub: &str, buttons: usize, t: &Tokens) {
+/// A panel's head in `r` (32 points tall): its title, what it shows (cut short with "…" when
+/// longer than the room) and a line under it. Room is left at the right for `buttons`
+/// [`head_button`]s. Returns where what it shows went when it was cut short.
+fn panel_head(ui: &Ui, r: Rect, title: &str, sub: &str, buttons: usize, t: &Tokens) -> Option<Rect> {
     line_below(ui, r, t.border);
     let x = text(ui, pos2(r.left() + 12.0, r.center().y), Align2::LEFT_CENTER, title, font(13.0), t.text).right() + 6.0;
-    if !sub.is_empty() {
-        let room = Rect::from_min_max(r.min, pos2(r.right() - 12.0 - 24.0 * buttons as f32 - 4.0, r.bottom()));
-        ui.painter().with_clip_rect(room).text(pos2(x, r.center().y), Align2::LEFT_CENTER, sub, font(11.0), t.text_dim);
+    if sub.is_empty() {
+        return None;
     }
+    let right = r.right() - 12.0 - 24.0 * buttons as f32 - 4.0;
+    let shown = text_to(ui, pos2(x, r.center().y), right, sub, font(11.0), t.text_dim);
+    (width_of(ui, sub, font(11.0)) > right - x).then_some(shown)
 }
 
 /// A panel head's button `slot` places from the right (0: the last one): `icon` in a 24-point
@@ -204,11 +213,11 @@ fn keep_id() -> egui::Id {
     wid("flyout-keep", ())
 }
 
-/// A small button labelled `label` at `at` (its left centre), 26 points tall (the mockup's
+/// A small button labelled `label` at `at` (its left centre), `h` points tall (the mockup's
 /// `.btn`): ink on the surface, or dimmed and not pressable when not `enabled`.
-fn small_button(ui: &Ui, id: egui::Id, at: Pos2, label: &str, enabled: bool, t: &Tokens) -> egui::Response {
+fn small_button(ui: &Ui, id: egui::Id, at: Pos2, h: f32, label: &str, enabled: bool, t: &Tokens) -> egui::Response {
     let f = font(11.0);
-    let r = Rect::from_min_size(pos2(at.x, at.y - 13.0), vec2(width_of(ui, label, f.clone()) + 16.0, 26.0));
+    let r = Rect::from_min_size(pos2(at.x, at.y - h / 2.0), vec2(width_of(ui, label, f.clone()) + 16.0, h));
     let resp = ui.interact(r, id, if enabled { Sense::click() } else { Sense::hover() });
     let fill = if !enabled {
         t.panel_darker

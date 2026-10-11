@@ -8,20 +8,15 @@ use std::collections::HashSet;
 
 use serde::Serialize;
 use serde_json::{Value, json};
+use vectorcraft_doc::legend::{MAX_DASHES, MAX_KEY, MAX_MARK, MAX_WEIGHT, clip};
 use vectorcraft_doc::{Dash, Document, Legend, LegendGroup, LegendSample, LineType, Node, NodeId, NodeKind, StrokeLayer, legend};
 
 use super::layer::{apply_options, locked_within, make_layer};
 use super::*;
 
-/// The heaviest weight a row takes (points), as `stroke.set`.
-const MAX_WEIGHT: f64 = 1000.0;
 /// The palette's weight chips (points): Change Weights at Once steps along them.
 pub const LADDER: [f64; 6] = [0.1, 0.2, 0.3, 0.5, 0.8, 1.0];
-/// The most dash lengths a line type takes.
-const MAX_DASHES: usize = 16;
-/// The longest mark text, Strata key and row name (characters).
-const MAX_MARK: usize = 32;
-const MAX_KEY: usize = 64;
+/// The longest row name (characters).
 const MAX_NAME: usize = 512;
 
 pub fn specs() -> Vec<CommandSpec> {
@@ -40,7 +35,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Use Legend Entry",
             [],
             None,
-            "{id: top-level layer, move?: bool} use a legend row (Trowel): it becomes the current layer (not an undo step) and the pen takes its look (weight and dashes). `move`: the selected objects outside the row move to its top in their order and their lines take its look, one undo step (refused when the row is locked or hidden) → {id, moved}",
+            "{id: top-level layer, move?: bool} use a legend row (Trowel): it becomes the current layer (not an undo step) and the pen takes its look (weight and dashes); a locked or hidden row is refused (its lines would go to another layer). `move`: the selected objects outside the row move to its top in their order and their lines take its look, one undo step → {id, moved}",
             has_doc,
             pick
         ),
@@ -152,7 +147,7 @@ fn sample_param(p: &Value, cmd: &str) -> Result<Option<LegendSample>> {
     match (v.as_str(), mark) {
         (Some("line"), _) => Ok(Some(LegendSample::Line)),
         (Some("area"), _) => Ok(Some(LegendSample::Area)),
-        (None, Some(m)) if v.as_object().is_some_and(|o| o.len() == 1) => Ok(Some(LegendSample::Mark(m.chars().take(MAX_MARK).collect()))),
+        (None, Some(m)) if v.as_object().is_some_and(|o| o.len() == 1) => Ok(Some(LegendSample::Mark(clip(m, MAX_MARK)))),
         _ => Err(bad(cmd, format!("`sample` is \"line\", \"area\" or {{\"mark\": text}}, not {v}"))),
     }
 }
@@ -162,7 +157,7 @@ fn strata_param(p: &Value, cmd: &str) -> Result<Option<Option<String>>> {
     match p.get("strata") {
         None => Ok(None),
         Some(Value::Null) => Ok(Some(None)),
-        Some(Value::String(k)) if !k.trim().is_empty() => Ok(Some(Some(k.trim().chars().take(MAX_KEY).collect()))),
+        Some(Value::String(k)) if !k.trim().is_empty() => Ok(Some(Some(clip(k, MAX_KEY)))),
         Some(v) => Err(bad(cmd, format!("`strata` is a Strata layer key or null, not {v}"))),
     }
 }
@@ -282,7 +277,7 @@ fn set(s: &mut Session, p: &Value) -> Result<Value> {
         _ => vec![],
     };
     let look = new.as_ref().and_then(|r| r.look().map(|(w, t)| (w, t.clone())));
-    let lines = s.edit("Legend Entry", |d, _| {
+    let lines = s.edit("Set Legend Entry", |d, _| {
         let mut changed = 0;
         if let Some((w, t)) = &look {
             for l in &follow {
@@ -303,16 +298,17 @@ fn pick(s: &mut Session, p: &Value) -> Result<Value> {
     let id = row_param(s, p, C)?;
     let mv = flag(p, "move", C)?.unwrap_or(false);
     let st = s.doc()?;
+    // Its lines would go to another layer, without its look.
+    if !st.doc.is_editable(id) {
+        return Err(bad(C, "the row's layer is locked or hidden: unlock or show it to draw on it"));
+    }
     let look = st.doc.node(id).and_then(look_of);
     let mut moved = 0;
     if mv {
         let roots: Vec<NodeId> =
             super::edit::selected_roots(s)?.into_iter().filter(|r| st.doc.layer_of(*r) != Some(id) && st.doc.is_editable(*r)).collect();
         if !roots.is_empty() {
-            if !st.doc.is_editable(id) {
-                return Err(bad(C, "the row's layer is locked or hidden: nothing moved"));
-            }
-            moved = s.edit("Move to Legend Entry", |d, _| {
+            moved = s.edit("Use Legend Entry", |d, _| {
                 for r in &roots {
                     d.move_node(*r, Some(id), usize::MAX)?;
                     if let Some((w, t)) = &look {
@@ -646,8 +642,16 @@ fn add(s: &mut Session, p: &Value) -> Result<Value> {
     let st = s.doc()?;
     let d = &st.doc;
     let roots: Vec<NodeId> = roots.into_iter().filter(|r| d.is_editable(*r)).collect();
-    // The look of the first selected line, else the pen's.
-    let first = roots.iter().filter_map(|r| d.node(*r)).find_map(|n| lines_in(n).first().copied());
+    // The look of the first selected line (in the order selected, as the palette shows it), else
+    // the pen's.
+    let first = st
+        .selection
+        .objects
+        .iter()
+        .filter_map(|id| super::edit::roots_of(d, vec![*id]).first().copied())
+        .filter(|r| roots.contains(r))
+        .filter_map(|r| d.node(r))
+        .find_map(|n| lines_in(n).first().copied());
     let (weight, line, sample) = match first.and_then(|l| legend::stroke_of(l).map(|st| (l, st))) {
         Some((l, st)) => {
             let area = match &l.kind {

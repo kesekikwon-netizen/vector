@@ -121,10 +121,10 @@ fn look_patch(ui: &Ui, r: Rect, doc: &vectorcraft_doc::Document, id: vectorcraft
 }
 
 /// The legend field: the look (or colour) and name of the layer the next line goes to and its
-/// weight; a click lists the rows to draw with, and picking one gives the pen its look
-/// (`legend.pick`, the selection staying where it is). When the current layer is locked or hidden
-/// it shows the layer that takes the line instead, edged in clay, and says why on hover. Returns
-/// where it ends.
+/// weight; a click lists the rows to draw with in the legend's order, and picking one gives the pen
+/// its look (`legend.pick`, the selection staying where it is), or says why a hidden or locked one
+/// isn't. When the current layer is locked or hidden it shows the layer that takes the line
+/// instead, edged in clay, and says why on hover. Returns where it ends.
 fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f32 {
     let Some(st) = app.session.active() else { return at.x };
     let current = st.current_layer();
@@ -165,7 +165,8 @@ fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f
     egui::Popup::menu(&resp).show(|ui| {
         ui.set_min_width(LIST_W);
         if let Some(st) = app.session.active() {
-            for layer in st.doc.layers.iter().rev() {
+            // In the legend's order: its sections, favourites first in each.
+            for layer in super::legend::sections(&st.doc).into_iter().flat_map(|(_, layers)| layers) {
                 let (row, _) = ui.allocate_exact_size(vec2(LIST_W, 24.0), Sense::hover());
                 let rr = ui.interact(row, wid("ctl-layer-row", layer.id.0), Sense::click());
                 if rr.hovered() {
@@ -201,10 +202,15 @@ fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f
             }
         }
     });
-    if let Some(id) = pick
-        && let Err(e) = app.run("legend.pick", json!({ "id": id.0 }))
-    {
-        app.status(e);
+    if let Some(id) = pick {
+        // A hidden or locked row isn't drawn with: say why.
+        let done = match app.session.active().and_then(|st| super::legend::refused(st, id)) {
+            Some(why) => Err(why),
+            None => app.run("legend.pick", json!({ "id": id.0 })).map(drop),
+        };
+        if let Err(e) = done {
+            app.status(e);
+        }
     }
     r.right()
 }

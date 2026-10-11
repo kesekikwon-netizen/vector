@@ -190,16 +190,17 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     });
 }
 
-/// The drawing's template layers (a scan placed as a template: locked and dimmed) and whether any
-/// of them shows.
+/// The drawing's underlays, template layers holding something (a scan placed as a template: locked
+/// and dimmed; the plan legend's Underlay row, empty, is not one yet), and whether any of them
+/// shows.
 fn templates(app: &VectorcraftApp) -> (Vec<u64>, bool) {
     let Some(st) = app.session.active() else { return (vec![], false) };
-    let layers: Vec<_> = st.doc.layers.iter().filter(|l| l.is_template()).collect();
+    let layers: Vec<_> = st.doc.layers.iter().filter(|l| l.is_template() && l.children().is_some_and(|c| !c.is_empty())).collect();
     (layers.iter().map(|l| l.id.0).collect(), layers.iter().any(|l| l.visible))
 }
 
-/// The Underlay tile: with template layers, hide them all or show them all; else place a scan as
-/// one (File › Place with Template ticked).
+/// The Underlay tile: with underlays ([`templates`]), hide them all or show them all; else place a
+/// scan as one (File › Place with Template ticked).
 fn underlay(app: &mut VectorcraftApp) {
     let (ids, shown) = templates(app);
     if ids.is_empty() {

@@ -181,6 +181,8 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         // Do not let a ring drag also move or deselect the editable source path.
     } else if resp.context_menu_opened() && resp.hovered() && ui.input(|i| i.pointer.any_pressed()) {
         egui::Popup::close_all(ui.ctx());
+    } else if crate::trowel::card_took_press(ui.ctx()) {
+        // The press put away a card beside Trowel's right column, and does nothing else.
     } else {
         handle_input(app, ui, &resp, rect);
     }

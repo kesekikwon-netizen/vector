@@ -4169,6 +4169,7 @@ trowel	Line	선종
 trowel	Lines back to the legend: {n}	선 {n}개를 범례대로 되돌렸습니다
 trowel	Lines back to the legend: {n} · locked ones left as they were: {m}	선 {n}개를 범례대로 되돌렸습니다 · 잠긴 선 {m}개는 그대로 둡니다
 trowel	Lines changed: {n}	선 {n}개를 바꿨습니다
+trowel	Lines of this row with a weight or line type of their own: {n}	굵기나 선 종류를 따로 바꾼 이 줄의 선: {n}개
 trowel	Lines set apart take the change on their own weight	따로 바꾼 선도 각자의 굵기를 기준으로 함께 바뀝니다
 trowel	Lines set apart too	따로 바꾼 선도 함께
 trowel	Lines that change: {n}. One {undo} puts them all back.	선 {n}개가 바뀝니다. {undo} 한 번이면 모두 돌아옵니다.
@@ -4247,6 +4248,7 @@ trowel	The layer and weight the next line is drawn with	다음 선을 그릴 레
 trowel	The next line takes {row}'s look	다음 선은 「{row}」 줄 모양으로 그립니다
 trowel	The ratio is between 0.1 and 10	비율은 0.1에서 10 사이입니다
 trowel	The row leaves its lines' weights alone	이 줄은 선 굵기를 바꾸지 않습니다
+trowel	The selected lines stay where they were	고른 선은 옮기지 않고 그대로 둡니다
 trowel	The selected lines, or every line set apart when nothing is selected	고른 선을, 고른 것이 없으면 따로 바꾼 선을 모두 범례대로 되돌립니다
 trowel	This Survey Only	이 조사에만
 trowel	This drawing	이 도면
@@ -4274,6 +4276,8 @@ trowel	{layer} is locked: drawing on {target}	{layer} 잠김: {target}에 그립
 trowel	{layer} is locked: no layer to draw on	{layer} 잠김: 그릴 수 있는 레이어가 없습니다
 trowel	{n} not saved	저장 안 됨 {n}건
 trowel	{n} objects	객체 {n}개
+trowel	{row} is hidden: show it to draw with it	「{row}」 줄이 숨겨져 있습니다: 보이게 해야 이 줄로 그립니다
+trowel	{row} is locked: unlock it to draw with it	「{row}」 줄이 잠겨 있습니다: 잠금을 풀어야 이 줄로 그립니다
 trowel	{what} · Coming soon · {job}	{what} · 준비 중 · {job}
 trowel	{what}: coming soon ({job})	{what}: 준비 중 ({job})
 trowel	{w} Apart ↺	{w} 따로 ↺

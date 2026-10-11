@@ -5,10 +5,11 @@
 //! get a section of their own above the others, and the favourites come first in each.
 //!
 //! A click picks a row for the pen (`legend.pick`), and with a selection tool in hand moves the
-//! selection into it; a double click opens its editor. A row's eye and padlock show, hide, lock and
-//! unlock the layer, and its arrow lists the objects on it: a click selects one, and ↺ puts a line
-//! set apart back to the row's look. The head adds the legend groups, and Weights at Once is at its
-//! foot.
+//! selection into it; a double click opens its editor and leaves the selection where it was. A
+//! locked or hidden row isn't picked: the status bar says why. A row's eye and padlock show, hide,
+//! lock and unlock the layer, and its arrow lists the objects on it: a click selects one, and ↺
+//! puts a line set apart back to the row's look. The head adds the legend groups, and Weights at
+//! Once is at its foot.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -28,7 +29,8 @@ const PAD: f32 = 14.0;
 /// Its head over the list, and Weights at Once under it ([`footer`]).
 const ABOVE: f32 = 32.0;
 const BELOW: f32 = 6.0 + FOOT_H;
-const FOOT_H: f32 = 6.0 + 26.0 + 10.0;
+/// The footer: 6 over its buttons, 24 for them and 12 under them.
+const FOOT_H: f32 = 6.0 + 24.0 + 12.0;
 /// How tall the legend has to be to list two layers under its caption.
 pub(super) const MIN_HEIGHT: f32 = ABOVE + CAPTION_H + 2.0 * ROW_H + BELOW;
 /// A row's sample, in front of its name.
@@ -41,6 +43,8 @@ const SAMPLE_PX: [(f64, f32); 6] = [(0.1, 0.45), (0.2, 0.6), (0.3, 0.85), (0.5, 
 const SAMPLE_MM: f64 = 1.5;
 /// The ratio Weights at Once starts with.
 pub(super) const RATIO: f64 = 0.8;
+/// How soon a second click on a row opens its editor (seconds): a system's usual double click.
+const DOUBLE_CLICK: f64 = 0.5;
 
 /// A layer's row as shown.
 struct Row<'a> {
@@ -107,14 +111,15 @@ pub(super) enum Card {
     Weights,
 }
 
-/// The card that is open, for which drawing (it closes when another one comes to the front), and
-/// how far down: a row's editor opens level with its row (when not given, as it is laid out),
-/// Weights at Once level with the legend's head.
+/// The card that is open, for which drawing (it closes when another one comes to the front), how
+/// far down (a row's editor opens level with its row, when not given as it is laid out; Weights at
+/// Once level with the legend's head) and since which pass.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct Open {
     pub(super) card: Card,
     pub(super) doc: u64,
     pub(super) top: Option<f32>,
+    pub(super) since: u64,
 }
 
 /// Where the open card is kept.
@@ -122,10 +127,15 @@ fn card_id() -> egui::Id {
     wid("legend-card", ())
 }
 
-/// Open `card` for the active drawing, from `top` (see [`Open`]).
+/// Open `card` for the active drawing, from `top` (see [`Open`]); Weights at Once opens as it
+/// starts.
 pub(super) fn open_card(app: &VectorcraftApp, ctx: &egui::Context, card: Card, top: Option<f32>) {
     if let Some(st) = app.session.active() {
-        ctx.data_mut(|d| d.insert_temp(card_id(), Open { card, doc: st.uid, top }));
+        if card == Card::Weights {
+            super::weights::forget(ctx);
+        }
+        let since = ctx.cumulative_pass_nr();
+        ctx.data_mut(|d| d.insert_temp(card_id(), Open { card, doc: st.uid, top, since }));
     }
 }
 
@@ -134,17 +144,21 @@ fn show_card(app: &mut VectorcraftApp, ui: &Ui, r: Rect) {
     let Some(open) = ui.data(|d| d.get_temp::<Open>(card_id())) else { return };
     let column = ui.clip_rect();
     let ctx = ui.ctx();
-    // Over the canvas at the column's left, within its height.
-    let bounds = Rect::from_min_max(pos2(ctx.content_rect().left(), column.top()), pos2(column.left(), column.bottom()));
+    // Over the canvas at the column's left, within its height and under the tab row.
+    let top = app.canvas_rect.map_or(column.top(), |c| c.top().max(column.top()));
+    let bounds = Rect::from_min_max(pos2(ctx.content_rect().left(), top), pos2(column.left(), column.bottom()));
     let top = match open.card {
         Card::Row(id) => open.top.or_else(|| ctx.read_response(wid("legend-row", id.0)).map(|row| row.rect.top())),
         Card::Weights => open.top,
     };
     let at = pos2(column.left() - 8.0 - super::card::W, top.unwrap_or(r.top()));
+    // A press in the pass it opened in opened it, or came before it: it doesn't put it away.
+    let fresh = open.since == ctx.cumulative_pass_nr();
+    let place = super::card::Place { at, bounds, fresh };
     let keep = app.session.active().is_some_and(|st| st.uid == open.doc)
         && match open.card {
-            Card::Row(id) => super::rowedit::show(app, ctx, at, bounds, id),
-            Card::Weights => super::weights::show(app, ctx, at, bounds),
+            Card::Row(id) => super::rowedit::show(app, ctx, place, id),
+            Card::Weights => super::weights::show(app, ctx, place),
         };
     if !keep {
         ctx.data_mut(|d| d.remove::<Open>(card_id()));
@@ -161,7 +175,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let new_layer = open && head_button(ui, wid("legend-new", ()), head, 1, "plus", tw!("New layer"), &t).clicked();
     let more = more_button(ui, wid("legend-more", ()), head, 0, tw!("Layers panel"), &t).clicked();
     let apart = app.session.active().map(|st| apart(ui, st)).unwrap_or_default();
-    let (weights, revert_all) = footer(ui, r, apart.lines.len(), &t);
+    let (weights, revert_all) = footer(ui, r, apart.lines.len(), open, &t);
     let area = Rect::from_min_max(pos2(r.left() + PAD, r.top() + ABOVE), pos2(r.right() - PAD, r.bottom() - BELOW));
     let act = list(app, ui, area, &apart, &t);
     if more {
@@ -171,10 +185,11 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         open_card(app, ui.ctx(), Card::Weights, None);
     }
     let result = match act {
-        Some(Act::Pick(id)) => pick(app, id),
+        Some(Act::Pick(id)) => pick(app, ui.ctx(), id),
         Some(Act::Edit(id, top)) => {
+            let undone = unmove(app, ui.ctx(), id);
             open_card(app, ui.ctx(), Card::Row(id), Some(top));
-            Ok(())
+            undone
         }
         Some(Act::Show(id, on)) => app.run("layer.setProps", json!({ "ids": [id.0], "visible": on })).map(drop),
         Some(Act::Lock(id, on)) => app.run("layer.setProps", json!({ "ids": [id.0], "locked": on })).map(drop),
@@ -193,17 +208,58 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     show_card(app, ui, r);
 }
 
-/// Pick row `id` for the pen. With a selection tool in hand the selection moves into it; a drawing
-/// tool's line just drawn stays selected, and stays where it was drawn when the next row is picked.
-fn pick(app: &mut VectorcraftApp, id: NodeId) -> Result<(), String> {
+/// Why row `id` isn't drawn with: its layer is hidden or locked.
+pub(super) fn refused(st: &vectorcraft_engine::DocState, id: NodeId) -> Option<String> {
+    let layer = st.doc.node(id)?;
+    let why = if !layer.visible {
+        tw!("{row} is hidden: show it to draw with it")
+    } else if layer.locked {
+        tw!("{row} is locked: unlock it to draw with it")
+    } else {
+        return None;
+    };
+    Some(crate::i18n::fmt(why, &[("row", &layer.display_name())]))
+}
+
+/// Where the last pick that moved the selection is kept: the row, the drawing and the drawing's
+/// revision after the move ([`unmove`]).
+fn moved_id() -> egui::Id {
+    wid("legend-moved", ())
+}
+
+/// Pick row `id` for the pen, unless its layer is hidden or locked ([`refused`]). With a selection
+/// tool in hand the selection moves into it; a drawing tool's line just drawn stays selected, and
+/// stays where it was drawn when the next row is picked.
+fn pick(app: &mut VectorcraftApp, ctx: &egui::Context, id: NodeId) -> Result<(), String> {
+    ctx.data_mut(|d| d.remove::<(NodeId, u64, u64)>(moved_id()));
+    if let Some(why) = app.session.active().and_then(|st| refused(st, id)) {
+        return Err(why);
+    }
     let tool = app.session.tool_id();
     let carry = (vectorcraft_tools::catalog::is_selection_tool(tool) || matches!(tool, "lasso" | "magicWand"))
         && app.session.active().is_some_and(|st| !st.selection.objects.is_empty());
     let moved = app.run("legend.pick", json!({ "id": id.0, "move": carry }))?["moved"].as_u64().unwrap_or(0);
-    if moved > 0 {
-        let row = app.session.active().and_then(|st| st.doc.node(id)).map(|n| n.display_name()).unwrap_or_default();
+    if moved > 0
+        && let Some(st) = app.session.active()
+    {
+        ctx.data_mut(|d| d.insert_temp(moved_id(), (id, st.uid, st.revision)));
+        let row = st.doc.node(id).map(|n| n.display_name()).unwrap_or_default();
         app.status(crate::i18n::fmt(tw!("Moved {n} to {row}"), &[("n", &moved.to_string()), ("row", &row)]));
     }
+    Ok(())
+}
+
+/// A double click's first click on row `id` moved the selection into it: take that move back, the
+/// row staying the one drawn with, so a double click only opens the row's editor. Nothing is taken
+/// back when the drawing changed in between.
+fn unmove(app: &mut VectorcraftApp, ctx: &egui::Context, id: NodeId) -> Result<(), String> {
+    let Some((row, doc, revision)) = ctx.data_mut(|d| d.remove_temp::<(NodeId, u64, u64)>(moved_id())) else { return Ok(()) };
+    if row != id || !app.session.active().is_some_and(|st| st.uid == doc && st.revision == revision) {
+        return Ok(());
+    }
+    app.run("edit.undo", json!({}))?;
+    app.run("legend.pick", json!({ "id": id.0 }))?;
+    app.status(tw!("The selected lines stay where they were"));
     Ok(())
 }
 
@@ -374,49 +430,52 @@ fn list(app: &VectorcraftApp, ui: &mut Ui, area: Rect, apart: &Apart, t: &Tokens
     act
 }
 
-/// The rows of the active drawing in their sections: those matching Strata's layers, then the
-/// others, or all under one caption when none does; ★ rows first in each, then the layers' order,
-/// top first.
+/// The drawing's layers in the legend's sections, top first: those matching Strata's layers, then
+/// the others, or all under one caption when none does; ★ rows first in each, then the layers'
+/// order.
+pub(super) fn sections(doc: &Document) -> Vec<(&'static str, Vec<&Arc<Node>>)> {
+    let layers: Vec<&Arc<Node>> = doc.layers.iter().rev().collect();
+    let strata = |l: &&Arc<Node>| l.legend().is_some_and(|g| g.strata.is_some());
+    let mut sections = if layers.iter().any(strata) {
+        let (survey, drawing): (Vec<_>, Vec<_>) = layers.into_iter().partition(strata);
+        vec![(tw!("Survey Data · Same Layers as Strata"), survey), (tw!("Drawing · Trowel"), drawing)]
+    } else {
+        vec![(tw!("This drawing's layers"), layers)]
+    };
+    for (_, layers) in &mut sections {
+        // A stable sort: each part keeps the layers' order.
+        layers.sort_by_key(|l| !l.legend().is_some_and(|g| g.favourite));
+    }
+    sections
+}
+
+/// The rows of the active drawing in their [`sections`], each under its caption; a section with
+/// no rows is left out after the first.
 fn items<'a>(app: &'a VectorcraftApp, ctx: &egui::Context, apart: &Apart) -> Vec<Item<'a>> {
     let Some(st) = app.session.active() else { return vec![Item::Caption(tw!("This drawing's layers"))] };
     let current = st.current_layer();
     let note = draw_target(st).note;
-    let rows: Vec<Row> = st
-        .doc
-        .layers
-        .iter()
-        .rev()
-        .map(|l| Row {
-            id: l.id,
-            name: l.display_name(),
-            visible: l.visible,
-            locked: l.locked,
-            dim: !l.visible || l.is_template(),
-            colour: crate::panels::layers::layer_colour(&st.doc, l.id),
-            current: Some(l.id) == current,
-            open: ctx.data(|d| d.get_temp::<bool>(opened(l.id))).unwrap_or(false),
-            note: note.clone().filter(|_| Some(l.id) == current),
-            objects: l.children().map_or(&[][..], |c| c.as_slice()),
-            legend: l.legend(),
-            apart: apart.rows.get(&l.id).copied().unwrap_or(0),
-        })
-        .collect();
-    let strata = |row: &Row| row.legend.is_some_and(|l| l.strata.is_some());
-    let sections = if rows.iter().any(strata) {
-        let (survey, drawing): (Vec<Row>, Vec<Row>) = rows.into_iter().partition(strata);
-        vec![(tw!("Survey Data · Same Layers as Strata"), survey), (tw!("Drawing · Trowel"), drawing)]
-    } else {
-        vec![(tw!("This drawing's layers"), rows)]
+    let row = |l: &'a Arc<Node>| Row {
+        id: l.id,
+        name: l.display_name(),
+        visible: l.visible,
+        locked: l.locked,
+        dim: !l.visible || l.is_template(),
+        colour: crate::panels::layers::layer_colour(&st.doc, l.id),
+        current: Some(l.id) == current,
+        open: ctx.data(|d| d.get_temp::<bool>(opened(l.id))).unwrap_or(false),
+        note: note.clone().filter(|_| Some(l.id) == current),
+        objects: l.children().map_or(&[][..], |c| c.as_slice()),
+        legend: l.legend(),
+        apart: apart.rows.get(&l.id).copied().unwrap_or(0),
     };
     let mut out = vec![];
-    for (caption, mut rows) in sections {
-        if rows.is_empty() && !out.is_empty() {
+    for (caption, layers) in sections(&st.doc) {
+        if layers.is_empty() && !out.is_empty() {
             continue;
         }
-        // A stable sort: each part keeps the layers' order.
-        rows.sort_by_key(|row| !row.favourite());
         out.push(Item::Caption(caption));
-        out.extend(rows.into_iter().map(Item::Layer));
+        out.extend(layers.into_iter().map(|l| Item::Layer(row(l))));
     }
     out
 }
@@ -465,9 +524,12 @@ fn layer_row(ui: &Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
     if let Some(w) = row.legend.and_then(|l| l.weight) {
         right = text(ui, pos2(right, cy), Align2::RIGHT_CENTER, pt(w), mono(10.0), t.text_dim).left() - 7.0;
     }
+    let mut apart = None;
     if row.apart > 0 {
         let label = crate::i18n::fmt(tw!("Apart {n}"), &[("n", &row.apart.to_string())]);
-        right = badge(ui, pos2(right, cy), &label, t).left() - 7.0;
+        let b = badge(ui, pos2(right, cy), &label, t);
+        right = b.left() - 7.0;
+        apart = Some(b);
     }
     // The current row on oat, its name regular as the others'; a favourite's name bold in clay.
     let (f, color) = if row.note.is_some() {
@@ -479,11 +541,20 @@ fn layer_row(ui: &Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
     } else {
         (font(12.0), t.text)
     };
-    text_to(ui, pos2(x0 + 104.0, cy), right, &row.name, f, color);
+    let name_x = x0 + 104.0;
+    text_to(ui, pos2(name_x, cy), right, &row.name, f.clone(), color);
     let open = open.on_hover_text(if row.open { tw!("Hide the objects") } else { tw!("Show the objects") });
     let eye = eye.on_hover_text(if row.visible { tw!("Hide") } else { tw!("Show") });
     let lock = lock.on_hover_text(if row.locked { tw!("Unlock") } else { tw!("Lock") });
-    let resp = resp.on_hover_text(row.note.as_deref().unwrap_or(tw!("Draw with this row · double-click to change it")));
+    // On hover, over the badge what it counts; else the note or what a click does, after the
+    // whole name when it is cut short.
+    let tip = if apart.zip(resp.hover_pos()).is_some_and(|(b, p)| b.contains(p)) {
+        crate::i18n::fmt(tw!("Lines of this row with a weight or line type of their own: {n}"), &[("n", &row.apart.to_string())])
+    } else {
+        let tip = row.note.as_deref().unwrap_or(tw!("Draw with this row · double-click to change it"));
+        if width_of(ui, &row.name, f) > right - name_x { format!("{}\n{tip}", row.name) } else { tip.to_string() }
+    };
+    let resp = resp.on_hover_text(tip);
     if open.clicked() {
         ui.data_mut(|d| d.insert_temp(opened(row.id), !row.open));
         None
@@ -494,10 +565,10 @@ fn layer_row(ui: &Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
     } else if resp.clicked() {
         // A second click on this row soon after the first opens its editor. Counted here: egui
         // takes that click for a third one when another click (✕ on the card) came just before.
-        let (now, delay) = (ui.input(|i| i.time), ui.ctx().options(|o| o.input_options.max_double_click_delay));
+        let now = ui.input(|i| i.time);
         let last = wid("legend-last-click", ());
         let before: Option<(NodeId, f64)> = ui.data(|d| d.get_temp(last));
-        if before.is_some_and(|(id, at)| id == row.id && now - at < delay) {
+        if before.is_some_and(|(id, at)| id == row.id && now - at <= DOUBLE_CLICK) {
             ui.data_mut(|d| d.remove::<(NodeId, f64)>(last));
             Some(Act::Edit(row.id, rr.top()))
         } else {
@@ -548,17 +619,18 @@ pub(super) fn badge(ui: &Ui, at: Pos2, label: &str, t: &Tokens) -> Rect {
     r
 }
 
-/// Weights at Once under the list, [`FOOT_H`] tall: "All Weights ×0.8 …" opens its card, and
-/// "Apart N → Legend" reverts every line set apart (dimmed when none is). Returns which was pressed.
-fn footer(ui: &Ui, r: Rect, apart: usize, t: &Tokens) -> (bool, bool) {
+/// Weights at Once under the list, [`FOOT_H`] tall: "All Weights ×0.8 …" opens its card (dimmed
+/// with no drawing `open`), and "Apart N → Legend" reverts every line set apart (dimmed when none
+/// is). Returns which was pressed.
+fn footer(ui: &Ui, r: Rect, apart: usize, open: bool, t: &Tokens) -> (bool, bool) {
     let foot = Rect::from_min_max(pos2(r.left() + PAD, r.bottom() - FOOT_H), pos2(r.right() - PAD, r.bottom()));
     line_above(ui, foot, t.border);
-    let cy = foot.top() + 6.0 + 13.0;
+    let cy = foot.top() + 6.0 + 12.0;
     let x = text(ui, pos2(foot.left(), cy), Align2::LEFT_CENTER, tw!("Weights at once"), font(11.0), t.text_dim).right() + 6.0;
     let label = crate::i18n::fmt(tw!("All Weights ×{r} …"), &[("r", &RATIO.to_string())]);
-    let weights = small_button(ui, wid("legend-weights", ()), pos2(x, cy), &label, true, t);
+    let weights = small_button(ui, wid("legend-weights", ()), pos2(x, cy), 24.0, &label, open, t);
     let label = crate::i18n::fmt(tw!("Apart {n} → Legend"), &[("n", &apart.to_string())]);
-    let revert = small_button(ui, wid("legend-overrides", ()), pos2(weights.rect.right() + 4.0, cy), &label, apart > 0, t);
+    let revert = small_button(ui, wid("legend-overrides", ()), pos2(weights.rect.right() + 4.0, cy), 24.0, &label, apart > 0, t);
     let weights = weights.on_hover_text(tw!("Change every line's weight at once"));
     let revert = revert.on_hover_text(if apart > 0 { tw!("Put every line set apart back to its row's look") } else { tw!("No line is set apart") });
     (weights.clicked(), revert.clicked())
@@ -620,10 +692,16 @@ pub(super) fn sample(ui: &Ui, r: Rect, legend: &Legend, t: &Tokens) {
         }
     };
     match &legend.sample {
+        // The datum's △ drawn as the mockup's: 10 × 9 in one point of ink.
+        LegendSample::Mark(mark) if mark == "△" => {
+            let b = Rect::from_center_size(r.center(), vec2(12.0, 11.0));
+            let p = |x: f32, y: f32| b.min + vec2(x, y);
+            ui.painter().add(egui::Shape::closed_line(vec![p(6.0, 1.0), p(11.0, 10.0), p(1.0, 10.0)], Stroke::new(1.0, t.text)));
+        }
         LegendSample::Mark(mark) => {
-            // Shrunk to fit, down to 7 points.
-            let w = width_of(ui, mark, font(11.0));
-            let size = if w > 24.0 { (11.0 * 24.0 / w).max(7.0) } else { 11.0 };
+            // 12 points, shrunk to fit down to 7.
+            let w = width_of(ui, mark, font(12.0));
+            let size = if w > 24.0 { (12.0 * 24.0 / w).max(7.0) } else { 12.0 };
             ui.painter().with_clip_rect(r.expand2(vec2(3.0, 2.0))).text(r.center(), Align2::CENTER_CENTER, mark, font(size), t.text);
         }
         LegendSample::Line => path(&[pos2(r.left(), r.center().y), pos2(r.right(), r.center().y)]),

@@ -19,23 +19,53 @@ const HEAD_H: f32 = 32.0;
 const GAP_Y: f32 = 5.0;
 pub(super) const GAP_X: f32 = 6.0;
 
-/// Show card `id` from `at` (its top left) within `bounds`: a head with `title`, `sub` and ✕, then
-/// `body`. Returns whether it stays open and what `body` returned. ✕, Esc (when no field has the
-/// keyboard: then Esc puts back what was typed) and a press outside put it away; a field being
-/// typed in when the press comes keeps what was typed.
+/// Where the pass a press outside a card put it away is kept ([`took_press`]).
+fn took_id() -> egui::Id {
+    wid("card-took-press", ())
+}
+
+/// Whether a press this pass put a card away: it goes no further.
+pub(super) fn took_press(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp::<u64>(took_id())) == Some(ctx.cumulative_pass_nr())
+}
+
+/// Where a card shows: from `at` (its top left) within `bounds`. `fresh`: it opened this pass, so
+/// this pass's press (which opened it, or came before it) doesn't put it away.
+#[derive(Clone, Copy)]
+pub(super) struct Place {
+    pub(super) at: Pos2,
+    pub(super) bounds: Rect,
+    pub(super) fresh: bool,
+}
+
+/// Show card `id` at `place`: a head with `title`, `sub` (in full on hover when cut short) and ✕,
+/// then `body`. Returns whether it stays open and what `body` returned. ✕, Esc (when no field had
+/// the keyboard: then Esc puts back what was typed) and a press outside put it away; that press
+/// goes no further ([`took_press`]), and a field being typed in when it comes keeps what was typed.
 pub(super) fn show<R>(
     ctx: &egui::Context,
     id: egui::Id,
-    at: Pos2,
-    bounds: Rect,
+    Place { at, bounds, fresh }: Place,
     (title, sub): (&str, &str),
     body: impl FnOnce(&mut Ui, &Tokens) -> R,
 ) -> (bool, R) {
     let t = Tokens::get(ctx);
     let was = ctx.memory(|m| m.area_rect(id));
-    let (esc, press) = ctx.input(|i| (i.key_pressed(egui::Key::Escape), i.pointer.press_origin().filter(|_| i.pointer.any_pressed())));
-    let typing = ctx.egui_wants_keyboard_input();
-    let away = matches!((was, press), (Some(card), Some(p)) if !card.contains(p));
+    // Where a button went down this pass. From the events: a tap's release in the same pass (a
+    // touchpad's) has already cleared the pointer's press origin.
+    let press = |e: &egui::Event| match e {
+        egui::Event::PointerButton { pos, pressed: true, .. } => Some(*pos),
+        _ => None,
+    };
+    let (esc, press) = ctx.input(|i| (i.key_pressed(egui::Key::Escape), i.events.iter().find_map(press)));
+    // Whether a field had the keyboard at the end of the pass before: egui takes it from the field
+    // before this pass when Esc comes, and that Esc only puts back what was typed.
+    let (typing_id, pass) = (id.with("typing"), ctx.cumulative_pass_nr());
+    let typing = ctx.data(|d| d.get_temp::<(u64, bool)>(typing_id)).is_some_and(|(at, on)| on && at + 1 == pass);
+    let away = !fresh && matches!((was, press), (Some(card), Some(p)) if !card.contains(p));
+    if away {
+        ctx.data_mut(|d| d.insert_temp(took_id(), pass));
+    }
     if away
         && let (Some(card), Some(field)) = (was, ctx.memory(|m| m.focused()))
         && ctx.read_response(field).is_some_and(|f| card.contains_rect(f.rect))
@@ -62,7 +92,9 @@ pub(super) fn show<R>(
                 ui.spacing_mut().scroll.fade.strength = 0.0;
                 let (head, _) = ui.allocate_exact_size(vec2(inner_w, HEAD_H), Sense::hover());
                 let head = head.expand2(vec2(f32::from(INSET), 0.0));
-                panel_head(ui, head, title, sub, 1, &t);
+                if let Some(cut) = panel_head(ui, head, title, sub, 1, &t) {
+                    ui.interact(cut, id.with("sub"), Sense::hover()).on_hover_text(sub);
+                }
                 let close = head_button(ui, wid("card-close", ()), head, 0, "x", tw!("Close"), &t).clicked();
                 let scroll = egui::ScrollArea::vertical().id_salt(id.with("scroll")).max_height(room).auto_shrink([false, true]);
                 (close, scroll.show(ui, |ui| body(ui, &t)).inner)
@@ -70,6 +102,9 @@ pub(super) fn show<R>(
             .inner
     });
     let (close, inner) = shown.inner;
+    // Read before `data_mut`: the context can't be read while it is being written.
+    let keyboard = ctx.egui_wants_keyboard_input();
+    ctx.data_mut(|d| d.insert_temp(typing_id, (pass, keyboard)));
     (!(close || away || (esc && !typing)), inner)
 }
 
@@ -157,36 +192,41 @@ pub(super) fn field_soon(ui: &Ui, id: egui::Id, r: Rect, value: &str, list: bool
     soon_widget(ui, id, r, what, job);
 }
 
-/// A text field in `r` (the mockup's `.field`) showing `value` in `f`, after a faint `prefix` and
-/// before a faint `unit`. What is typed stays while it has the keyboard; when the typing ends
-/// (Enter, Tab, a press elsewhere) it comes back trimmed if it changed anything. Esc drops it.
+/// A text field in `r` (the mockup's `.field`) showing `value` in `f`, after `prefix` (in the same
+/// type and ink, as in "×0.8") and before a faint `unit` right after the text ("0.8 pt"). What is
+/// typed stays while it has the keyboard; when the typing ends (Enter, Tab, a press elsewhere) it
+/// comes back trimmed if it changed anything. Esc drops it.
 pub(super) fn text_field(ui: &mut Ui, id: egui::Id, r: Rect, value: &str, f: FontId, (prefix, unit): (&str, &str), t: &Tokens) -> Option<String> {
     let draft_id = id.with("draft");
     let draft: Option<String> = ui.data(|d| d.get_temp(draft_id));
     let mut s = draft.clone().unwrap_or_else(|| value.to_string());
     let typing = ui.memory(|m| m.has_focus(id));
     field_box(ui, r, t.input, if typing { t.text } else { t.input_border });
-    let (cy, small) = (r.center().y, font(f.size));
-    let mut left = 8.0;
-    if !prefix.is_empty() {
-        left += text(ui, pos2(r.left() + 8.0, cy), Align2::LEFT_CENTER, prefix, small.clone(), t.text_disabled).width() + 2.0;
-    }
-    let mut right = 8.0;
-    if !unit.is_empty() {
-        right += text(ui, pos2(r.right() - 8.0, cy), Align2::RIGHT_CENTER, unit, small, t.text_disabled).width() + 4.0;
-    }
+    let cy = r.center().y;
     // Margins are whole points.
     let margin = |m: f32| m.round().clamp(0.0, 100.0) as i8;
+    let mut left = 8.0;
+    if !prefix.is_empty() {
+        left += text(ui, pos2(r.left() + 8.0, cy), Align2::LEFT_CENTER, prefix, f.clone(), t.text).width() + 2.0;
+    }
+    // The unit's width; the text keeps clear of it.
+    let unit_w = if unit.is_empty() { 0.0 } else { width_of(ui, unit, font(f.size)) };
+    let (left, right) = (margin(left), margin(if unit.is_empty() { 8.0 } else { 8.0 + unit_w + 4.0 }));
     let edit = egui::TextEdit::singleline(&mut s)
         .id(id)
-        .font(f)
+        .font(f.clone())
         .text_color(t.text)
-        .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: margin(left), right: margin(right), top: 0, bottom: 0 }))
+        .frame(egui::Frame::NONE.inner_margin(egui::Margin { left, right, top: 0, bottom: 0 }))
         .vertical_align(egui::Align::Center)
         .min_size(r.size())
         .desired_width(r.width());
     let mut box_ui = ui.new_child(egui::UiBuilder::new().max_rect(r).layout(egui::Layout::left_to_right(egui::Align::Center)));
     let resp = box_ui.add(edit);
+    if !unit.is_empty() {
+        // Right after the text as it now is; at the right end when the text is long.
+        let x = (r.left() + f32::from(left) + width_of(ui, &s, f.clone()) + 4.0).min(r.right() - 8.0 - unit_w);
+        text(ui, pos2(x, cy), Align2::LEFT_CENTER, unit, font(f.size), t.text_disabled);
+    }
     crate::widgets::select_all_on_focus(ui, &resp, &s);
     if ui.memory(|m| m.has_focus(id)) {
         ui.data_mut(|d| d.insert_temp(draft_id, s));

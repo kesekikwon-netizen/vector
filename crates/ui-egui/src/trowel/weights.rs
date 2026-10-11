@@ -19,7 +19,7 @@ use super::*;
 const MAX_ROWS: usize = 10;
 /// The rows' height.
 const ROW_H: f32 = 24.0;
-const SEG_H: f32 = 22.0;
+const SEG_H: f32 = 24.0;
 
 /// How the weights change.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -72,22 +72,30 @@ fn rule_id() -> egui::Id {
     wid("weights-rule", ())
 }
 
-/// Show the card from `at` within `bounds` ([`card::show`]). Returns whether it stays open.
-pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context, at: Pos2, bounds: Rect) -> bool {
+/// Start the card over: opened again, it shows as it starts (by ratio, ×0.8).
+pub(super) fn forget(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.remove::<Rule>(rule_id()));
+}
+
+/// Show the card at `place` ([`card::show`]). Returns whether it stays open.
+pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context, place: card::Place) -> bool {
     let Some(st) = app.session.active() else { return false };
     let mut rule = ctx.data(|d| d.get_temp::<Rule>(rule_id())).unwrap_or_default();
-    let params = rule.params();
-    let plan = plan(ctx, st, &params);
+    let plan = plan(ctx, st, &rule.params());
     let sub = match super::legend::main_group(&st.doc) {
         Some(LegendGroup::Plan) => tw!("Plan Legend"),
         Some(LegendGroup::Section) => tw!("Section and Elevation Legend"),
         Some(LegendGroup::Finds) => tw!("Finds Legend"),
         None => "",
     };
-    let (mut open, asks) = card::show(ctx, wid("weights-card", ()), at, bounds, (tw!("Weights at Once"), sub), |ui, t| body(ui, &mut rule, &plan, t));
+    let (mut open, asks) = card::show(ctx, wid("weights-card", ()), place, (tw!("Weights at Once"), sub), |ui, t| body(ui, &mut rule, &plan, t));
+    // Change pressed as the typing ends changes by what was typed: the rule as the body left it,
+    // and nothing when what was typed can't be used.
+    let refused = asks.iter().any(|a| matches!(a, Ask::Refused(_)));
     for ask in asks {
         match ask {
-            Ask::Change => match app.run("legend.weights", params.clone()) {
+            Ask::Change if refused => {}
+            Ask::Change => match app.run("legend.weights", rule.params()) {
                 Ok(done) => {
                     let rows = done["rows"].as_array().map_or(0, Vec::len);
                     let lines = done["lines"].as_u64().unwrap_or(0);
@@ -222,8 +230,8 @@ fn body(ui: &mut Ui, rule: &mut Rule, plan: &WeightPlan, t: &Tokens) -> Vec<Ask>
     asks
 }
 
-/// The rows that change, as planned: those changing alike on one line, their names joined, the
-/// heaviest first (the mockup's table: legend row, now, after).
+/// The rows that change, as planned: those changing alike on one line, their names joined (in full
+/// on hover when cut short), the heaviest first (the mockup's table: legend row, now, after).
 fn table(ui: &mut Ui, plan: &WeightPlan, t: &Tokens) {
     let mut lines: Vec<(String, f64, f64)> = vec![];
     for row in &plan.rows {
@@ -234,7 +242,7 @@ fn table(ui: &mut Ui, plan: &WeightPlan, t: &Tokens) {
     }
     lines.sort_by(|a, b| b.1.total_cmp(&a.1).then(b.2.total_cmp(&a.2)));
     let more = lines.len().saturating_sub(MAX_ROWS);
-    let (head_h, line_h) = (24.0, 26.0);
+    let (head_h, line_h) = (30.0, 34.0);
     let shown = lines.len().min(MAX_ROWS) + usize::from(more > 0);
     let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), head_h + line_h * shown as f32), Sense::hover());
     // Its columns: the names, then now and after, right-aligned.
@@ -249,9 +257,14 @@ fn table(ui: &mut Ui, plan: &WeightPlan, t: &Tokens) {
     text(ui, pos2(after, cy), Align2::RIGHT_CENTER, tw!("After"), font(11.0), t.text_dim);
     p.hline(r.x_range(), r.top() + head_h - 0.5, Stroke::new(1.0, t.border));
     let mut y = r.top() + head_h;
-    for (row_names, from, to) in lines.iter().take(MAX_ROWS) {
+    for (i, (row_names, from, to)) in lines.iter().take(MAX_ROWS).enumerate() {
         let cy = y + line_h / 2.0;
         text_to(ui, pos2(r.left() + 8.0, cy), names, row_names, font(12.0), t.text);
+        if width_of(ui, row_names, font(12.0)) > names - (r.left() + 8.0) {
+            // Cut short: the whole line on hover.
+            let cell = Rect::from_min_max(pos2(r.left(), y), pos2(names, y + line_h));
+            ui.interact(cell, wid("weights-line", i), Sense::hover()).on_hover_text(row_names);
+        }
         text(ui, pos2(now, cy), Align2::RIGHT_CENTER, pt(*from), mono(12.0), t.text);
         text(ui, pos2(after, cy), Align2::RIGHT_CENTER, pt(*to), mono(12.0), t.text);
         y += line_h;

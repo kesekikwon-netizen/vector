@@ -1,6 +1,6 @@
 # J005 — 범례 = 레이어
 
-상태: review (검증 끝, 2026-10-11) · 기준 커밋 `5ac2a6ca5000f9071f1e8555b9e9d5b59104c9bd` · **◆ 파일 형식**(레이어에 `legend` 필드) · **◆ 수치**(선종 대시 길이, 굵기 반올림, 대시 판정 허용치)
+상태: review (재작업 1차 끝, 재검토 전, 2026-10-11) · 기준 커밋 `5ac2a6ca5000f9071f1e8555b9e9d5b59104c9bd` · **◆ 파일 형식**(레이어에 `legend` 필드, 너그러운 읽기와 값 정리) · **◆ 수치**(선종 대시 길이, 굵기 반올림, 대시 판정 허용치)
 
 ## 목표
 
@@ -267,3 +267,136 @@ cargo check --target wasm32-unknown-unknown -p vectorcraft-web
 | 캔버스 | 스캔·TM 좌표·방위표 | 시험용 도형, mm 눈금자 | J006·J008·J012(J003 표와 같음) |
 
 GitHub 「Trowel CI」: `c14a4ab`의 run 38166616175가 19:06:35Z에 시작(결과는 승인 절에 적는다).
+
+## 검토 1차 (review)
+
+2026-10-11, 대상 커밋 `c14a4ab`(코드. 뒤 커밋 `905641e`는 이 기록만 바꿈). 두 검토자 모두 읽기 전용 하위 에이전트이고 제품 코드를 고치지 않았다. 검토 전문과 근거 그림은 커밋하지 않고 `scratchpad/factory/J005/review-code-result.md`, `review-ui-result.md`, `scratchpad/review-ui-J005/`에 둔다.
+
+| 검토 | 한 일 | 판정 |
+|---|---|---|
+| 코드·정확성·보안 (code · correctness · security를 한 번에) | `git diff 5ac2a6c c14a4ab`를 읽고 egui 0.36.2 소스로 추적, doc·format 시험을 직접 돌림, 손으로 만든 `.vectorcraft` 파일을 `vectorcraft-cli run`으로 열어 봄 | **rework**: major 2(C1, C2), minor 7, nit 5 |
+| 화면 (ui-reviewer) | `c14a4ab` 실행 파일 사본을 Xvfb와 제어 채널로 띄워 장면 9개를 찍고 시안(`win-plan.png`, 그림 ②③)과 견줌 | **rework**: major 4(U1–U4), minor 7, nit 12 |
+
+◆ 항목에 대한 코드 검토 의견은 모두 동의다. 1 mm = 72/25.4 pt. Strata 대시 길이는 hgis `src/core/FeaturePresets.cpp:21-23`과 같고, Strata가 단위를 MM으로 적으므로 굵기와 상관없는 길이로 읽는 것이 맞다. 1e-9 pt 허용치, 굵기 한 번에(비율·값·한 단계, 0.001 pt 반올림, 0–1000 자르기), 화면 px 표, 「= mm」 표시, 파일 형식(선택 필드, 판 4 그대로)도 동의했다. 사용자에게 알릴 점은 하나다: 옛 빌드로 새 파일을 열었다가 다시 저장하면 줄 모양이 소리 없이 사라진다(레이어와 선은 남음). 행동 결정 1–5도 타당하다고 보았고, 결정 1이 두 번 누르기와 겹치는 경우(C2)만 사람이 정할 일로 남겼다.
+
+지적과 처리(처리는 아래 재작업 1차):
+
+| 번호 | 정도 | 지적 | 처리 |
+|---|---|---|---|
+| C1 | major | 굵기 한 번에: Enter 없이 비율·값을 넣고 「바꾸기」를 누르면 화면과 다른 옛 값으로 바뀜. 범위 밖 값이면 거절 알림이 덮임 | 고침: 카드가 끝난 뒤의 규칙으로 실행하고, 같은 프레임에 거절이 있으면 실행하지 않음. 시험 `weights_card_changes_by_the_ratio_just_typed` |
+| C2 = U2 | major · 사람 결정 | 선택 도구로 선을 고른 채 줄을 두 번 누르면 첫 누르기가 고른 선을 그 줄로 옮김 | 검토자 안 (b)로 고침: 두 번째 누르기가 첫 누르기의 옮김을 실행 취소로 되돌리고 카드를 엶(같은 줄·같은 도면·그 사이 바뀐 것 없음일 때만). 상태줄 「고른 선은 옮기지 않고 그대로 둡니다」. 시험 `double_clicking_a_row_with_lines_selected_moves_nothing`. **사용자 확인 필요** |
+| C3 | minor | 그리지 않는 사용자 대시(`[]`, `[0,0]`, 음수)가 언제나 「따로」로 보이고 「범례대로」가 끝나지 않음 | 고침: 그리는 대시끼리 견주고(`LineType::drawn`), 그리지 않는 패턴은 실선. 시험 `a_pattern_that_draws_nothing_is_solid` |
+| C4 | minor | 파일의 범례 값이 명령의 검사·상한을 거치지 않음(굵기 -5, 1e308, 아주 긴 대시·글자) | 고침: 읽을 때 `Legend::tidied`(굵기는 0–1000으로 자르고 수가 아니면 없음 / 대시는 그리는 것만 16개까지, 아니면 실선 / 기호 32자, Strata 키 64자). 상한 상수를 doc으로 옮겨 명령과 같이 씀. 시험 `odd_values_are_tidied_as_the_commands_take_them`, `odd_legend_values_open_tidied`, 속성 시험 `any_legend_opens_tidy` |
+| C5 | minor · ◆ · 사람 결정 | 모르는 값(`"group":"drawings"`, `"line":"longdash"`) 하나로 파일 전체가 「VectorCraft 파일이 아님」으로 거부됨 | 검토자 권고 (b)로 고침: 범례를 너그럽게 읽어, 읽을 수 없는 범례는 그 레이어에서만 빠지고 그림은 열림. 형식 판은 4 그대로. 시험 `layers_read_their_legend_leniently`, `a_legend_this_version_cannot_read_is_left_out`. **사용자 확인 필요** |
+| C6 | minor | pt 칸에 쓰다가(Enter 없이) 칩을 누르면 칸 값이 이기고 실행 취소가 두 단계 | 고침: 같은 프레임에 칩이 눌렸으면 칩이 이기고 한 단계. 시험 `a_weight_chip_pressed_while_typing_wins` |
+| C7 = U5 | minor | 칸에 쓰는 중 Esc 한 번에 카드까지 닫힘 | 고침: 지난 프레임 끝에 칸이 키보드를 가졌는지 기억해, 그 Esc는 쓴 것만 되돌림. 시험 `esc_in_a_card_field_keeps_the_card` |
+| C8 | minor | 굵기 한 번에 카드가 지난 설정으로 다시 열림 | 고침: 열 때마다 처음(×0.8)부터. 시험 `weights_card_opens_afresh` |
+| C9 | minor | 퍼즈·속성 시험에 범례가 없음 | 고침: `format/tests/legend.rs`에 속성 시험 2개(아무 범례 값이나 정리되어 열림, 범례가 든 파일을 자르고 바이트를 바꿔도 패닉 없음), `command_sweep`의 잡동사니 인자에 범례 명령 13개 |
+| C10 | nit | 실행 취소 이름 둘(「Legend Entry」, 「Move to Legend Entry」)이 번역되지 않음 | 고침: 명령 이름 「Set Legend Entry」·「Use Legend Entry」로 맞춤(이미 번역됨). 시험 `legend_undo_steps_are_named_after_their_commands` |
+| C11 | nit | `legend.add`가 고른 순서가 아니라 그리기 순서의 첫 선을 씀 | 고침: 고른 순서. 시험 `adding_a_row_takes_the_first_selected_lines_look` |
+| C12 | nit | ×1.0이 0.001 격자 밖의 굵기(0.35355)를 반올림해 「바뀜 1」 | 그대로: 명세 7의 반올림 규칙 |
+| C13 | nit | 하위 레이어의 범례도 줄처럼 그려짐 | 고침: `Document::legend`는 맨 위 레이어만. 시험 `only_top_level_layers_are_legend_rows` |
+| C14 | nit · 시험 변경 | 빌드 때 바꾼 상태줄 시험이 「…」 떼기를 더는 보지 않는데 시험 변경표에 없음 | 고침: 단위 시험 `a_soon_note_drops_a_dialogs_ellipsis`, 아래 시험 변경표에 적음 |
+| U1 | major | 카드 밖 캔버스를 눌러 닫으면 그 누르기가 펜에도 가서 한 점짜리 패스가 남음 | 고침: 카드를 치운 누르기는 거기서 끝남(캔버스가 그 프레임의 누르기를 도구에 넘기지 않음). 터치패드 톡 누르기도 같음(아래 결함 둘째). 시험 `a_press_on_the_canvas_only_puts_a_card_away`, `a_tap_on_the_canvas_only_puts_a_card_away` |
+| U3 | major · J003 퇴행 | 평면용 범례를 넣은 뒤 리본 「밑그림」이 스캔을 놓지 못하고 빈 「밑그림」 줄만 숨김 | 고침: 무엇이 든 템플릿 레이어만 밑그림으로 셈. 빈 「밑그림」 줄만 있으면 놓기 창이 뜸. 시험 `the_underlay_tile_places_a_scan_beside_the_empty_underlay_row` |
+| U4 | major | 기호 보기 △·③가 시안보다 작음 | 고침: △는 12 × 11 px 선 그림, 다른 기호는 12 pt 글자를 24 px 안에 맞춤(작아도 7 pt). 시험 `mark_samples_are_as_large_as_the_mockup` |
+| U6 | minor | 잘린 이름 전체를 볼 길이 없음 | 고침: 이름이 잘린 줄은 풍선 첫 줄에 전체 이름, 굵기 한 번에 표의 잘린 칸과 카드 머리 부제(「…」로 잘림)에 풍선. 시험 `cut_names_and_apart_badges_say_themselves_on_hover` |
+| U7 | minor | 도면이 없을 때 「모든 굵기 ×0.8 …」가 켜져 있음 | 고침: 도면이 있을 때만 켜짐. 시험 `the_weights_button_waits_for_a_drawing` |
+| U8 | minor | 잠긴 줄을 누르면 펜만 그 모양을 받고 선은 다른 줄로 가서 바로 「따로」 | 고침: 잠기거나 숨은 줄은 고르지 않고 상태줄로 까닭을 알림(범례 판·컨트롤 바 목록, 엔진 `legend.pick`도 거절). 시험 `a_locked_or_hidden_row_is_not_picked`, `picking_a_locked_or_hidden_row_is_refused` |
+| U9 | minor | 굵기 없는 줄에서도 선종을 바꿀 수 있는데 아무 변화가 없음 | 고침: 굵기가 없으면 선종 칸이 흐리고 눌러도 바뀌지 않음. 시험 `a_row_without_a_weight_has_its_line_types_dimmed` |
+| U10 | minor | 두 번 누르기 간격 0.3초 | 고침: 0.5초(Windows 기본값). 시험 `a_slow_double_click_opens_the_editor` |
+| U11 | minor | 「따로 N」 표에 뜻 풀이가 없음 | 고침: 풍선 「굵기나 선 종류를 따로 바꾼 이 줄의 선: {n}개」(U6 시험) |
+| U12 | nit | 바닥 단추가 26 px(시안 24), ×·→·…가 작고 가늚 | 높이 24 px로 고침(시험 `cards_match_the_mockup_sizes`). 기호 글자 크기는 글꼴 대체 탓이라 그대로 |
+| U13 | nit | 카드 칩 줄 22 px(시안 24), 「이 줄이 곧 레이어입니다」 구간이 촘촘함 | 고침: 24 px, 그 줄 18 px(같은 시험) |
+| U14 | nit | 「pt」가 칸 오른쪽 끝, 「= mm」 11 px | 고침: pt는 숫자 바로 뒤, 「= mm」 12 pt(같은 시험) |
+| U15 | nit | 카드의 줄 개수가 고정폭 글꼴이 아님 | 고침(같은 시험) |
+| U16 | nit | 「×0.8」의 ×가 작고 흐림 | 고침: 칸 글꼴·먹색(같은 시험) |
+| U17 | nit | 굵기 한 번에 표 줄 26 px(시안 34), 「Ctrl+Z」 키 상자 없음 | 줄 34 px·머리 30 px로 고침(같은 시험). 키 상자는 그대로 |
+| U18 | nit | 「0.5 따로 ↺」 글자가 시안보다 작음(10 px) | 그대로: 줄의 다른 표 글자(10 pt)와 같게 둠 |
+| U19 | nit | 0.1·0.2 줄의 보기가 굵기 없는 줄의 흐린 보기와 비슷함 | 그대로: 디자인 2.1 7절 표(0.1 pt → 0.45 px)를 따름. 바꾸려면 사용자 결정 |
+| U20 | nit | 「범례에 더하기」로 만든 줄의 카드 머리가 「범례 줄 범례 줄 1」 | 그대로: 명세 19의 이름. 「새 줄 {n}」으로 바꿀지 사용자에게 물음 |
+| U21 | nit | 상태줄 「{n}개를 「{row}」 줄로 옮겼습니다」가 명세 13의 「선 N개를」과 다름 | 그대로(벗어난 점으로 적음): 옮기는 것이 선만이 아님(글자·이미지·그룹) |
+| U22 | nit | 컨트롤 바 범례 목록이 판과 다른 순서 | 고침: 판과 같은 묶음·★ 순서. 시험 `control_bar_lists_rows_in_the_legend_order` |
+| U23 | nit | 1366 × 728 창에서 카드가 탭 줄을 가림 | 고침: 카드는 캔버스 위 끝 아래로. 시험 `a_card_stays_under_the_tab_row` |
+
+## 재작업 1차 (rework)
+
+2026-10-11, 기준 `905641e`(작업 브랜치 제자리, 빌드 절의 예외 그대로). 지적마다 실패하는 시험을 먼저 쓰고 빨강을 본 뒤 고쳤다. 로그는 빌드 절과 같은 폴더이고 이름이 `rw1-`로 시작한다.
+
+손댄 파일: `crates/doc/src/{legend,node}.rs`, `crates/engine/src/cmd/legend.rs`, `crates/engine/src/tests_legend.rs`, `crates/engine/tests/command_sweep.rs`(잡동사니 인자 13개), `crates/format/tests/legend.rs`, `crates/ui-egui/src/canvas.rs`(2줄: Trowel 카드를 치운 누르기를 도구에 넘기지 않음. 카드가 없는 고전 화면에서는 일어나지 않음), `crates/ui-egui/src/trowel/{card,control,legend,mod,palette,ribbon,rowedit,weights,tests}.rs`, `crates/ui-egui/src/i18n/ko.tsv`(4행 추가), 이 파일.
+
+빨강 → 초록:
+
+| 단계 | 빨강 | 초록 |
+|---|---|---|
+| 범례 모형 (C3·C4·C5·C13) | `rw1-red1-doc.log` 4 실패 | `rw1-green1-doc.log` 10 통과 |
+| 파일 형식 (C4·C5·C9) | 시험을 먼저 썼지만 빨강 로그를 남기지 않고 구현까지 감. 아래 변이 확인으로 보완 | `rw1-green2-format.log` 7 통과·1 실패(`any_legend_opens_tidy`: 자른 기호 끝에 공백이 남음) → 자른 뒤 다시 다듬게 고쳐 `rw1-green2b-format.log` 8 통과 |
+| 변이 확인 | `rw1-mutant-read.log`: 너그러운 읽기와 정리를 일부러 빼면 format 시험 3개가 실패 | — |
+| 엔진 (C10·C11·U8) | `rw1-red3-engine.log` 2 실패, `rw1-red3b-engine.log` 1 실패 | `rw1-green3-engine.log` 25 통과, `rw1-sweep.log`(command_sweep) 15 통과 |
+| 화면 (C1·C2·C6·C7·C8·C14, U1–U23) | `rw1-red4-ui.log` 새 시험 17개 실패, `rw1-red5-u12.log` 1 실패(바닥 단추 26 px) | `rw1-green4-ui-hung.log` 멈춤(아래 결함) → 고친 뒤 `rw1-green5-ui.log` 99 통과·1 실패(J003 밑그림 시험, 아래 시험 변경) → `rw1-green6-ui.log` Trowel·번역·토큰 106 통과 |
+| 터치패드 톡 누르기 (재작업 중 찾음) | `rw1-red6-tap.log` 캔버스를 톡 누르면 카드가 닫히지 않음, `rw1-red7-tap.log`(첫 고침 뒤) 카드를 여는 톡이 그 카드를 바로 닫음 | `rw1-green7-ui.log` Trowel·번역·토큰 108 통과 |
+
+재작업 중 찾아 고친 결함: 첫 초록 실행이 멈췄다. 시험 스레드가 모두 잠금(futex)에서 기다리며 CPU를 쓰지 않았다. C7을 고치며 `card::show`가 `ctx.data_mut` 안에서 `ctx.egui_wants_keyboard_input()`(같은 문맥의 읽기 잠금)을 부른 것이 원인이다. egui의 디버그 빌드 잠금은 10초 기다린 뒤 패닉하고, 엔진 안전망이 그 패닉을 프레임마다 잡아 시험이 아주 느리게 돌거나 실패했다. 릴리스 빌드였다면 카드를 여는 순간 앱이 멈췄을 결함이다. 읽기를 `data_mut` 앞으로 옮겨 고쳤고, 바뀐 코드에 같은 모양(잠금 안에서 문맥 읽기)이 더 없는지 diff에서 찾아 확인했다.
+
+재작업 중 찾아 고친 결함 둘째(검토에 없던 것, 빌드 때부터): 터치패드의 톡 누르기처럼 누름과 뗌이 한 프레임에 오면, egui는 그 프레임의 화면 코드가 돌기 전에 누른 자리(`press_origin`)를 지운다. 그래서 카드 밖을 톡 누르면 카드가 닫히지 않고 그 누르기가 펜으로 갔다(U1이 톡에서는 고쳐지지 않았음). 처음에는 반대로 짐작해 「카드를 여는 톡이 그 카드를 닫는다」는 시험을 먼저 썼는데 통과했고, 그 까닭을 egui 소스에서 찾다가 위 원인을 확인했다. 누른 자리를 그 프레임의 이벤트에서 읽게 고치자(`rw1-red6-tap.log` → 통과), 이번에는 카드를 여는 톡이 그 카드를 바로 닫았다(`rw1-red7-tap.log`). egui가 같은 id의 카드가 전에 있던 자리를 계속 기억하기 때문이다. 카드를 연 프레임을 `Open.since`에 적고, 그 프레임의 누르기로는 닫지 않게 고쳤다(`card::Place.fresh`). 시험 `a_tap_on_the_canvas_only_puts_a_card_away`, `two_taps_open_the_editor_again`(카드가 열린 채 팔레트 「범례에 더하기」를 톡 누르는 경우 포함).
+
+명세에서 벗어난 점과 이유:
+
+1. 명세 5: `legend.pick`은 잠기거나 숨은 줄을 옮기지 않을 때도 거절한다(U8). 그 줄을 고르면 펜만 그 모양을 받고 선은 다른 레이어로 들어가 바로 「따로」가 되기 때문이다. 템플릿인 「밑그림」(잠김)·「desca 원본」(숨김) 줄도 고를 수 없고, 고르면 상태줄이 까닭을 말한다.
+2. 명세 13: 상태줄은 「선 N개를 …」이 아니라 「{n}개를 「{줄}」 줄로 옮겼습니다」. 옮기는 것이 선만이 아니기 때문이다(U21).
+3. 명세 17(두 번 누르기, C2 b): 첫 누르기가 옮긴 것은 두 번째 누르기가 실행 취소로 되돌린다. 되돌린 단계는 다시 하기(Ctrl+Shift+Z)에 남아, 그것을 누르면 옮김이 다시 된다.
+4. U1: 검토자 안(캔버스를 덮는 투명 Area)은 쓰지 않았다. egui는 눌린 Area를 그 층의 맨 위로 올리므로, 한 번 눌린 뒤에는 그 Area가 카드를 덮는다. 대신 그 프레임에 카드를 치운 누르기를 캔버스가 도구에 넘기지 않는다. 오른쪽 기둥·리본 같은 다른 곳의 누르기는 지금처럼 카드를 닫으며 제 일도 한다(검토자도 그래도 된다고 함).
+5. U3: 타일로 놓은 스캔은 `file.place`가 만드는 별도 「Template …」 레이어로 들어가고, 빈 「밑그림」 줄은 그대로 남는다. 스캔을 그 줄 안에 넣는 것은 밑그림을 다루는 J008에서 한다.
+6. C14: 「…」 떼기 코드는 그대로 두고 단위 시험으로 되살렸다.
+
+시험 변경(이미 있던 시험의 기대·준비를 바꾼 것, 커밋에 `시험 변경:`으로 적음):
+
+| 시험 | 바꾼 것 | 이유 |
+|---|---|---|
+| `legend_rows_show_the_look_star_and_overrides`(J005) | 기호 줄의 글자 목록 기대에서 「△」를 뺌 | △를 글자 대신 선 그림으로 그림(U4). 크기와 모양은 새 시험 `mark_samples_are_as_large_as_the_mockup`이 봄 |
+| `underlay_tile_places_a_template_then_shows_and_hides_it`(J003) | 「Scan」 템플릿 레이어에 사각형 하나를 그린 뒤 템플릿으로 함. 기대는 그대로 | U3 고침으로 밑그림은 무엇이 든 템플릿 레이어만이다. 시험이 놓인 스캔 대신 쓰던 빈 레이어는 이제 밑그림이 아니므로, 시험 주석(「with one placed」)대로 스캔이 놓인 상태를 만듦 |
+| `status_bar_shows_messages_for_a_while`(J003, 빌드 때 바꿈) | 이번에는 바꾸지 않음 | 빌드 때 바꾼 뒤 「…」 떼기를 더는 보지 않게 된 범위 축소를 빌드 절 표에 적지 않았다(C14). 단위 시험 `a_soon_note_drops_a_dialogs_ellipsis`로 되살림 |
+
+시험 손잡이(harness): `type_into`를 `type_over`(쓰기만) + Enter로 나눔(기대 변화 없음), `tap`(누름과 뗌을 한 프레임에), `rest_at`(풍선이 뜨게 머무름), `enabled`(흐린 칸 확인), `row_weight`, `triangles_in`.
+
+재작업 1차 검증(이 절의 커밋에 든 작업 트리 그대로). 명령은 `/home/claude/vector`에서 `CARGO_PROFILE_DEV_DEBUG=0`, 로그는 위와 같은 폴더.
+
+| 명령 | 시각(UTC) | 종료 코드 | 결과 | 로그 |
+|---|---|---|---|---|
+| `cargo xtask ci`(톡 결함을 고치기 전) | ~20:53:36 | 없음(멈춤) | fmt·clippy 통과 뒤 시험 빌드 중에 내가 멈춤: 톡 결함을 먼저 고치려고. 통과로 세지 않음 | `rw1-ci-xtask-stopped.log` |
+| `cargo xtask ci` | 21:03:38–21:10:35 | 0 | 7단계 모두 통과(fmt, clippy, test, assets, brands, layers, wasm). 시험 바이너리 118개, 5,201 통과·0 실패·4 무시(전부터 `#[ignore]`) | `rw1-ci-xtask.log` |
+| `cargo check --target wasm32-unknown-unknown -p vectorcraft-web` | 21:10:43–21:11:15 | 0 | 경고 2개는 검증 절과 같은 기존 것(`dialogs/missing_links.rs:69`, `i18n/mod.rs:272`) | `rw1-web-check.log` |
+| `cargo build -p vectorcraft` | 21:11:21–21:13:52 | 0 | 화면 확인용. 검토자가 쓰도록 사본 `scratchpad/factory/J005/vectorcraft-rw1` | `rw1-build-app.log` |
+
+두 관문 사이에 `cargo fmt --all -- --check`가 이번에 쓴 시험 코드의 줄 바꿈(`crates/doc/src/legend.rs`, `crates/format/tests/legend.rs`)을 지적해 `cargo fmt --all`로 고쳤다(그 두 파일만 바뀜, 로그는 남기지 않음).
+
+대상 시험은 위 전체 시험 안에서 돌았다(`rw1-ci-xtask.log`에서 셈): doc `legend::` 10, format `tests/legend.rs` 8, engine `tests_legend::` 24 + `every_command_has_unique_id_and_doc` 1, `command_sweep` 15, ui-egui `trowel::` 65 · `theme::` 6 · `i18n::` 37, 모두 통과. 첫 검증(5,171)보다 30개 많다(doc 4, format 4, engine 3, 화면 19). 완료 기준 1–25의 확인은 검증 절 표 그대로이고, 재작업으로 더한 시험은 검토 1차 표의 「처리」 칸에 있다.
+
+실제 화면(기준 24): `scratchpad/j005/drive6.py`(drive5.py와 같은 도면에 검토 장면을 더함, Xvfb, 제어 채널 7993, 위 사본 실행 파일)로 찍었다. 그림은 커밋하지 않고 `/mnt/project-files/design/trowel-run/`에 둔다.
+
+- `J005r1-plan.png` 평면 화면, `J005r1-side-by-side.png` 시안(`win-plan.png`)과 나란히.
+- `J005r1-tip.png`: 잘린 이름 「굴광선 (유구…」에 머물면 풍선 첫 줄이 「굴광선 (유구 면)」, 둘째 줄이 누르기 안내.
+- `J005r1-row-card.png`·`J005r1-weights-card.png` 두 카드, `J005r1-cards-side-by-side.png` 그림 ②③과 나란히.
+- `J005r1-u1-press.png`(U1): 펜을 든 채 줄 고치기 카드 밖 캔버스를 누름. 제어 채널 `ui.click`은 누름과 뗌을 한 프레임에 보내므로 톡 누르기와 같다. 카드만 닫히고 레이어별 객체 수가 그대로이며(드라이버 출력 `U1 counts equal: True`), 그림이 `J005r1-plan.png`와 픽셀까지 같다(점 하나 남지 않음).
+- `J005r1-u2-double.png`(U2·C2): 선택 도구로 「2호 수혈」을 고른 채 「시굴격자」 줄을 두 번 누름(0.12초 간격). 카드가 그 줄 높이에 뜨고 「이 줄의 선 0개」, 상태줄 「고른 선은 옮기지 않고 그대로 둡니다」. 드라이버 출력: 2호 수혈은 굴광선 줄에 그대로, 현재 레이어는 시굴격자, 마지막 실행 취소 단계는 그 앞의 「Layer Options」 그대로(옮김이 되돌려짐).
+- `J005r1-u8-locked.png`(U8): 잠긴 「조사구역 경계」 줄을 누름. 상태줄 「「조사구역 경계」 줄이 잠겨 있습니다: 잠금을 풀어야 이 줄로 그립니다」, 현재 레이어는 시굴격자 그대로, 실행 취소 단계 없음.
+- `J005r1-u3-underlay.png`(U3): 빈 「밑그림」 줄만 있을 때 리본 「밑그림」을 누름. 놓기 창을 불렀다(이 기계에는 파일 창이 없어 rfd가 실패하고 상태줄이 「cancelled」, `shots6/app.log`의 `Failed to pick files`). 타일은 켜짐으로 보이지 않는다.
+
+J003 영역: `J003r2-plan.png`와 영역별로 픽셀을 견줬다. 캡션·메뉴·리본·도구 기둥·도면집·탭·속성·상태줄은 같고, 다른 곳은 컨트롤 바 범례 칸(줄 보기)·팔레트 선종과 범례 단추·범례 판(모두 J005)이다. 첫 J005 그림(`J005-plan.png`)과는 리본 「밑그림」 타일(U3: 빈 밑그림 줄을 밑그림으로 세지 않아 꺼짐)과 범례 판(△·③ 보기, 바닥 단추 높이)만 다르다.
+
+시안과 남은 차이(검증 절 표에서 바뀐 것만, 나머지는 그 표 그대로):
+
+| 곳 | 시안 | 앱 | 판단 |
+|---|---|---|---|
+| 기준점 △ 보기 | 선 그림, 잉크 12 × 10 px | 선 그림, 잉크 12 × 10 px | 같음(U4 고침) |
+| 유물 출토 위치 ③ 보기 | 잉크 10 × 11 px | 잉크 11 × 9 px, 대체 글꼴이라 획 모양이 조금 다름 | 받아들임 |
+| 표고점 「·152」·글자 「가」 보기 | 8 px 고정폭 · 10 px 글자(잉크 18 × 6, 9 × 10) | 모든 기호를 12 pt 한 규칙으로(잉크 20 × 8, 11 × 11) | 1–2 px 큼. 검토자 권고(기호 11–12 px)를 따른 결과 |
+| 리본 「밑그림」 | 켜짐(스캔이 놓인 도면) | 꺼짐 | 그림에 스캔이 없음(U3 고침대로). 밑그림 다루기는 J008 |
+| 굵기 한 번에 비율 칸 | 「×0.8」 | 「× 0.8」(× 뒤 약 4 px) | nit |
+| 굵기 한 번에 표 | 「Ctrl+Z」 키 상자 | 그냥 글자 | U17에서 남김 |
+| 줄 고치기 카드 「= 0.28 mm」 | 12 px(`.note`. 검증 절의 「14 px」는 그림을 잘못 잰 것) | 12 pt | 같음(U14 고침) |
+| 표 줄·칩 줄·바닥 단추 높이 | 34 · 24 · 24 px | 34 · 24 · 24 px | 같음(U12·U13·U17 고침) |
+
+범위 밖 발견(고치지 않음): 파일 창을 취소하면 상태줄에 영어 「cancelled」가 보인다. 고전 코드(`crates/ui-egui/src/place.rs:147`, `io.rs:80` 등)의 기존 동작이라 J005와 상관없다. 번역할 때 함께 본다.
+
+GitHub 「Trowel CI」(검증 절의 이어서): `c14a4ab`의 run 38166616175는 곧이어 올린 `905641e`가 같은 브랜치에서 시작되며 취소됐다(워크플로 `concurrency: cancel-in-progress`). `905641e`(= `c14a4ab` 코드 + 검증 기록)의 run 38167165216이 19:14:24Z–19:29:33Z에 성공했다. 이 커밋의 실행은 다음 기록에 적는다.

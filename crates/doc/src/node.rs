@@ -416,8 +416,9 @@ pub enum NodeKind {
         /// percentage (0–100); `None`: not dimmed.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         dim_images: Option<u8>,
-        /// Trowel: the legend row this top-level layer is (the default look of its lines).
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        /// Trowel: the legend row this top-level layer is (the default look of its lines). Read
+        /// leniently and tidied ([`crate::legend::read`]).
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "crate::legend::read")]
         legend: Option<Box<crate::Legend>>,
     },
     /// A group. With `clip`, the first (bottom-most) child is the clipping path.

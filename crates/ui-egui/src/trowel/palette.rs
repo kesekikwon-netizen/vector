@@ -104,9 +104,9 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let cy = head.bottom() + 2.0 + 3.0 * ROW_H + 4.0 + 13.0;
     let x = button_soon(ui, wid("palette-cut", ()), pos2(r.left() + 14.0, cy), tw!("Cut Face"), true, "J014", &t) + 4.0;
     let open = app.session.active().is_some();
-    let add = small_button(ui, wid("palette-to-legend", ()), pos2(x, cy), tw!("Add to Legend"), open, &t)
+    let add = small_button(ui, wid("palette-to-legend", ()), pos2(x, cy), 26.0, tw!("Add to Legend"), open, &t)
         .on_hover_text(tw!("Make a legend row of this look and put the selected lines on it"));
-    let back = small_button(ui, wid("palette-from-legend", ()), pos2(add.rect.right() + 4.0, cy), tw!("Back to the Legend"), open, &t)
+    let back = small_button(ui, wid("palette-from-legend", ()), pos2(add.rect.right() + 4.0, cy), 26.0, tw!("Back to the Legend"), open, &t)
         .on_hover_text(tw!("Give the selected lines, or the next line, their row's look"));
     if let Some(p) = set {
         crate::panels::stroke::set(app, p);

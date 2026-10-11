@@ -312,6 +312,28 @@ fn picking_a_locked_or_hidden_row_does_not_move() {
     }
 }
 
+/// A locked or hidden row takes no line, so it isn't picked: the pen would take a look its lines
+/// can't have (they would go to another layer and show as set apart).
+#[test]
+fn picking_a_locked_or_hidden_row_is_refused() {
+    let mut s = session();
+    let row = layer(&mut s, "조사구역 경계");
+    run(&mut s, "legend.set", json!({"id": row.0, "weight": 1.0, "line": "dashdot"}));
+    let other = layer(&mut s, "시굴격자");
+    run(&mut s, "legend.set", json!({"id": other.0, "weight": 0.5}));
+    run(&mut s, "legend.pick", json!({"id": other.0}));
+    run(&mut s, "select.none", json!({}));
+    for prop in ["locked", "visible"] {
+        run(&mut s, "layer.setProps", json!({"ids": [row.0], "locked": prop == "locked", "visible": prop != "visible"}));
+        let before = (doc_json(&s), depth(&s), current(&s), s.new_art_stroke());
+        assert!(s.execute("legend.pick", &json!({"id": row.0})).is_err(), "{prop}");
+        assert_eq!((doc_json(&s), depth(&s), current(&s), s.new_art_stroke()), before, "{prop}: the current layer and the pen stay");
+        run(&mut s, "layer.setProps", json!({"ids": [row.0], "locked": false, "visible": true}));
+    }
+    run(&mut s, "legend.pick", json!({"id": row.0}));
+    assert_eq!(current(&s), Some(row));
+}
+
 // ---------- legend.revert ----------
 
 #[test]
@@ -698,4 +720,54 @@ fn adding_a_row_with_nothing_selected_takes_the_pen() {
     let l = legend_of(&s, row).unwrap();
     assert_eq!((l.weight, l.line, l.sample), (Some(0.2), LineType::Dotted, LegendSample::Line));
     assert_eq!(node(&s, row).display_name(), "Layer 2");
+}
+
+/// The look comes from the first selected line, as the palette shows it (`shown_stroke`), not the
+/// lowest one.
+#[test]
+fn adding_a_row_takes_the_first_selected_lines_look() {
+    let mut s = session();
+    let low = rect(&mut s, 0.0);
+    let high = rect(&mut s, 30.0);
+    set_weight(&mut s, &[low], 0.35);
+    set_dash(&mut s, &[low], &LineType::Dashed);
+    set_weight(&mut s, &[high], 0.5);
+    run(&mut s, "select.set", json!({"ids": [high.0, low.0]}));
+    assert_eq!(s.shown_stroke().map(|st| st.width), Some(0.5), "the palette shows the first selected line");
+    let row = id(&run(&mut s, "legend.add", json!({})));
+    let l = legend_of(&s, row).unwrap();
+    assert_eq!((l.weight, l.line), (Some(0.5), LineType::Solid));
+    assert_eq!(overrides(&s, row), vec![low]);
+}
+
+/// Each undo step is named after its command, which the Edit menu shows translated.
+#[test]
+fn legend_undo_steps_are_named_after_their_commands() {
+    let label = |s: &Session| s.doc().unwrap().history.undo.last().unwrap().label.clone();
+    let mut s = session();
+    let row = layer(&mut s, "바닥선");
+    run(&mut s, "legend.set", json!({"id": row.0, "weight": 0.5}));
+    assert_eq!(label(&s), "Set Legend Entry");
+    let other = layer(&mut s, "Layer 3");
+    let a = rect(&mut s, 0.0);
+    set_weight(&mut s, &[a], 0.8);
+    run(&mut s, "select.set", json!({"ids": [a.0]}));
+    run(&mut s, "legend.pick", json!({"id": row.0, "move": true}));
+    assert_eq!(parent(&s, a), Some(row));
+    assert_eq!(label(&s), "Use Legend Entry");
+    set_weight(&mut s, &[a], 0.3);
+    run(&mut s, "legend.revert", json!({"ids": [a.0]}));
+    assert_eq!(weight(&s, a), 0.5);
+    assert_eq!(label(&s), "Revert to the Legend");
+    run(&mut s, "legend.weights", json!({"how": "ratio", "ratio": 0.8}));
+    assert_eq!(label(&s), "Change Weights at Once");
+    run(&mut s, "legend.addGroup", json!({"group": "finds"}));
+    assert_eq!(label(&s), "Add Legend Group");
+    run(&mut s, "layer.setCurrent", json!({"id": other.0}));
+    run(&mut s, "legend.add", json!({}));
+    assert_eq!(label(&s), "Add to Legend");
+    let specs = crate::cmd::legend::specs();
+    for l in ["Set Legend Entry", "Use Legend Entry", "Revert to the Legend", "Change Weights at Once", "Add Legend Group", "Add to Legend"] {
+        assert!(specs.iter().any(|c| c.label == l), "{l} is a command's name");
+    }
 }

@@ -11,6 +11,13 @@ pub const MM: f64 = 72.0 / 25.4;
 /// How close two weights or dash lengths (points) must be to count as the same: the Select Same
 /// Stroke Weight tolerance (`select.same.strokeWeight`).
 pub const SAME: f64 = 1e-9;
+/// The heaviest weight a row takes (points), as Stroke Weight (`stroke.set`).
+pub const MAX_WEIGHT: f64 = 1000.0;
+/// The most dash lengths a line type takes.
+pub const MAX_DASHES: usize = 16;
+/// The longest mark text and Strata key (characters).
+pub const MAX_MARK: usize = 32;
+pub const MAX_KEY: usize = 64;
 
 /// A legend row: the look of its layer's lines and how the row shows. Every field is optional in
 /// the file; defaults are not written.
@@ -119,9 +126,15 @@ impl LineType {
         st.dash.as_ref().map_or(LineType::Solid, |d| LineType::from_dash(&d.pattern))
     }
 
-    /// The same dashes (a custom pattern equal to a named one is that type).
+    /// The dashes it draws: `None` when solid or when its pattern draws none.
+    fn drawn(&self) -> Option<Vec<f64>> {
+        self.dash_pt().filter(|p| crate::Dash { pattern: p.clone(), ..crate::Dash::default() }.is_dashed())
+    }
+
+    /// The same dashes (a custom pattern equal to a named one is that type; one that draws none is
+    /// solid).
     pub fn same(&self, other: &LineType) -> bool {
-        match (self.dash_pt(), other.dash_pt()) {
+        match (self.drawn(), other.drawn()) {
             (None, None) => true,
             (Some(a), Some(b)) => same_lengths(&a, &b),
             _ => false,
@@ -141,6 +154,45 @@ impl Legend {
         let Some((w, line)) = self.look() else { return false };
         (st.width - w).abs() > SAME || !line.same(&LineType::of(st))
     }
+
+    /// The row as the commands take it, for one a file gave (untrusted): a weight within
+    /// 0–[`MAX_WEIGHT`] (none when not a number), dashes that draw, at most [`MAX_DASHES`] (else
+    /// solid; a named type's read as that type), a mark and a Strata key trimmed and cut to
+    /// [`MAX_MARK`] and [`MAX_KEY`] characters (an empty mark shows a line, an empty key is none).
+    pub fn tidied(mut self) -> Legend {
+        self.weight = self.weight.filter(|w| w.is_finite()).map(|w| w.clamp(0.0, MAX_WEIGHT));
+        if let LineType::Custom(p) = &self.line {
+            self.line = if p.len() <= MAX_DASHES { LineType::from_dash(p) } else { LineType::Solid };
+        }
+        if let LegendSample::Mark(m) = &self.sample {
+            let m = clip(m, MAX_MARK);
+            self.sample = if m.is_empty() { LegendSample::Line } else { LegendSample::Mark(m) };
+        }
+        self.strata = self.strata.map(|k| clip(&k, MAX_KEY)).filter(|k| !k.is_empty());
+        self
+    }
+}
+
+/// Text trimmed and cut to `max` characters (and trimmed again where the cut lands on a space).
+pub fn clip(s: &str, max: usize) -> String {
+    let cut: String = s.trim().chars().take(max).collect();
+    cut.trim_end().to_string()
+}
+
+/// Read a layer's legend leniently: one this version can't read (a line type from a newer version,
+/// a value of another kind) leaves the layer without a legend instead of failing the whole file;
+/// one it reads is [tidied](Legend::tidied).
+pub(crate) fn read<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Box<Legend>>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Read {
+        Legend(Legend),
+        Other(serde::de::IgnoredAny),
+    }
+    Ok(match Option::<Read>::deserialize(d)? {
+        Some(Read::Legend(l)) => Some(Box::new(l.tidied())),
+        Some(Read::Other(_)) | None => None,
+    })
 }
 
 /// The painted top stroke of a line.
@@ -184,9 +236,9 @@ impl Node {
 }
 
 impl Document {
-    /// The legend row of the top-level layer `layer`.
+    /// The legend row of the top-level layer `layer` (a sublayer is no row).
     pub fn legend(&self, layer: NodeId) -> Option<&Legend> {
-        self.node(layer)?.legend()
+        self.layers.iter().find(|l| l.id == layer)?.legend()
     }
 }
 
@@ -318,6 +370,106 @@ mod tests {
         assert!(!no_look.differs(&stroke(3.0, None)), "a row without a weight has no overrides");
         assert_eq!(no_look.look(), None);
         assert_eq!(dashed.look(), Some((0.5, &LineType::Dashed)));
+    }
+
+    #[test]
+    fn a_pattern_that_draws_nothing_is_solid() {
+        // A file can hold dashes that draw nothing: they look like a solid line.
+        let nothing = LineType::Custom(vec![0.0, 0.0]);
+        assert!(nothing.same(&LineType::Solid));
+        assert!(LineType::Solid.same(&nothing));
+        assert!(!nothing.same(&LineType::Dashed));
+        let row = Legend { weight: Some(0.5), line: nothing, ..Legend::default() };
+        assert!(!row.differs(&stroke(0.5, None)), "a solid line follows the row");
+        assert!(!row.differs(&stroke(0.5, Some(vec![0.0]))));
+    }
+
+    #[test]
+    fn only_top_level_layers_are_legend_rows() {
+        let row = Legend { weight: Some(0.5), ..Legend::default() };
+        let with_row = |mut n: Node| {
+            if let NodeKind::Layer { legend, .. } = &mut n.kind {
+                *legend = Some(Box::new(row.clone()));
+            }
+            n
+        };
+        let sub = with_row(Node::layer(NodeId(3), "sub", LayerColor::Preset(1)));
+        let top = with_children(with_row(Node::layer(NodeId(2), "top", LayerColor::Preset(0))), vec![sub]);
+        let mut d = Document::new(100.0, 100.0);
+        d.layers = vec![Arc::new(top)];
+        assert_eq!(d.legend(NodeId(2)), Some(&row));
+        assert_eq!(d.legend(NodeId(3)), None, "a sublayer is not a row");
+    }
+
+    #[test]
+    fn odd_values_are_tidied_as_the_commands_take_them() {
+        let dashed = LineType::Dashed.dash_pt().unwrap_or_default();
+        let cases = [
+            (
+                Legend { weight: Some(-3.0), line: LineType::Custom(vec![0.0, 0.0]), sample: LegendSample::Mark("  ".into()), ..Legend::default() },
+                Legend { weight: Some(0.0), ..Legend::default() },
+            ),
+            (
+                Legend {
+                    weight: Some(5000.0),
+                    line: LineType::Custom(vec![1.0; 17]),
+                    strata: Some(format!(" {} ", "k".repeat(100))),
+                    ..Legend::default()
+                },
+                Legend { weight: Some(1000.0), strata: Some("k".repeat(64)), ..Legend::default() },
+            ),
+            (
+                Legend { weight: Some(f64::NAN), line: LineType::Custom(vec![1.0, f64::INFINITY]), strata: Some("  ".into()), ..Legend::default() },
+                Legend::default(),
+            ),
+            (
+                Legend {
+                    weight: Some(0.5),
+                    line: LineType::Custom(dashed),
+                    sample: LegendSample::Mark(format!(" {} ", "가".repeat(40))),
+                    ..Legend::default()
+                },
+                Legend { weight: Some(0.5), line: LineType::Dashed, sample: LegendSample::Mark("가".repeat(32)), ..Legend::default() },
+            ),
+        ];
+        for (odd, tidy) in cases {
+            assert_eq!(odd.clone().tidied(), tidy, "{odd:?}");
+            assert_eq!(tidy.clone().tidied(), tidy, "tidy rows stay as they are");
+        }
+        let fine = Legend {
+            weight: Some(0.35),
+            line: LineType::Custom(vec![2.5, 1.25]),
+            favourite: true,
+            sample: LegendSample::Mark("③".into()),
+            strata: Some("artifact_point".into()),
+            group: Some(LegendGroup::Finds),
+        };
+        assert_eq!(fine.clone().tidied(), fine);
+    }
+
+    /// A legend this version can't read leaves its layer without one (the file still opens), and
+    /// one it reads is tidied.
+    #[test]
+    fn layers_read_their_legend_leniently() {
+        let read = |legend: serde_json::Value| -> Option<Legend> {
+            let mut v = serde_json::to_value(Node::layer(NodeId(1), "row", LayerColor::Preset(0))).unwrap_or_default();
+            v["kind"]["legend"] = legend;
+            let n: Node = serde_json::from_value(v).unwrap_or_else(|e| panic!("the layer opens: {e}"));
+            n.legend().cloned()
+        };
+        assert_eq!(read(serde_json::json!({"weight": 0.5, "line": "wavy"})), None, "a line type from a newer version");
+        assert_eq!(read(serde_json::json!({"weight": "thick"})), None);
+        assert_eq!(read(serde_json::json!([1, 2])), None);
+        assert_eq!(read(serde_json::Value::Null), None);
+        assert_eq!(
+            read(serde_json::json!({"weight": 0.8, "group": "plan"})),
+            Some(Legend { weight: Some(0.8), group: Some(LegendGroup::Plan), ..Legend::default() })
+        );
+        assert_eq!(
+            read(serde_json::json!({"weight": -1, "line": {"custom": [0, 0]}})),
+            Some(Legend { weight: Some(0.0), ..Legend::default() }),
+            "tidied"
+        );
     }
 
     #[test]

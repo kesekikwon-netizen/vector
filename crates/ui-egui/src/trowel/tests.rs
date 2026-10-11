@@ -192,6 +192,16 @@ impl Harness {
         self.settle();
     }
 
+    /// A touchpad's tap at `at`: the press and the release in one frame.
+    fn tap(&mut self, at: Pos2) {
+        let (button, modifiers) = (PointerButton::Primary, egui::Modifiers::default());
+        self.frame(vec![
+            Event::PointerMoved(at),
+            Event::PointerButton { pos: at, button, pressed: true, modifiers },
+            Event::PointerButton { pos: at, button, pressed: false, modifiers },
+        ]);
+    }
+
     /// Press and let go of `key`.
     fn key(&mut self, key: egui::Key) {
         for pressed in [true, false] {
@@ -202,17 +212,34 @@ impl Harness {
 
     /// Click the text field `id`, select what it holds and type `text` over it, then Enter.
     fn type_into(&mut self, id: egui::Id, text: &str) {
+        self.type_over(id, text);
+        self.key(egui::Key::Enter);
+    }
+
+    /// Click the text field `id`, select what it holds and type `text` over it; it keeps the
+    /// keyboard.
+    fn type_over(&mut self, id: egui::Id, text: &str) {
         self.click(id);
         let all = egui::Modifiers::COMMAND;
         self.frame(vec![Event::Key { key: egui::Key::A, physical_key: None, pressed: true, repeat: false, modifiers: all }]);
         self.frame(vec![Event::Text(text.to_string())]);
-        self.key(egui::Key::Enter);
     }
 
     fn hover(&mut self, id: egui::Id) {
         let at = self.rect(id).unwrap_or_else(|| panic!("no widget {id:?}")).center();
         self.frame(vec![Event::PointerMoved(at)]);
         self.settle();
+    }
+
+    /// Rest the pointer on `at` long enough for its hover text to show.
+    fn rest_at(&mut self, at: Pos2) {
+        self.frame(vec![Event::PointerMoved(at)]);
+        self.later(1.0);
+    }
+
+    /// Whether the widget `id` took presses in the last frame: not when it was in a disabled part.
+    fn enabled(&self, id: egui::Id) -> Option<bool> {
+        self.ctx.viewport(|vp| vp.prev_pass.widgets.get(id).map(|w| w.enabled))
     }
 
     /// The texts painted inside `area`, left to right.
@@ -1002,8 +1029,9 @@ fn underlay_tile_places_a_template_then_shows_and_hides_it() {
     assert_eq!(d.kind, crate::dialogs::place::KIND);
     assert_eq!(d.fields.get("template"), Some(&json!(true)), "Template ticked");
     h.app.ui.dialog = None;
-    // With a template layer: the tile shows it on and hides it, then shows it again.
+    // With a template layer holding a scan: the tile shows it on and hides it, then shows it again.
     let id = h.app.run("layer.new", json!({"name": "Scan"})).unwrap()["id"].as_u64().unwrap();
+    draw_rect(&mut h, 10.0);
     h.app.run("layer.setProps", json!({"ids": [id], "template": true})).unwrap();
     h.settle();
     let t = h.tokens();
@@ -1233,9 +1261,10 @@ fn legend_rows_show_the_look_star_and_overrides() {
     let sample = Rect::from_min_max(pos2(sr.left() + 56.0, sr.top()), pos2(sr.left() + 90.0, sr.bottom()));
     let dashes: Vec<_> = h.segments_in(sample).into_iter().filter(|(_, s)| (s.width - 0.6).abs() < 1e-3 && s.color == t.text).collect();
     assert!(dashes.len() >= 3, "dashes: {:?}", h.segments_in(sample));
-    // A mark row: its mark and no weight. It is the current row: on oat, its name regular.
+    // A mark row: its mark (△ drawn as a shape: [`mark_samples_are_as_large_as_the_mockup`]) and
+    // no weight. It is the current row: on oat, its name regular.
     let dr = row(&h, datum);
-    assert_eq!(h.texts_in(dr), ["△", "Datum", "0"]);
+    assert_eq!(h.texts_in(dr), ["Datum", "0"]);
     assert_eq!(h.font_of("Datum", dr).unwrap().family, egui::FontFamily::Proportional);
     assert_eq!(h.color_of("Datum", dr), Some(t.text));
     // A layer without a row, as before: its colour, name and count.
@@ -1844,4 +1873,423 @@ fn control_bar_lists_rows_with_their_look() {
     assert_eq!((pen.width, LineType::of(&pen)), (0.8, LineType::Dashed));
     assert_eq!(h.app.session.active().unwrap().doc.layer_containing(line), Some(first), "nothing moves");
     assert!(!patch_in(&h, h.rect(wid("ctl-layer", ())).unwrap(), pits), "the field shows the row's look");
+}
+
+// ---------- J005 rework 1: what the code and UI reviews found ----------
+
+/// The legend weight of row `id`.
+fn row_weight(h: &Harness, id: NodeId) -> Option<f64> {
+    h.app.session.active().unwrap().doc.node(id).unwrap().legend().and_then(|l| l.weight)
+}
+
+/// A ratio typed into Weights at Once and Change pressed straight after (no Enter) changes the
+/// weights by what was typed; a ratio out of range is refused, says so and changes nothing
+/// (code review C1).
+#[test]
+fn weights_card_changes_by_the_ratio_just_typed() {
+    let mut h = Harness::new();
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.settle();
+    h.click(wid("legend-weights", ()));
+    h.type_over(wid("weights-ratio", ()), "0.5");
+    h.click(wid("weights-apply", ()));
+    assert_eq!(row_weight(&h, pits), Some(0.4), "×0.5: {}", h.status_line());
+    h.type_over(wid("weights-ratio", ()), "20");
+    h.click(wid("weights-apply", ()));
+    assert_eq!(row_weight(&h, pits), Some(0.4), "refused: nothing changes");
+    assert!(h.status_line().contains("The ratio is between 0.1 and 10"), "{}", h.status_line());
+}
+
+/// A weight chip pressed while points are being typed in the row's editor wins, one undo step
+/// (code review C6).
+#[test]
+fn a_weight_chip_pressed_while_typing_wins() {
+    let mut h = Harness::new();
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.settle();
+    h.double_click(wid("legend-row", pits.0));
+    h.type_over(wid("card-pt", ()), "0.4");
+    h.click(wid("card-weight", "0.5"));
+    assert_eq!(row_weight(&h, pits), Some(0.5));
+    h.app.run("edit.undo", json!({})).unwrap();
+    assert_eq!(row_weight(&h, pits), Some(0.8), "one undo step");
+}
+
+/// Esc while a card's field has the keyboard puts back what was typed and keeps the card; the next
+/// Esc puts the card away (code review C7, UI review U5).
+#[test]
+fn esc_in_a_card_field_keeps_the_card() {
+    let mut h = Harness::new();
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.settle();
+    h.double_click(wid("legend-row", pits.0));
+    h.type_over(wid("card-name", ()), "Postholes");
+    h.key(egui::Key::Escape);
+    assert!(h.rect(wid("row-card", ())).is_some(), "the card stays");
+    assert_eq!(h.app.session.active().unwrap().doc.node(pits).unwrap().display_name(), "Pits", "what was typed is put back");
+    h.key(egui::Key::Escape);
+    assert!(h.rect(wid("row-card", ())).is_none(), "the next Esc puts it away");
+}
+
+/// Weights at Once opens as it starts (by ratio, ×0.8) however it was left, even when another
+/// drawing came to the front while it was open (code review C8).
+#[test]
+fn weights_card_opens_afresh() {
+    let mut h = Harness::new();
+    legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.settle();
+    h.click(wid("legend-weights", ()));
+    h.click(wid("weights-how", "value"));
+    assert!(h.rect(wid("weights-from", ())).is_some());
+    h.app.run("file.new", json!({"name": "Site 2", "width": 400, "height": 300})).unwrap();
+    h.settle();
+    assert!(h.rect(wid("weights-card", ())).is_none(), "it goes with its drawing");
+    h.click(wid("legend-weights", ()));
+    let ratio = h.rect(wid("weights-ratio", ())).expect("by ratio");
+    assert_eq!(h.texts_in(ratio), ["×", "0.8"]);
+    assert!(h.rect(wid("weights-from", ())).is_none());
+}
+
+/// A press on the canvas while a card is open only puts the card away: the tool in hand doesn't
+/// get it (UI review U1).
+#[test]
+fn a_press_on_the_canvas_only_puts_a_card_away() {
+    let mut h = Harness::new();
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.app.select_tool("pen");
+    h.settle();
+    let nodes = |h: &Harness| h.app.session.active().unwrap().doc.node_count();
+    let n = nodes(&h);
+    let canvas = h.app.canvas_rect.unwrap();
+    h.double_click(wid("legend-row", pits.0));
+    assert!(h.rect(wid("row-card", ())).is_some());
+    h.click_at(canvas.center());
+    assert!(h.rect(wid("row-card", ())).is_none(), "the card is put away");
+    assert_eq!(nodes(&h), n, "the Pen got nothing");
+    h.click(wid("legend-weights", ()));
+    assert!(h.rect(wid("weights-card", ())).is_some());
+    h.click_at(canvas.center());
+    assert!(h.rect(wid("weights-card", ())).is_none());
+    assert_eq!(nodes(&h), n, "the Pen got nothing");
+    h.click_at(canvas.center());
+    assert!(nodes(&h) > n, "with no card the Pen draws");
+}
+
+/// The same with a touchpad's tap (a press and a release in one frame): it puts the card away and
+/// the Pen gets nothing.
+#[test]
+fn a_tap_on_the_canvas_only_puts_a_card_away() {
+    let mut h = Harness::new();
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.app.select_tool("pen");
+    h.settle();
+    let nodes = |h: &Harness| h.app.session.active().unwrap().doc.node_count();
+    let n = nodes(&h);
+    let canvas = h.app.canvas_rect.unwrap();
+    h.double_click(wid("legend-row", pits.0));
+    assert!(h.rect(wid("row-card", ())).is_some());
+    h.tap(canvas.center());
+    h.settle();
+    assert!(h.rect(wid("row-card", ())).is_none(), "the card is put away");
+    assert_eq!(nodes(&h), n, "the Pen got nothing");
+}
+
+/// A double click on a row with a selection tool in hand and lines selected opens the row's editor
+/// and leaves the lines where they were, as they were: the first click's move is taken back (code
+/// review C2 option b, UI review U2).
+#[test]
+fn double_clicking_a_row_with_lines_selected_moves_nothing() {
+    let mut h = Harness::new();
+    let first = h.layer_ids()[0];
+    let line = draw_rect(&mut h, 10.0);
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.app.run("select.set", json!({ "ids": [line.0] })).unwrap();
+    h.app.select_tool("selection");
+    h.settle();
+    h.double_click(wid("legend-row", pits.0));
+    assert!(h.rect(wid("row-card", ())).is_some(), "the editor opens");
+    assert_eq!(h.app.session.active().unwrap().doc.layer_containing(line), Some(first), "the line stays");
+    assert_eq!(weight_of(&h, line), 1.0, "with its own look");
+    assert_eq!(h.app.session.active().unwrap().selection.objects, [line], "still selected");
+    assert_eq!(h.current_layer(), Some(pits), "the row is the one drawn with");
+    assert!(h.status_line().contains("The selected lines stay where they were"), "{}", h.status_line());
+}
+
+/// Two clicks on a row up to half a second apart open its editor (a system's usual double click);
+/// further apart they are two picks (UI review U10).
+#[test]
+fn a_slow_double_click_opens_the_editor() {
+    let mut h = Harness::new();
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.settle();
+    let row = wid("legend-row", pits.0);
+    // The clicks' releases 0.35 s apart plus the wait.
+    h.click(row);
+    h.later(0.1);
+    h.click(row);
+    assert!(h.rect(wid("row-card", ())).is_some(), "0.45 s apart: the editor");
+    h.click(wid("card-close", ()));
+    h.later(1.0);
+    h.click(row);
+    h.later(0.25);
+    h.click(row);
+    assert!(h.rect(wid("row-card", ())).is_none(), "0.6 s apart: two picks");
+}
+
+/// A touchpad's tap comes as a press and a release in one frame. Two taps on a row open its
+/// editor, and do so again after a card was shown and put away: the press of the tap that opens a
+/// card doesn't put it away.
+#[test]
+fn two_taps_open_the_editor_again() {
+    let mut h = Harness::new();
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.settle();
+    let at = h.rect(wid("legend-row", pits.0)).unwrap().center();
+    for round in 0..2 {
+        h.tap(at);
+        h.tap(at);
+        h.settle();
+        assert!(h.rect(wid("row-card", ())).is_some(), "round {round}: the editor opens");
+        h.click(wid("card-close", ()));
+        assert!(h.rect(wid("row-card", ())).is_none(), "round {round}: ✕ puts it away");
+    }
+    // With the editor open, Add to Legend's tap opens the new row's editor.
+    h.tap(at);
+    h.tap(at);
+    h.settle();
+    h.tap(h.rect(wid("palette-to-legend", ())).unwrap().center());
+    h.settle();
+    let card = h.rect(wid("row-card", ())).expect("the new row's editor");
+    assert!(h.texts_in(card).iter().any(|s| s.starts_with("Legend Row ")), "{:?}", h.texts_in(card));
+}
+
+/// After the plan legend is added its Underlay row is there but empty: the Underlay tile still
+/// places a scan (UI review U3, J003's tile).
+#[test]
+fn the_underlay_tile_places_a_scan_beside_the_empty_underlay_row() {
+    let mut h = Harness::new();
+    let dir = std::env::temp_dir().join(format!("trowel-underlay-row-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let scan = dir.join("scan.svg");
+    std::fs::write(&scan, r#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="30"><rect width="40" height="30"/></svg>"#).unwrap();
+    let path = scan.to_string_lossy().to_string();
+    h.app.services.pick_open = Some(Box::new(move |_| Some(path.clone())));
+    h.app.run("legend.addGroup", json!({"group": "plan"})).unwrap();
+    h.settle();
+    let t = h.tokens();
+    let tile = h.rect(wid("tile", "underlay")).unwrap();
+    let well = Rect::from_min_size(pos2(tile.center().x - 22.0, tile.top()), vec2(44.0, 44.0));
+    assert_ne!(h.fill_at(well), Some(t.row_selected), "no scan to show");
+    h.click(wid("tile", "underlay"));
+    let d = h.app.ui.dialog.as_ref().expect("the Place dialog");
+    assert_eq!(d.kind, crate::dialogs::place::KIND);
+    assert_eq!(d.fields.get("template"), Some(&json!(true)), "Template ticked");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// The closed outlines painted inside `area` with three corners: where they are and their edge.
+fn triangles_in(h: &Harness, area: Rect) -> Vec<(Rect, egui::epaint::PathStroke)> {
+    h.shapes
+        .iter()
+        .filter_map(|c| match &c.shape {
+            egui::Shape::Path(p) if p.closed && p.points.len() == 3 && p.points.iter().all(|q| area.contains(*q)) => {
+                Some((Rect::from_points(&p.points), p.stroke.clone()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The mark samples are as large as the mockup's: △ is its triangle (10 × 9 inside 12 × 11, one
+/// point of ink), other marks are 12 points (UI review U4).
+#[test]
+fn mark_samples_are_as_large_as_the_mockup() {
+    let mut h = Harness::new();
+    let t = h.tokens();
+    let datum = legend_row(&mut h, "Datum", json!({"weight": null, "sample": {"mark": "△"}}));
+    let finds = legend_row(&mut h, "Finds", json!({"weight": 0.2, "sample": {"mark": "③"}}));
+    h.settle();
+    let dr = h.rect(wid("legend-row", datum.0)).unwrap();
+    let slot = Rect::from_min_size(pos2(dr.left() + 4.0 + 60.0, dr.center().y - 6.0), vec2(20.0, 12.0));
+    let found = triangles_in(&h, slot.expand(1.0));
+    let [(b, stroke)] = found.as_slice() else { panic!("one triangle: {found:?}") };
+    assert!((b.width() - 10.0).abs() < 0.6 && (b.height() - 9.0).abs() < 0.6, "{b:?}");
+    assert!((b.center().x - slot.center().x).abs() < 0.6, "centred: {b:?} in {slot:?}");
+    assert_eq!((stroke.width, stroke.color.clone()), (1.0, egui::epaint::ColorMode::Solid(t.text)));
+    let fr = h.rect(wid("legend-row", finds.0)).unwrap();
+    assert_eq!(h.font_of("③", fr).map(|f| f.size), Some(12.0));
+}
+
+/// What is cut short says itself in full on hover, and 「Apart N」 says what it means: a long row
+/// name, the badge, a long card head (cut with "…"), a long line of Weights at Once's table (UI
+/// review U6, U11).
+#[test]
+fn cut_names_and_apart_badges_say_themselves_on_hover() {
+    let mut h = Harness::sized(1600.0, 1400.0);
+    let long = "Pit outline of the northern dwelling, second phase";
+    let pits = legend_row(&mut h, long, json!({"weight": 0.8}));
+    h.app.run("stroke.set", json!({"weight": 0.5})).unwrap();
+    draw_rect(&mut h, 10.0);
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.settle();
+    let row = h.rect(wid("legend-row", pits.0)).unwrap();
+    let tip = |h: &Harness, s: &str| h.texts.iter().any(|p| p.text == s);
+    h.rest_at(pos2(row.left() + 140.0, row.center().y));
+    assert!(tip(&h, &format!("{long}\nDraw with this row · double-click to change it")), "the name in full");
+    let badge = h.texts.iter().find(|p| p.text == "Apart 1" && row.contains_rect(p.rect)).unwrap().rect;
+    h.rest_at(badge.center());
+    assert!(tip(&h, "Lines of this row with a weight or line type of their own: 1"), "what Apart means");
+    h.double_click(wid("legend-row", pits.0));
+    let (card, close) = (h.rect(wid("row-card", ())).unwrap(), h.rect(wid("card-close", ())).unwrap());
+    let head = h.texts.iter().find(|p| p.text == long && card.contains(p.rect.left_center()) && p.rect.top() < close.bottom()).unwrap().rect;
+    assert!(head.right() <= close.left(), "the card's head cut short with …: {head:?}, ✕ {close:?}");
+    h.click(wid("card-close", ()));
+    // Weights at Once's table: the longest line of rows changing alike.
+    h.app.run("legend.addGroup", json!({"group": "plan"})).unwrap();
+    h.settle();
+    h.click(wid("legend-weights", ()));
+    let card = h.rect(wid("weights-card", ())).unwrap();
+    let longest = plan_table(&h, json!({"how": "ratio", "ratio": 0.8})).into_iter().map(|r| r.0).max_by_key(|n| n.chars().count()).unwrap();
+    let cell = h.texts.iter().find(|p| p.text == longest && card.contains_rect(p.rect)).unwrap().rect;
+    h.rest_at(pos2(cell.left() + 20.0, cell.center().y));
+    assert!(h.texts.iter().filter(|p| p.text == longest).count() >= 2, "{longest} on hover");
+}
+
+/// With no drawing open Weights at Once's button is dimmed: there is nothing to change (UI review
+/// U7).
+#[test]
+fn the_weights_button_waits_for_a_drawing() {
+    let mut h = Harness::new();
+    let t = h.tokens();
+    h.app.run("file.close", json!({})).unwrap();
+    h.settle();
+    assert!(h.app.session.active().is_none());
+    let b = h.rect(wid("legend-weights", ())).expect("the button");
+    assert_eq!(h.color_of("All Weights ×0.8 …", b), Some(t.text_disabled));
+}
+
+/// A click on a locked or hidden row says why it isn't drawn with and leaves the current layer as
+/// it was; so does picking it in the Control bar's list (UI review U8).
+#[test]
+fn a_locked_or_hidden_row_is_not_picked() {
+    let mut h = Harness::new();
+    let first = h.layer_ids()[0];
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.app.run("layer.setCurrent", json!({ "id": first.0 })).unwrap();
+    h.app.run("layer.setProps", json!({ "ids": [pits.0], "locked": true })).unwrap();
+    h.settle();
+    h.click(wid("legend-row", pits.0));
+    assert_eq!(h.current_layer(), Some(first));
+    assert!(h.status_line().contains("Pits is locked: unlock it to draw with it"), "{}", h.status_line());
+    h.app.run("layer.setProps", json!({ "ids": [pits.0], "locked": false, "visible": false })).unwrap();
+    h.later(1.0);
+    h.click(wid("legend-row", pits.0));
+    assert_eq!(h.current_layer(), Some(first));
+    assert!(h.status_line().contains("Pits is hidden: show it to draw with it"), "{}", h.status_line());
+    h.app.select_tool("pen");
+    h.app.status("");
+    h.settle();
+    h.click(wid("ctl-layer", ()));
+    h.click(wid("ctl-layer-row", pits.0));
+    assert_eq!(h.current_layer(), Some(first));
+    assert!(h.status_line().contains("Pits is hidden: show it to draw with it"), "{}", h.status_line());
+}
+
+/// A row without a weight has no look: its line types are dimmed and change nothing (UI review U9).
+#[test]
+fn a_row_without_a_weight_has_its_line_types_dimmed() {
+    let mut h = Harness::new();
+    let datum = legend_row(&mut h, "Datum", json!({"weight": null, "sample": {"mark": "△"}}));
+    h.settle();
+    h.double_click(wid("legend-row", datum.0));
+    assert_eq!(h.enabled(wid("card-line", "dashed")), Some(false));
+    h.click(wid("card-line", "dashed"));
+    let line = h.app.session.active().unwrap().doc.node(datum).unwrap().legend().unwrap().line.clone();
+    assert_eq!(line, vectorcraft_doc::LineType::Solid);
+    // With a weight they run.
+    h.click(wid("card-weight", "0.5"));
+    assert_eq!(h.enabled(wid("card-line", "dashed")), Some(true));
+}
+
+/// The cards' sizes and type as in the mockup (figures ② and ③, UI review nits U12–U17): the
+/// legend footer's buttons 24 points, chip rows 24, the line under the Strata field 18, "= mm" in
+/// 12 points, "pt" right after the number, the row's line count in mono, ×0.8 in mono ink, the
+/// table's lines 34 and its head 30.
+#[test]
+fn cards_match_the_mockup_sizes() {
+    let mut h = Harness::sized(1600.0, 1400.0);
+    let t = h.tokens();
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.app.run("stroke.set", json!({"weight": 0.8})).unwrap();
+    draw_rect(&mut h, 10.0);
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.settle();
+    assert_eq!(h.rect(wid("legend-weights", ())).unwrap().height(), 24.0, "the legend footer's button");
+    h.double_click(wid("legend-row", pits.0));
+    let card = h.rect(wid("row-card", ())).unwrap();
+    assert_eq!(h.rect(wid("card-weight", "0.5")).unwrap().height(), 24.0);
+    assert_eq!(h.rect(wid("card-line", "solid")).unwrap().height(), 24.0);
+    let strata = h.rect(wid("card-strata", ())).unwrap();
+    let note = h.texts.iter().find(|p| p.text == "This row is the layer" && card.contains_rect(p.rect)).unwrap().rect;
+    let chip = h.rect(wid("card-weight", "0.5")).unwrap();
+    assert!((chip.top() - strata.bottom() - (5.0 + 18.0 + 5.0)).abs() < 0.6, "18 for the line between: {strata:?} {note:?} {chip:?}");
+    assert_eq!(h.font_of("= 0.28 mm", card).map(|f| f.size), Some(12.0));
+    let field = h.rect(wid("card-pt", ())).unwrap();
+    let number = h.texts.iter().find(|p| p.text == "0.8" && field.contains_rect(p.rect)).unwrap().rect;
+    let unit = h.texts.iter().find(|p| p.text == "pt" && field.contains_rect(p.rect)).unwrap().rect;
+    assert!(unit.left() - number.right() < 8.0, "pt right after the number: {number:?} {unit:?}");
+    assert_eq!(h.font_of("Lines: 1", card).map(|f| f.family), Some(crate::theme::mono(12.0).family));
+    h.click(wid("card-close", ()));
+    h.click(wid("legend-weights", ()));
+    let card = h.rect(wid("weights-card", ())).unwrap();
+    assert_eq!(h.rect(wid("weights-how", "ratio")).unwrap().height(), 24.0);
+    let ratio = h.rect(wid("weights-ratio", ())).unwrap();
+    assert_eq!(h.font_of("×", ratio).map(|f| f.family), Some(crate::theme::mono(11.0).family));
+    assert_eq!(h.color_of("×", ratio), Some(t.text));
+    let head = h.texts.iter().find(|p| p.text == "Legend Row" && card.contains_rect(p.rect)).unwrap().rect;
+    let first = h.texts.iter().find(|p| p.text == "Pits" && card.contains_rect(p.rect)).unwrap().rect;
+    assert!((first.center().y - head.center().y - (30.0 / 2.0 + 34.0 / 2.0)).abs() < 1.0, "head 30, lines 34: {head:?} {first:?}");
+}
+
+/// The Control bar's legend list shows the rows in the legend's order: the Strata rows' section,
+/// then the drawing's, favourites first in each (UI review U22).
+#[test]
+fn control_bar_lists_rows_in_the_legend_order() {
+    let mut h = Harness::new();
+    let first = h.layer_ids()[0];
+    let a = legend_row(&mut h, "A", json!({"weight": 0.5, "strata": "feature_line"}));
+    let b = legend_row(&mut h, "B", json!({"weight": 0.5, "favourite": true}));
+    let c = legend_row(&mut h, "C", json!({"weight": 0.2}));
+    h.app.select_tool("pen");
+    h.settle();
+    let all = [first, a, b, c];
+    assert_eq!(row_order(&h, &all), [a, b, c, first]);
+    h.click(wid("ctl-layer", ()));
+    let mut listed: Vec<(f32, NodeId)> = all.iter().map(|id| (h.rect(wid("ctl-layer-row", id.0)).unwrap().top(), *id)).collect();
+    listed.sort_by(|x, y| x.0.total_cmp(&y.0));
+    assert_eq!(listed.into_iter().map(|(_, id)| id).collect::<Vec<_>>(), [a, b, c, first]);
+}
+
+/// In a small window a card pushed up to clear the status bar stops under the tab row and scrolls
+/// instead (UI review U23).
+#[test]
+fn a_card_stays_under_the_tab_row() {
+    let mut h = Harness::sized(1366.0, 728.0);
+    let first = h.layer_ids()[0];
+    legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.settle();
+    h.double_click(wid("legend-row", first.0));
+    let c = h.rect(wid("row-card", ())).expect("the editor");
+    let canvas = h.app.canvas_rect.unwrap();
+    assert!(c.top() >= canvas.top() - 0.5, "{c:?} under the tab row, canvas {canvas:?}");
+    assert!(c.bottom() <= h.panel(STATUS).top() + 0.5, "{c:?}");
+}
+
+/// A press on something a later job brings that opens a dialog names it without its "…" (code
+/// review C14: nothing on screen reaches this now that Change Weights at Once… runs).
+#[test]
+fn a_soon_note_drops_a_dialogs_ellipsis() {
+    let ctx = egui::Context::default();
+    super::note_soon(&ctx, "Change All Weights…", "J005");
+    assert_eq!(super::soon_note(&ctx).as_deref(), Some("Change All Weights: coming soon (J005)"));
 }

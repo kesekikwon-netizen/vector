@@ -28,7 +28,7 @@ const STRATA: [(&str, &str); 7] = [
 
 /// The rows' height.
 const ROW_H: f32 = 24.0;
-const SEG_H: f32 = 22.0;
+const SEG_H: f32 = 24.0;
 
 /// What the editor asks for.
 enum Ask {
@@ -69,9 +69,9 @@ impl Row {
     }
 }
 
-/// Show the editor of row `id` from `at` within `bounds` ([`card::show`]). Returns whether it stays
-/// open: not when the row is gone.
-pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context, at: Pos2, bounds: Rect, id: NodeId) -> bool {
+/// Show the editor of row `id` at `place` ([`card::show`]). Returns whether it stays open: not when
+/// the row is gone.
+pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context, place: card::Place, id: NodeId) -> bool {
     let row = match app.session.active() {
         Some(st) => match st.doc.node(id) {
             Some(n) if n.is_layer() && st.doc.parent_of(id).is_none() => Row::of(n),
@@ -79,7 +79,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context, at: Pos2, boun
         },
         None => return false,
     };
-    let (mut open, asks) = card::show(ctx, wid("row-card", ()), at, bounds, (tw!("Legend Row"), &row.name), |ui, t| body(ui, &row, t));
+    let (mut open, asks) = card::show(ctx, wid("row-card", ()), place, (tw!("Legend Row"), &row.name), |ui, t| body(ui, &row, t));
     let ids = |v: &[NodeId]| v.iter().map(|n| n.0).collect::<Vec<_>>();
     for ask in asks {
         let done = match ask {
@@ -158,9 +158,10 @@ fn look(ui: &mut Ui, row: &Row, t: &Tokens, asks: &mut Vec<Ask>) {
         None => tw!("None").to_string(),
     };
     card::field_soon(ui, wid("card-strata", ()), r, &strata, true, (tw!("Choose a Strata Layer"), "J019"), t);
-    let r = card::row(ui, "", 14.0, t);
+    let r = card::row(ui, "", 18.0, t);
     text(ui, r.left_center(), Align2::LEFT_CENTER, tw!("This row is the layer"), font(12.0), t.text_dim);
-    // Weight: a palette weight, points typed, or none.
+    // Weight: a palette weight, points typed, or none. A chip pressed as the typing ends wins, then
+    // the none toggle: what was typed only counts on its own.
     let chips: Vec<String> = LADDER.iter().map(|w| pt(*w)).collect();
     let parts: Vec<Seg> = LADDER
         .iter()
@@ -169,36 +170,40 @@ fn look(ui: &mut Ui, row: &Row, t: &Tokens, asks: &mut Vec<Ask>) {
         .collect();
     let r = card::row(ui, tw!("Weight"), SEG_H, t);
     let seg = SegLook { h: SEG_H, pad: 6.0, font: mono(11.0) };
-    if let (Some(key), _) = segments(ui, "card-weight", r.left_center(), &seg, &parts, t)
-        && let Some(w) = card::points(key).filter(|w| legend.weight.is_none_or(|x| (x - w).abs() > SAME))
-    {
-        asks.push(Ask::Set(json!({ "weight": w })));
-    }
+    let chip = segments(ui, "card-weight", r.left_center(), &seg, &parts, t).0.and_then(card::points);
     let r = card::row(ui, "", ROW_H, t);
     let field = Rect::from_min_size(r.min, vec2(76.0, r.height()));
     let shown = legend.weight.map(pt).unwrap_or_default();
-    if let Some(typed) = card::text_field(ui, wid("card-pt", ()), field, &shown, mono(11.0), ("", "pt"), t) {
-        asks.push(match card::points(&typed) {
-            Some(w) => Ask::Set(json!({ "weight": w })),
-            None => Ask::NotAWeight,
-        });
-    }
+    let typed = card::text_field(ui, wid("card-pt", ()), field, &shown, mono(11.0), ("", "pt"), t);
     if let Some(w) = legend.weight {
         // Paper millimetres: shown only, the row keeps points.
         let mm = crate::i18n::fmt(tw!("= {mm} mm"), &[("mm", &format!("{:.2}", w / MM))]);
-        text(ui, pos2(field.right() + GAP_X, r.center().y), Align2::LEFT_CENTER, mm, font(11.0), t.text_dim);
+        text(ui, pos2(field.right() + GAP_X, r.center().y), Align2::LEFT_CENTER, mm, font(12.0), t.text_dim);
     }
     let none = toggle_rect(ui, r.right_center(), ROW_H, tw!("No weight"));
     let none = toggle(ui, wid("card-weight", "none"), none.translate(vec2(-none.width(), 0.0)), tw!("No weight"), legend.weight.is_none(), t);
-    if none.on_hover_text(tw!("The row leaves its lines' weights alone")).clicked() && legend.weight.is_some() {
-        asks.push(Ask::Set(json!({ "weight": null })));
-    }
+    let none = none.on_hover_text(tw!("The row leaves its lines' weights alone")).clicked() && legend.weight.is_some();
+    let set = match (chip, none, typed) {
+        (Some(w), _, _) => legend.weight.is_none_or(|x| (x - w).abs() > SAME).then(|| Ask::Set(json!({ "weight": w }))),
+        (None, true, _) => Some(Ask::Set(json!({ "weight": null }))),
+        (None, false, Some(typed)) => Some(match card::points(&typed) {
+            Some(w) => Ask::Set(json!({ "weight": w })),
+            None => Ask::NotAWeight,
+        }),
+        (None, false, None) => None,
+    };
+    asks.extend(set);
     // Line type; a pattern of its own shows none of them, and says so.
     let kinds = line_types();
     let parts: Vec<Seg> = kinds.iter().map(|(key, label, kind)| Seg { key, label, on: legend.line.same(kind), soon: None }).collect();
     let r = card::row(ui, tw!("Line"), SEG_H, t);
     let seg = SegLook { h: SEG_H, pad: 6.0, font: font(11.0) };
-    let (pressed, end) = segments(ui, "card-line", r.left_center(), &seg, &parts, t);
+    // A row without a weight has no look: its line types wait for one.
+    let mut types = ui.new_child(egui::UiBuilder::new().max_rect(r));
+    if legend.weight.is_none() {
+        types.disable();
+    }
+    let (pressed, end) = segments(&types, "card-line", r.left_center(), &seg, &parts, t);
     if let Some(key) = pressed
         && parts.iter().any(|p| p.key == key && !p.on)
     {
@@ -233,14 +238,14 @@ fn lines_of(ui: &mut Ui, row: &Row, t: &Tokens, asks: &mut Vec<Ask>) {
     card::caption(ui, tw!("This row's lines"), t);
     let count = crate::i18n::fmt(tw!("Lines: {n}"), &[("n", &row.lines.len().to_string())]);
     let apart = crate::i18n::fmt(tw!("Apart {n}"), &[("n", &row.apart.len().to_string())]);
-    let mut widths = vec![width_of(ui, &count, font(12.0))];
+    let mut widths = vec![width_of(ui, &count, mono(12.0))];
     if !row.apart.is_empty() {
         widths.push(width_of(ui, &apart, font(10.0)) + 8.0);
     }
     widths.extend([card::button_w(ui, tw!("Select All")), card::button_w(ui, tw!("Back to the Legend"))]);
     let mut places = card::flow(ui, ROW_H, &widths).into_iter();
     if let Some(r) = places.next() {
-        text(ui, r.left_center(), Align2::LEFT_CENTER, &count, font(12.0), t.text);
+        text(ui, r.left_center(), Align2::LEFT_CENTER, &count, mono(12.0), t.text);
     }
     if !row.apart.is_empty()
         && let Some(r) = places.next()
