@@ -138,3 +138,25 @@ J002b 설계(리더 맵 그대로; 스펙 작성 시 그대로 쓴다): `shortcu
 - 디스크: 이 상자의 루트 파일시스템은 실질 ~40 GB이고 `target/`이 30 GB였다. `target/debug/incremental`(7.2 GB)을 지워 공간을 비웠고, 엔진 통합 시험 바이너리(각 ~800 MB, 15개)를 모두 링크하는 `cargo test -p vectorcraft-engine`(필터 없이)·`cargo xtask ci`·`cargo xtask wasm`은 여기서 돌릴 수 없다(남은 공간 2.9 GB). 러너가 `cargo xtask ci`를 돌리려면 더 큰 디스크나 `target/` 정리가 필요하다. 코드 변경은 플랫폼 독립이라 wasm에 영향 줄 곳이 없다.
 - 기본값 뒤집기: 옛 환경설정 파일(키 없음)은 serde 기본값 `true`를 받아 업그레이드 즉시 Animated Zoom 방향이 바뀐다 — 명세의 사용자 결정(의도됨), 커밋 본문에 적음.
 - 환경설정 대화상자의 흐려짐은 시험에서 글자 존재만 확인(명세대로); 스크린샷 확인은 하지 않았다(`ui.screenshot`은 표시된 프레임이 필요).
+
+## 검증 결과 5c659274983aac1da81fe6b45f826465906aea26
+
+테스트 러너, 2026-10-11. 기준 커밋 `431b364` → HEAD `5c65927`(J001 `b190b6e` 위의 J002 커밋), 브랜치 `claude/project-thread-5e8gjw`. 시작 시 `git status` 깨끗함. 로그 디렉터리 `/tmp/claude-0/-home-claude/79152f61-3d49-5a1c-acde-dc6cabf2d3d7/scratchpad/factory-logs/`(각 로그 끝 줄이 `exit=<코드>`). 디스크 한도로 모든 cargo 명령을 `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=line-tables-only` 환경에서 돌렸다(코드·설정 변경 없음). 공통 명령 1–4의 자세한 결과는 J001 기록의 「공통 명령」 표와 같다.
+
+| 명령 | 종료 | 결과 | 로그 |
+|---|---|---|---|
+| `cargo fmt --all -- --check` | 0 | | `verify-1-fmt.log` |
+| `cargo clippy --workspace --all-targets -- -D warnings` | 0 | 경고 0 | `verify-2-clippy.log` |
+| `cargo test -p vectorcraft-ui-egui -p vectorcraft-engine -p vectorcraft -p vectorcraft-tools` (공통 3) | 0 | ui-egui 933, engine 1660 + 통합 126, vectorcraft 66, tools 290; 실패 0 | `verify-3-test.log` |
+| `cargo test -p vectorcraft-engine -- tests_prefs` | 0 | lib 29 통과(`zoom_drag_left_in_defaults_on_and_resets_with_performance` 포함), 통합 15 바이너리 0 일치 | `verify-5-j002-test-engine-prefs.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- canvas::tests::animated_zoom canvas::tests::cmd_space canvas::tests::space_pressed chrome::tests::the_zoom_hint prefs_dialog::tests i18n shortcuts tests_synthetic` | 0 | 72 통과, 실패 0 | `verify-5-j002-test-ui-targeted.log` |
+| `cargo test -p vectorcraft-ui-egui` | 0 | 933 통과, 실패 0 | `verify-5-j002-test-ui-egui-all.log` |
+| `grep -n 'LN_2 / 100.0\|SCRUB_SLOP: f32 = 3.0\|HOLD_DELAY: f32 = 0.3\|HOLD_ZOOM: f64 = std::f64::consts::LN_2' crates/ui-egui/src/canvas.rs` | 0 | 4줄(740, 742, 744, 746) | `verify-5-j002-constants.log` |
+| `cargo xtask ci` (공통 4) | 0 | 7단계 모두 통과(test --workspace 5080 통과, wasm 전부 ok) | `verify-4-xtask-ci.log` |
+| 완료 기준 9: `grep -c 'Drag left to zoom in' docs/target-app-parity.md` | 0 | 3 | `verify-5-j002-docs.log` |
+| 완료 기준 1·2·5·6·7 grep: `zoom_drag_left_in`(lib.rs:540·755, canvas.rs:629·757, chrome.rs:829), `zoomDragLeftIn`(prefscmds.rs:289, prefs_dialog.rs:265), 레이블·조각 행이 complete 카탈로그 10개에 각 1, cs·pt-br 0 | 0 | 기대값과 일치 | `verify-5-j002-sources.log` |
+
+### 판정
+
+- 실패한 명령 없음. 새 실패 0, 기존 실패 0(기준 `431b364`의 ui-egui 929 → 933, 모두 통과). 기준 커밋 worktree 비교 불필요.
+- 환경 메모: 1차 step 5 실행 중 디스크(약 40 GB 한도)가 차서 `target/`의 옛 시험 바이너리와 wasm 산출물을 지우고 중단된 명령부터 다시 돌렸다(J001 기록 참조). 저장소 트리는 검증 전후 깨끗함. push는 하지 않았다(러너 규칙).

@@ -302,3 +302,52 @@ push·merge·브랜치 전환·`git reset/clean/stash` 금지.
 - 카탈로그에 `VectorCraft`가 남은 source 행 중 명세 목록 밖: zh-hans의 `Keeps the document editable: VectorCraft reopens the PDF…`(`crates/pdf/src/presets.rs`, 범위 밖 크레이트).
 - `.icns`는 이전 용 그림(macOS에서 `packaging/icons.sh` 필요), DMG 배경·MSI 배너·패키징 이름은 범위 밖 — 사람 검토.
 - 화면 확인(`ui.screenshot`)은 하지 않았다(필수 아님).
+
+## 검증 결과 5c659274983aac1da81fe6b45f826465906aea26
+
+테스트 러너, 2026-10-11. 기준 커밋 `431b364` → HEAD `5c65927`(J001 `b190b6e` + J002 `5c65927`), 브랜치 `claude/project-thread-5e8gjw`. 시작 시 `git status` 깨끗함(제품 파일·factory/ 모두). 로그 디렉터리 `/tmp/claude-0/-home-claude/79152f61-3d49-5a1c-acde-dc6cabf2d3d7/scratchpad/factory-logs/`(아래 로그 이름은 그 안의 파일; 각 로그 끝 줄이 `exit=<코드>`). 디스크 한도(~40 GB)로 모든 cargo 명령을 `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=line-tables-only` 환경에서 돌렸다(코드·Cargo.toml·설정 파일 변경 없음).
+
+### 공통 명령 (지정 순서)
+
+| # | 명령 | 종료 | 결과 | 로그 |
+|---|---|---|---|---|
+| 1 | `cargo fmt --all -- --check` | 0 | | `verify-1-fmt.log` |
+| 2 | `cargo clippy --workspace --all-targets -- -D warnings` | 0 | 경고 0, 3 m 15 s | `verify-2-clippy.log` |
+| 3 | `cargo test -p vectorcraft-ui-egui -p vectorcraft-engine -p vectorcraft -p vectorcraft-tools` | 0 | vectorcraft 66, engine lib 1660 + 통합 15 바이너리 126, tools 290, ui-egui 933; 실패 0, ignored 0 | `verify-3-test.log` |
+| 4 | `cargo xtask ci` | 0 | fmt·clippy·test --workspace(117 바이너리, 5080 통과, 실패 0)·assets(318)·brands·layers(27 crates OK)·wasm(전부 ok) — "CI summary: all 7 steps passed" | `verify-4-xtask-ci.log` |
+
+### J001 검증 방법 항목
+
+| 명령 | 종료 | 결과 | 로그 |
+|---|---|---|---|
+| `packaging/icons.sh` (다른 cargo 없음) | 0 | stderr `warning: iconutil not found…` 한 줄; 재생성물이 커밋된 파일과 바이트 동일(`git status --porcelain -- assets/app-icon` 빈 출력), `.icns` 불변 | `verify-5-j001-icons-sh.log`, `verify-5-j001-icons-sh-git-status.log` |
+| `cmp …/brief/trowel-icon.svg assets/app-icon/vectorcraft.svg` | 0 | | `verify-5-j001-cmp-brief-svg.log` |
+| `cmp vectorcraft.svg vectorcraft-small.svg` | 0 | | `verify-5-j001-cmp-small-svg.log` |
+| `cmp vectorcraft-small.svg hicolor/scalable/apps/ai.storyteller.vectorcraft.svg` (icons.sh 전·후) | 0 / 0 | | `verify-5-j001-cmp-scalable-svg.log`, `verify-5-j001-icons-sh-cmp-scalable.log` |
+| `git diff --quiet HEAD -- assets/app-icon/vectorcraft.icns` | 0 | | `verify-5-j001-icns-unchanged.log` |
+| `git diff --stat HEAD -- assets/app-icon` | 0 | 빈 출력(모두 커밋됨; 명세의 「16개 파일」은 커밋 전 기준) | `verify-5-j001-icon-diffstat.log` |
+| `grep -c 'viewBox="0 0 512 512"' assets/app-icon/vectorcraft.svg` | 0 | 1 | `verify-5-j001-viewbox.log` |
+| 완료 기준 16 픽셀 검사 `python3 -I` (icons.sh 전·후) | 0 / 0 | `ok` | `verify-5-j001-pixel-check.log`, `verify-5-j001-pixel-check-after-icons.log` |
+| `cargo fmt --all -- --check`, `cargo clippy …` | 0 / 0 | 공통 1·2 | |
+| `cargo test -p vectorcraft-ui-egui` | 0 | 933 통과(공통 3과 동일; 단독 실행도 933) | `verify-3-test.log`, `verify-5-j002-test-ui-egui-all.log` |
+| `cargo test -p vectorcraft-ui-egui --lib brand::` / `… chrome::tests::system_mode_hides_the_mark` (완료 기준 17) | 0 / 0 | 2 통과 / 1 통과 | `verify-5-j001-test-brand.log`, `verify-5-j001-test-system-mode.log` |
+| `cargo test -p vectorcraft-engine -- tests_prefs tests_placed_document` | 0 | lib 45 통과(1615 filtered), 통합 15 바이너리 0 일치 | `verify-5-j001-test-engine-prefs-placed.log` |
+| `cargo test -p xtask` | 0 | 35 통과(`the_tree_is_clean`, `packaging_describes_a_vector_app` 포함) | `verify-5-j001-test-xtask.log` |
+| `cargo xtask assets` | 0 | 318 자산 귀속 | `verify-5-j001-xtask-assets.log` |
+| `cargo xtask brands` | 0 | vendor 이름 없음 | `verify-5-j001-xtask-brands.log` |
+| `grep -n $'\t[^\t]*VectorCraft[^\t]*\t' crates/ui-egui/src/i18n/*.tsv` | 0 | 명세 목록(크레딧 2행, 보존 이름 행, 범위 밖 `@msg` 행) + 새 크레딧 행 `Based on VectorCraft…` 10개 + zh-hans `Keeps the document editable: VectorCraft reopens the PDF…`(범위 밖 `crates/pdf`, 구현 요약 메모와 같음). 그 밖의 행 없음 | `verify-5-j001-tsv-vectorcraft-rows.log` |
+| `grep -c 'engraved dragon' ASSETS.md` | 0 | 1 | `verify-5-j001-engraved-dragon.log` |
+| `cargo xtask ci` | 0 | 공통 4 | `verify-4-xtask-ci.log` |
+
+### 완료 기준 grep (추가 확인, 모두 exit 0)
+
+- 1: `APP_NAME` — `brand.rs:10` 선언, `lib.rs:18` re-export, `native_menu.rs:41` re-export (`verify-5-j001-app-name.log`).
+- 11: `Based on VectorCraft by the ArtCraft Team` — `about.rs` 1, complete 카탈로그 10개 모두 1 (`verify-5-j001-about-credit.log`).
+- 12: `prefs_path_for` 1, `with_app_id` 1, `id: "vectorcraft"` 1, `id: "template"` 1, `"format": "vectorcraft-shortcuts"` 2(원래 2), `PRESETS` 1, `APP_ID: &str = "vectorcraft"` 1줄, `"VectorCraft Templates"` 2(원래 2), MCP `"name": "vectorcraft"` 1; `git diff 431b364..HEAD --stat -- packaging apps/vectorcraft/build.rs apps/vectorcraft-web crates/{format,eps,svg,color,pdf,mcp}` 빈 출력 (`verify-5-j001-identifiers.log`).
+- 18–20: `trowel blade` 14(구현 요약 메모대로 LICENSE/README 행에는 Notes 없음); `assets/app-icon/README.md` `Trowel` 2, `vectorize_tile|ArtCraft drawing|drawn in ArtCraft` 0/0, `iconutil` 2; `dragon` brand.rs 0 · README.md 2(257행 Snapdragon, 348행 업스트림 URL 안내) · target-app-parity.md 0 (`verify-5-j001-readme-license.log`).
+- 25·26·29·30·33: `Tokens::get` 대체값 `Brightness::default()`(theme.rs:291), `s("plate")` lib.rs:743, `state.rs:497` `Brightness::Plate`, `#[default] Plate`; `icon_on` toolbar 2 · widgets 2 · blend_options 1 · free_transform 1 · character 1 · theme 11; `prefscmds.rs:262` choice에 plate, `menus.rs:277`·`:1161`; `Quiet Plate` ui-parity 3 · target-app-parity 3 (`verify-5-j001-theme-defaults.log`).
+
+### 판정
+
+- 실패한 명령 없음(35개 모두 exit 0). 새 실패 0, 기존 실패 0 — 기준 `431b364`의 ui-egui 929개가 933개(J001 +3, J002 +1)로 늘었고 모두 통과. 빌더가 본 `tests_sysclip_probe::without_its_thread_the_check_runs_in_line_again`의 간헐 실패는 이번 실행(공통 3, 공통 4, 단독 실행)에서 재현되지 않았다. 기준 커밋 worktree 비교는 필요 없었다.
+- 환경 메모: 1차 step 5 실행 중 feature 통합 차이(`-p` 조합마다 다른 빌드)로 `target/`이 세 벌이 되어 디스크가 0 MB가 됐다. 실행 중이던 `cargo test -p vectorcraft-engine -- tests_prefs tests_placed_document`를 중단하고 `target/debug/deps`의 옛 시험 바이너리와 `target/wasm32-unknown-unknown`(빌드 산출물만, 저장소 파일 아님)을 지운 뒤 그 명령부터 다시 돌렸다(위 표의 로그는 모두 완주한 실행의 것). 저장소 트리는 검증 전후 모두 깨끗함(`git status` 빈 출력). push는 하지 않았다(러너 규칙).
