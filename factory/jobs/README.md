@@ -8,4 +8,4 @@
 - 승인 절 `## 승인 (approval)`: 누가(사람 이름 또는 「사용자」), 언제, 무엇을 근거로(검증 절의 종료 코드·검토 판정) 승인했는지. **승인 증거는 이 파일에 남긴다** — 채팅 로그가 아니라 여기가 기록이다.
 - 큰 산출물(빌드 출력, `cargo test` 전체 로그, 스크린샷 PNG, icons.sh 출력)은 git에 넣지 않고 스크래치패드 `/tmp/claude-0/-home-claude/79152f61-3d49-5a1c-acde-dc6cabf2d3d7/scratchpad/factory/J###/`에 두고 경로만 적는다. 기록 파일에는 요약·종료 코드·실패 줄 발췌만.
 - 기준 SHA(스펙 작성 시 HEAD)와 변경 SHA(작업 커밋)를 항상 둘 다 적는다; rebase나 선행 작업 커밋으로 기준이 바뀌면 그 사실과 새 SHA를 빌드 절에 적는다.
-- 커밋은 작업당 1개, 첫 줄 `J###: <한국어 요약>`, 본문에 `시험: …` 줄, 끝에 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` / `Claude-Session: https://claude.ai/code/session_01SE7CNTckuSnG5kNiUFh6EX`. push·merge·브랜치 전환·reset/clean/stash 금지.
+- 커밋은 작업당 1개, 첫 줄 `J###: <한국어 요약>`, 본문에 `시험: …` 줄, 끝에 세션이 알려 주는 `Co-Authored-By:` · `Claude-Session:` 줄. push는 작업 브랜치에만(사용자 승인 2026-10-11), merge·브랜치 전환·reset/clean/stash 금지.
