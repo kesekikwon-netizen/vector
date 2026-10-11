@@ -8,6 +8,7 @@ use std::cmp::Ordering;
 use egui::RichText;
 
 use crate::VectorcraftApp;
+use crate::theme::Tokens;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Contributor {
@@ -281,10 +282,11 @@ fn link(app: &mut VectorcraftApp, ui: &mut egui::Ui, c: &Contributor, names: Nam
 }
 
 fn table(app: &mut VectorcraftApp, ui: &mut egui::Ui, list: &[&Contributor], v: &mut View) {
+    let t = Tokens::get(ui.ctx());
     egui::Grid::new("credits_table").striped(true).num_columns(SortKey::ALL.len()).show(ui, |ui| {
         for k in SortKey::ALL {
             let arrow = if v.key == k { if v.ascending { " ▲" } else { " ▼" } } else { "" };
-            if ui.button(RichText::new(format!("{}{arrow}", k.label().1)).strong()).on_hover_text(k.label().0).clicked() {
+            if ui.button(RichText::new(format!("{}{arrow}", k.label().1)).color(t.text_strong).strong()).on_hover_text(k.label().0).clicked() {
                 if v.key == k {
                     v.ascending = !v.ascending;
                 } else {
@@ -317,10 +319,11 @@ pub fn models_ui(ui: &mut egui::Ui) {
         return;
     }
     let assisted: u64 = MODELS.iter().map(|m| m.commits).max().unwrap_or(0).max(1);
+    let t = Tokens::get(ui.ctx());
     egui::ScrollArea::both().max_height(SCROLL_HEIGHT).auto_shrink([false, true]).show(ui, |ui| {
         egui::Grid::new("credits_models").striped(true).num_columns(6).show(ui, |ui| {
             for h in [tl!("Company"), tl!("Model"), tl!("Version"), tl!("Commits"), tl!("% of all commits"), tl!("Lines +/−")] {
-                ui.label(RichText::new(h).strong());
+                ui.label(RichText::new(h).color(t.text_strong).strong());
             }
             ui.end_row();
             for m in MODELS {

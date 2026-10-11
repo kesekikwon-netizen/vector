@@ -351,3 +351,39 @@ push·merge·브랜치 전환·`git reset/clean/stash` 금지.
 
 - 실패한 명령 없음(35개 모두 exit 0). 새 실패 0, 기존 실패 0 — 기준 `431b364`의 ui-egui 929개가 933개(J001 +3, J002 +1)로 늘었고 모두 통과. 빌더가 본 `tests_sysclip_probe::without_its_thread_the_check_runs_in_line_again`의 간헐 실패는 이번 실행(공통 3, 공통 4, 단독 실행)에서 재현되지 않았다. 기준 커밋 worktree 비교는 필요 없었다.
 - 환경 메모: 1차 step 5 실행 중 feature 통합 차이(`-p` 조합마다 다른 빌드)로 `target/`이 세 벌이 되어 디스크가 0 MB가 됐다. 실행 중이던 `cargo test -p vectorcraft-engine -- tests_prefs tests_placed_document`를 중단하고 `target/debug/deps`의 옛 시험 바이너리와 `target/wasm32-unknown-unknown`(빌드 산출물만, 저장소 파일 아님)을 지운 뒤 그 명령부터 다시 돌렸다(위 표의 로그는 모두 완주한 실행의 것). 저장소 트리는 검증 전후 모두 깨끗함(`git status` 빈 출력). push는 하지 않았다(러너 규칙).
+
+## 구현 요약 — 검토 반영 1차
+
+검토(독립 리뷰) 지적 4건(모두 major)을 기준 `3768844`(브랜치 `claude/project-thread-5e8gjw`) 위에서 커밋 1개로 고쳤다. 모두 Quiet Plate에서만 보이던 결함이고, Illustrator 밝기 4개는 토큰 값·렌더링이 그대로다(`old_presets_keep_their_rendering`이 새 토큰 두 개까지 잠근다). 변경은 `crates/ui-egui`에만 있다.
+
+### 바뀐 것
+
+- **지적 2 (눌린/포커스된 egui 버튼이 검은 알약)** — `theme.rs` `Tokens`에 `pressed: Color32`를 더하고 `apply()`의 `widgets.active` 채움을 `tool_active` 대신 `pressed`로. Illustrator 프리셋 4개는 `pressed == tool_active`(base `#1d1d1d`, MediumDark `#303030`, MediumLight `#969696`, Light `#cdcdcd`), Plate는 press `#E8E6DC`. `override_text_color`(ink)가 그 위에서 읽힌다 — 시험이 WCAG 대비 ≥ 4.5:1을 단언. 사용자 도구 우물 7곳(toolbar, widgets, blend_options, free_transform, character)은 그대로 `tool_active` + `icon_on`.
+- **지적 1 (`.strong()` 글자가 아이보리로 사라짐)** — 원인은 egui 0.36.2의 `strong_text_color() == widgets.active.fg_stroke.color`. `pressed`가 밝아졌으니 그 위 글리프(체크 표시·라디오 점·크기 조절 손잡이)도 `icon_on`(아이보리)일 수 없다: `apply()`의 `active.fg_stroke`를 `icon_on` → `text_strong`으로(옛 프리셋은 `icon_on == text_strong`이라 픽셀 동일; Plate는 ink). 결합을 새 시험 `strong_text_and_pressed_glyphs_are_text_strong_in_every_level`이 다섯 밝기 모두에서 잠근다(`strong_text_color == text_strong`, 패널 위 대비 ≥ 4.5, pressed 위 대비 ≥ 3). 지적이 제안한 대로 `credits.rs:287`·`:323`, `dialogs/eyedropper.rs:73`에는 `print_presets.rs`처럼 `.color(t.text_strong)`을 명시했다(이제 `.color(` 없는 `.strong()`이 크레이트에 없다). 소스 스캔 시험(선택)은 뿌리 수정으로 불필요해 넣지 않았다.
+- **지적 3 (14 px egui 체크 상자가 r8로 동그라미)** — `Tokens::mark_cr()`(= `radius.min(4)`: Plate 4, 옛 프리셋 2 그대로)와 `widgets::check_box(ui, &mut bool, label)`를 더했다. 래퍼는 egui 체크 상자(`&mut bool`, `changed()`, 키보드 포커스, 접근성 역할)를 그대로 쓰되 그 호출 동안만 `ui.set_style`로 위젯 모서리를 mark 반경으로 두고 되돌린다. `ui.checkbox` 11곳(prefs_dialog `bool_row`, panels/properties ×3, dialogs/variables, export_for_screens ×2, save_options, revolve ×2, form)을 그리로 돌렸다. 지적의 첫 선택지(`widgets::check`로 교체)는 egui 체크 상자의 키보드·접근성·`RichText` 레이블(revolve.rs)을 잃어 택하지 않았고, 둘째 선택지(`apply()`에서 egui 반경 전체를 4로 캡)는 버튼·입력까지 r4가 되어 Strata 「control 8, mark 4」와 어긋나 택하지 않았다. 새 프레임 시험 `widgets::check_box_tests::an_egui_check_box_keeps_its_corners`가 Plate·Light에서 14 px 프레임의 반경이 `mark_cr()`이고 크기 절반 − 3 이하이며, 바로 다음 버튼은 다시 `cr()`임을 단언.
+- **지적 4 (입력·버튼이 쉼 상태에서 테두리 없음)** — `Tokens`에 `rest_border: Color32`를 더했다(Plate edge `#C2C0B6`, 옛 프리셋 `TRANSPARENT`). `apply()`는 `TRANSPARENT`면 `Stroke::NONE`(폭 0 — 옛 프리셋의 버튼 안쪽 여백이 1 px 달라지지 않게), 아니면 1 px `rest_border`를 `widgets.inactive.bg_stroke`로. hovered = `input_border`, focused = `accent`는 그대로.
+
+### 시험
+
+- 바꾼 시험: `theme::tests::apply_takes_window_radius_selection_fill_and_icon_on_from_tokens` → `apply_takes_window_radius_selection_fill_pressed_and_rest_border_from_tokens`. `active.fg_stroke.color == icon_on` 단언(명세 완료 기준 24)을 지적 1·2가 결함으로 봤으므로 `active.bg_fill == pressed`, `fg_stroke == text_strong`, 라벨 대비, `inactive.bg_stroke == (1, input_border)`, Light는 `tool_active`·`Stroke::NONE` 단언으로 바꿨다. 명세 완료 기준 29의 「`theme.rs:315`는 `icon_on`」도 같은 이유로 더는 성립하지 않는다(`icon_on`은 우물 7곳에서만; `theme.rs`의 `icon_on` 등장은 9로 기준 ≥ 7 유지).
+- `brightness_roundtrip`·`old_presets_keep_their_rendering`에 `pressed`·`rest_border`·`mark_cr` 단언 추가. 새 시험 2개(위).
+
+### 검사 (종료 코드; 로그 `/tmp/claude-0/-home-claude/79152f61-3d49-5a1c-acde-dc6cabf2d3d7/scratchpad/factory-logs/J001-build-rework1-*.log`)
+
+| 명령 | 종료 | 로그 |
+|---|---|---|
+| `cargo fmt --all` / `cargo fmt --all -- --check` | 0 / 0 | `J001-build-rework1-xtask.log` |
+| `cargo clippy -p vectorcraft-ui-egui -p vectorcraft-engine -p vectorcraft --all-targets -- -D warnings` | 0 (첫 실행 101: 새 시험의 `show_inside` deprecated·`ui.button` must_use → 고침) | `J001-build-rework1-clippy.log` |
+| `cargo test -p vectorcraft-ui-egui` | 0 — 935 통과(933 + 새 시험 2), 실패 0 | `J001-build-rework1-test-ui-egui.log` |
+| `cargo xtask assets` / `cargo xtask brands` / `cargo test -p xtask`(35) | 0 / 0 / 0 | `J001-build-rework1-xtask.log` |
+| `packaging/icons.sh`(iconutil 경고 한 줄), 뒤이어 `git status --porcelain -- assets/app-icon` 빈 출력, `cmp` scalable SVG | 0 / 0 | 같은 로그 |
+| 브리프 SVG `cmp` ×3, `git diff --quiet HEAD -- vectorcraft.icns`, 완료 기준 16 픽셀 검사 | 모두 0 | (즉시 출력) |
+| grep: `icon_on` toolbar 2 · widgets 2 · blend_options 1 · free_transform 1 · character 1 · theme 9; `.color(` 없는 `.strong()` 0; 남은 `ui.checkbox(` 0(래퍼 안 제외) | 기대값 | (즉시 출력) |
+
+`cargo xtask ci`는 테스트 러너가 돌린다. 엔진·vectorcraft 크레이트는 손대지 않았다.
+
+### 열린 것·메모
+
+- 검토자의 headless 위젯 덤프(`factory-logs/review/widget_check.rs`)를 `cargo run --example`로 재현하려다 dev 프로필 빌드가 디스크를 채워(동시에 다른 세션이 같은 `target/`에 `cargo build -p vectorcraft`를 돌리고 있었다) 중단했다. 그 대신 같은 사실을 단언하는 단위·프레임 시험을 두었다. 디스크를 비우느라 `target/debug/incremental`과 05:42 이후 쓰인 `target/debug/deps` 산출물을 지웠다 — 그 시각 이후의 다른 세션 빌드 산출물도 함께 지워졌을 수 있다(cargo가 다시 만든다; 저장소 파일은 아니다).
+- Plate에서 Strata 「체크 상자: 1 px `#87867F`, on = ink 채움 + 아이보리 틱」까지 맞추려면 egui 체크 상자 11곳을 `widgets::check`(ink 채움·흰 틱)로 바꾸는 후속이 필요하다. 이번에는 반경만 고쳤다(지적의 범위).
+- 화면 확인(`ui.screenshot`)은 하지 않았다.

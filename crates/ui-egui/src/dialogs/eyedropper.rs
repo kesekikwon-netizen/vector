@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 
 use super::DialogSpec;
 use crate::state::Dialog;
+use crate::theme::Tokens;
 use crate::{VectorcraftApp, widgets};
 
 /// The dialog kind of Eyedropper Options.
@@ -69,8 +70,9 @@ fn set_all(v: &mut Value, on: bool) {
 
 /// One tree (`key`: `pickUp` or `apply`) of checkboxes; a branch's box sets everything under it.
 fn tree(ui: &mut egui::Ui, d: &mut Dialog, key: &str, title: &str) {
+    let t = Tokens::get(ui.ctx());
     ui.vertical(|ui| {
-        ui.label(egui::RichText::new(tl!(title)).strong());
+        ui.label(egui::RichText::new(tl!(title)).color(t.text_strong).strong());
         ui.add_space(4.0);
         let Some(t) = d.fields.get_mut(key) else { return };
         for (path, label, depth) in TREE {

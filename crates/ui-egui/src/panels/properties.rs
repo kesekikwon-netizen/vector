@@ -357,11 +357,11 @@ fn document_sections(app: &mut VectorcraftApp, ui: &mut Ui) {
     divider(ui);
     section_header(ui, tl!("Snap Options"));
     let mut sp = app.ui.view.snap_to_point;
-    if ui.checkbox(&mut sp, tl!("Snap to Point")).changed() {
+    if widgets::check_box(ui, &mut sp, tl!("Snap to Point")).changed() {
         app.ui.view.snap_to_point = sp;
     }
     let mut sg = app.ui.view.snap_to_grid;
-    if ui.checkbox(&mut sg, tl!("Snap to Grid")).changed() {
+    if widgets::check_box(ui, &mut sg, tl!("Snap to Grid")).changed() {
         app.ui.view.snap_to_grid = sg;
     }
     divider(ui);
@@ -374,7 +374,7 @@ fn document_sections(app: &mut VectorcraftApp, ui: &mut Ui) {
         }
     });
     let mut ss = app.session.prefs.scale_strokes;
-    if ui.checkbox(&mut ss, tl!("Scale Strokes & Effects")).changed() {
+    if widgets::check_box(ui, &mut ss, tl!("Scale Strokes & Effects")).changed() {
         super::transform::set_pref(app, "scaleStrokes", ss);
     }
     divider(ui);

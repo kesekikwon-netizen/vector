@@ -226,7 +226,7 @@ fn text(ui: &mut egui::Ui, d: &mut Dialog, key: &str, width: f32) -> egui::Respo
 /// A checkbox for `key`, written back as it is toggled.
 fn checkbox(ui: &mut egui::Ui, d: &mut Dialog, key: &str) -> egui::Response {
     let mut b = d.bool(key);
-    let r = ui.checkbox(&mut b, "");
+    let r = widgets::check_box(ui, &mut b, "");
     if r.changed() {
         d.fields.insert(key.into(), json!(b));
     }

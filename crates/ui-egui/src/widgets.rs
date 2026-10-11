@@ -1007,6 +1007,22 @@ pub fn check(ui: &mut Ui, label: &str, value: bool, enabled: bool) -> bool {
     check3(ui, label, Some(value), enabled)
 }
 
+/// egui's own check box ([`Ui::checkbox`]: a `&mut bool`, keyboard focus, `changed()`), its 14 px
+/// frame at the mark radius rather than the control radius, which would round it into a circle.
+pub fn check_box(ui: &mut Ui, value: &mut bool, label: impl Into<egui::WidgetText>) -> Response {
+    let cr = Tokens::get(ui.ctx()).mark_cr();
+    let style = ui.style().clone();
+    let mut marked = (*style).clone();
+    let w = &mut marked.visuals.widgets;
+    for wv in [&mut w.noninteractive, &mut w.inactive, &mut w.hovered, &mut w.active, &mut w.open] {
+        wv.corner_radius = cr;
+    }
+    ui.set_style(marked);
+    let resp = ui.checkbox(value, label);
+    ui.set_style(style);
+    resp
+}
+
 /// [`check`] with tooltip `tip` on the box and its label. Returns true when toggled.
 pub fn check_tip(ui: &mut Ui, label: &str, value: bool, enabled: bool, tip: &str) -> bool {
     let (clicked, resp) = check_row(ui, label, Some(value), enabled);
@@ -1833,6 +1849,58 @@ pub fn text_presets(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug, val
         });
     });
     out
+}
+
+#[cfg(test)]
+mod check_box_tests {
+    use super::*;
+    use crate::theme::{self, Brightness};
+
+    /// Every rectangle `f` paints in a headless frame under `b`: (size, corner radius).
+    fn rects(b: Brightness, mut f: impl FnMut(&mut Ui)) -> Vec<(Vec2, CornerRadius)> {
+        fn collect(s: &egui::Shape, out: &mut Vec<(Vec2, CornerRadius)>) {
+            match s {
+                egui::Shape::Rect(r) => out.push((r.rect.size(), r.corner_radius)),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| collect(s, out)),
+                _ => {}
+            }
+        }
+        let ctx = egui::Context::default();
+        theme::install_fonts(&ctx);
+        theme::apply(&ctx, b);
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            egui::CentralPanel::default().show(ui, |ui| f(ui));
+        });
+        out.textures_delta.clear();
+        let mut v = Vec::new();
+        out.shapes.iter().for_each(|c| collect(&c.shape, &mut v));
+        v
+    }
+
+    /// Under Quiet Plate (r8 controls) the 14 px frame of an egui check box keeps its corners
+    /// (review 1): its radius is the mark radius, under half its size; Illustrator's levels keep
+    /// their r2.
+    #[test]
+    fn an_egui_check_box_keeps_its_corners() {
+        for b in [Brightness::Plate, Brightness::Light] {
+            let t = Tokens::for_brightness(b);
+            let icon = rects(b, |ui| {
+                let mut on = true;
+                check_box(ui, &mut on, "Snap to Point");
+            });
+            let frame =
+                icon.iter().find(|(size, _)| size.x == size.y && size.x < 20.0).unwrap_or_else(|| panic!("{b:?}: no check frame in {icon:?}"));
+            assert_eq!(frame.1, t.mark_cr(), "{b:?}");
+            assert!(f32::from(frame.1.nw) <= frame.0.x / 2.0 - 3.0, "{b:?}: {frame:?} is a circle");
+            // The scoped style ends with the check box: the next button is at the control radius.
+            let button = rects(b, |ui| {
+                let mut on = true;
+                check_box(ui, &mut on, "Snap to Point");
+                let _ = ui.button("OK");
+            });
+            assert!(button.iter().any(|(_, cr)| *cr == t.cr()), "{b:?}: {button:?}");
+        }
+    }
 }
 
 #[cfg(test)]

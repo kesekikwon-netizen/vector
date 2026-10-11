@@ -368,7 +368,7 @@ fn picas_in_use(d: &Dialog) -> bool {
 
 fn bool_row(ui: &mut egui::Ui, d: &mut Dialog, key: &str, label: &str) {
     let mut b = d.bool(key);
-    if ui.checkbox(&mut b, tl!(label)).changed() {
+    if widgets::check_box(ui, &mut b, tl!(label)).changed() {
         d.fields.insert(key.into(), json!(b));
     }
 }

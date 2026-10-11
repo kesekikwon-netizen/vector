@@ -60,6 +60,9 @@ pub struct Tokens {
     pub tool_active: Color32,
     /// Glyphs and text drawn over a `tool_active` well.
     pub icon_on: Color32,
+    /// egui's pressed and focused widgets (`Visuals.widgets.active`); `text_strong` reads over it.
+    /// The custom tool wells use `tool_active`.
+    pub pressed: Color32,
     pub accent: Color32,
     pub accent_strong: Color32,
     /// egui's `Visuals.selection.bg_fill`: selected text and selectable rows.
@@ -81,6 +84,9 @@ pub struct Tokens {
     pub tab_strip: Color32,
     /// Outline of secondary (outlined) buttons.
     pub button_border: Color32,
+    /// 1 px edge of egui's inputs and buttons at rest; `TRANSPARENT` draws none, as Illustrator's
+    /// levels do.
+    pub rest_border: Color32,
     /// Default Layer 1 selection colour and selected-anchor fill.
     pub selection: Color32,
     pub anchor_selected: Color32,
@@ -124,6 +130,7 @@ impl Tokens {
             hover: hex(0x444444),
             tool_active: hex(0x1d1d1d),
             icon_on: hex(0xf5f5f5),
+            pressed: hex(0x1d1d1d),
             accent: hex(0x378ef0),
             accent_strong: hex(0x1473e6),
             selection_fill: hex(0x378ef0).gamma_multiply(0.55),
@@ -140,6 +147,7 @@ impl Tokens {
             text_strong: hex(0xf5f5f5),
             tab_strip: hex(0x282828),
             button_border: hex(0x6a6a6a),
+            rest_border: Color32::TRANSPARENT,
             selection: hex(0x4f80ff),
             anchor_selected: hex(0x3d82ff),
             flyout_active: hex(0x54b2f7),
@@ -174,6 +182,7 @@ impl Tokens {
                 hover: hex(0x606060),
                 tool_active: hex(0x303030),
                 icon_on: hex(0xffffff),
+                pressed: hex(0x303030),
                 row_selected: hex(0x52677c),
                 pasteboard: hex(0x606060),
                 ruler: hex(0x333333),
@@ -201,6 +210,7 @@ impl Tokens {
                 hover: hex(0xc8c8c8),
                 tool_active: hex(0x969696),
                 icon_on: hex(0x000000),
+                pressed: hex(0x969696),
                 row_selected: hex(0x9fb4d6),
                 pasteboard: hex(0xa0a0a0),
                 ruler: hex(0xc2c2c2),
@@ -227,6 +237,7 @@ impl Tokens {
                 hover: hex(0xdddddd),
                 tool_active: hex(0xcdcdcd),
                 icon_on: hex(0x000000),
+                pressed: hex(0xcdcdcd),
                 row_selected: hex(0xc8daf7),
                 pasteboard: hex(0xdcdcdc),
                 ruler: hex(0xeaeaea),
@@ -245,6 +256,8 @@ impl Tokens {
                 input: hex(0xffffff),
                 input_border: hex(0xc2c0b6),
                 button_border: hex(0xc2c0b6),
+                // Inputs and buttons show their edge at rest: white on ivory has none of its own.
+                rest_border: hex(0xc2c0b6),
                 border: hex(0xdedcd1),
                 divider: hex(0xdedcd1),
                 text: hex(0x141413),
@@ -256,6 +269,8 @@ impl Tokens {
                 tool_active: hex(0x30302e),
                 // Ink glyphs vanish on the ink well: the well's glyphs are ivory.
                 icon_on: hex(0xfaf9f5),
+                // A pressed or focused button keeps its ink label: the press face, not the hand well.
+                pressed: hex(0xe8e6dc),
                 accent: hex(0x30302e),
                 accent_strong: hex(0x141413),
                 // A translucent ink accent under ink text can't be read: an oat fill instead.
@@ -292,6 +307,11 @@ impl Tokens {
     }
     pub fn cr(&self) -> CornerRadius {
         CornerRadius::same(self.radius)
+    }
+    /// Corners of small marks (check boxes): the control radius capped at 4, so a 14 px box keeps
+    /// its corners.
+    pub fn mark_cr(&self) -> CornerRadius {
+        CornerRadius::same(self.radius.min(4))
     }
 }
 
@@ -368,22 +388,21 @@ pub fn apply(ctx: &egui::Context, b: Brightness) {
     v.popup_shadow = egui::epaint::Shadow { offset: [0, 4], blur: 14, spread: 0, color: Color32::from_black_alpha(if t.dark { 120 } else { 60 }) };
     v.window_shadow = egui::epaint::Shadow { offset: [0, 8], blur: 28, spread: 0, color: Color32::from_black_alpha(if t.dark { 140 } else { 70 }) };
     let w = &mut v.widgets;
-    for (wv, fill) in [
-        (&mut w.noninteractive, t.panel),
-        (&mut w.inactive, t.button),
-        (&mut w.hovered, t.hover),
-        (&mut w.active, t.tool_active),
-        (&mut w.open, t.hover),
-    ] {
+    for (wv, fill) in
+        [(&mut w.noninteractive, t.panel), (&mut w.inactive, t.button), (&mut w.hovered, t.hover), (&mut w.active, t.pressed), (&mut w.open, t.hover)]
+    {
         wv.bg_fill = fill;
         wv.weak_bg_fill = fill;
         wv.corner_radius = t.cr();
         wv.fg_stroke = Stroke::new(1.0, t.text);
     }
-    // The pressed well is `tool_active`: its glyphs and text are the colour drawn over it.
-    w.active.fg_stroke = Stroke::new(1.0, t.icon_on);
+    // egui draws its pressed and focused glyphs (check marks, radio dots, resize handles) with this
+    // stroke, and `.strong()` text takes its colour as `Visuals::strong_text_color`: it has to read
+    // over `pressed` and over the panel, which `text_strong` does. (The custom tool wells draw
+    // `icon_on` over `tool_active` themselves.)
+    w.active.fg_stroke = Stroke::new(1.0, t.text_strong);
     w.noninteractive.bg_stroke = Stroke::new(1.0, t.divider);
-    w.inactive.bg_stroke = Stroke::NONE;
+    w.inactive.bg_stroke = if t.rest_border == Color32::TRANSPARENT { Stroke::NONE } else { Stroke::new(1.0, t.rest_border) };
     w.hovered.bg_stroke = Stroke::new(1.0, t.input_border);
     w.active.bg_stroke = Stroke::new(1.0, t.accent);
     ctx.set_visuals(v);
@@ -433,6 +452,11 @@ mod tests {
         assert_eq!(plate.selection_fill, hex(0xE3DACC));
         assert_eq!(plate.radius, 8);
         assert_eq!(plate.window_radius, 8);
+        // Review 1: a pressed egui button is the press face under its ink label, not the hand
+        // well; inputs and buttons show their edge at rest; a 14 px check box keeps its corners.
+        assert_eq!(plate.pressed, hex(0xE8E6DC));
+        assert_eq!(plate.rest_border, plate.input_border);
+        assert_eq!(plate.mark_cr(), CornerRadius::same(4));
     }
 
     /// The four Illustrator levels keep the values measured from public screenshots: the new
@@ -446,11 +470,27 @@ mod tests {
             assert_eq!(t.window_radius, 6, "{b:?}");
             assert_eq!(t.radius, 2, "{b:?}");
             assert_eq!(t.accent, hex(0x378ef0), "{b:?}");
+            assert_eq!(t.pressed, t.tool_active, "{b:?}");
+            assert_eq!(t.rest_border, Color32::TRANSPARENT, "{b:?}");
+            assert_eq!(t.mark_cr(), t.cr(), "{b:?}");
         }
     }
 
+    /// WCAG 2.x contrast ratio of `fg` over `bg` (both opaque).
+    fn contrast(fg: Color32, bg: Color32) -> f32 {
+        fn luminance(c: Color32) -> f32 {
+            let ch = |v: u8| {
+                let v = v as f32 / 255.0;
+                if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+            };
+            0.2126 * ch(c.r()) + 0.7152 * ch(c.g()) + 0.0722 * ch(c.b())
+        }
+        let (a, b) = (luminance(fg) + 0.05, luminance(bg) + 0.05);
+        a.max(b) / a.min(b)
+    }
+
     #[test]
-    fn apply_takes_window_radius_selection_fill_and_icon_on_from_tokens() {
+    fn apply_takes_window_radius_selection_fill_pressed_and_rest_border_from_tokens() {
         let ctx = egui::Context::default();
         apply(&ctx, Brightness::Plate);
         let t = Tokens::for_brightness(Brightness::Plate);
@@ -458,8 +498,38 @@ mod tests {
         assert_eq!(v.window_corner_radius, CornerRadius::same(8));
         assert_eq!(v.menu_corner_radius, CornerRadius::same(8));
         assert_eq!(v.selection.bg_fill, t.selection_fill);
-        assert_eq!(v.widgets.active.fg_stroke.color, t.icon_on);
+        // A pressed or focused egui button: the press face, its label (`override_text_color`)
+        // still readable (WCAG AA), its edge the accent.
+        assert_eq!(v.widgets.active.bg_fill, t.pressed);
+        let label = v.override_text_color.expect("the UI overrides egui's text colour");
+        assert!(contrast(label, v.widgets.active.bg_fill) >= 4.5, "{label:?} on {:?}", v.widgets.active.bg_fill);
+        assert_eq!(v.widgets.active.bg_stroke.color, t.accent);
+        // Inputs and buttons at rest carry their edge; hovered keeps it, focused takes the accent.
+        assert_eq!(v.widgets.inactive.bg_stroke, Stroke::new(1.0, t.input_border));
+        assert_eq!(v.widgets.hovered.bg_stroke.color, t.input_border);
         apply(&ctx, Brightness::Light);
-        assert_eq!(ctx.global_style().visuals.window_corner_radius, CornerRadius::same(6));
+        let light = Tokens::for_brightness(Brightness::Light);
+        let v = ctx.global_style().visuals.clone();
+        assert_eq!(v.window_corner_radius, CornerRadius::same(6));
+        assert_eq!(v.widgets.active.bg_fill, light.tool_active, "Illustrator's levels press the well");
+        assert_eq!(v.widgets.inactive.bg_stroke, Stroke::NONE, "…and draw no edge at rest");
+    }
+
+    /// `widgets.active.fg_stroke` is also egui's `strong_text_color`, which `.strong()` text takes
+    /// before `override_text_color`: it is `text_strong` in every level, so a `.strong()` label
+    /// without a `.color(..)` of its own stays readable on the panel, and so do egui's own check
+    /// marks and radio dots over `pressed`.
+    #[test]
+    fn strong_text_and_pressed_glyphs_are_text_strong_in_every_level() {
+        let ctx = egui::Context::default();
+        for b in Brightness::ALL {
+            apply(&ctx, b);
+            let t = Tokens::for_brightness(b);
+            let v = ctx.global_style().visuals.clone();
+            assert_eq!(v.strong_text_color(), t.text_strong, "{b:?}");
+            assert_eq!(v.widgets.active.fg_stroke.color, t.text_strong, "{b:?}");
+            assert!(contrast(t.text_strong, t.panel) >= 4.5, "{b:?}: strong text on the panel");
+            assert!(contrast(t.text_strong, t.pressed) >= 3.0, "{b:?}: a check mark over the pressed face");
+        }
     }
 }

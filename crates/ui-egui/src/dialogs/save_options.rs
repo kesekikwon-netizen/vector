@@ -146,7 +146,7 @@ fn option_row(app: &VectorcraftApp, ui: &mut egui::Ui, d: &mut Dialog, o: &Forma
     if o.ty == "boolean" {
         ui.label("");
         let mut on = value.as_bool().unwrap_or(false);
-        if ui.checkbox(&mut on, label.trim_end_matches(':')).on_hover_text(o.description).changed() {
+        if widgets::check_box(ui, &mut on, label.trim_end_matches(':')).on_hover_text(o.description).changed() {
             d.fields.insert(o.name.into(), json!(on));
         }
         ui.end_row();
