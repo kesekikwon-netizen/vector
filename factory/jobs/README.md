@@ -1,0 +1,11 @@
+# factory/jobs — 작업 기록 형식
+
+- 작업 하나 = 파일 하나 `J###-<slug>.md`. 스펙 작성자가 만들고, 그 뒤 단계들이 **같은 파일 아래에 절을 덧붙인다**(덮어쓰지 않는다). 상태는 `factory/backlog.md`의 표와 파일 첫 줄에서 함께 바꾼다.
+- 스펙 절(필수): `목표` / `완료 기준`(번호, 각각 시험 또는 명령으로 확인 가능) / `변경 범위`(파일과 file:line, 그리고 바꾸면 안 되는 것) / `검증 방법`(정확한 명령) / `범위 밖` / `위험·사람 검토 필요` / `기준 커밋`(`git rev-parse HEAD` 출력).
+- 빌드 절 `## 빌드 (build)`: 날짜, 기준 SHA, 손댄 파일 목록, 완료 기준 번호별 구현 요약, 스펙에서 벗어난 점과 이유, 변경 SHA(커밋 뒤).
+- 검증 절 `## 검증 (verify)`: 실행한 명령을 **그대로**, 각 종료 코드, 로그 경로(스크래치패드), 통과/실패 시험 수. 실패가 있으면 어떤 완료 기준 번호가 깨졌는지.
+- 검토 절 `## 검토 (review)`: 검토자, 지적 목록(파일:줄, 심각도, 조치), 판정(approved / rework / needs-human). rework는 2회까지, 그 뒤 needs-human.
+- 승인 절 `## 승인 (approval)`: 누가(사람 이름 또는 「사용자」), 언제, 무엇을 근거로(검증 절의 종료 코드·검토 판정) 승인했는지. **승인 증거는 이 파일에 남긴다** — 채팅 로그가 아니라 여기가 기록이다.
+- 큰 산출물(빌드 출력, `cargo test` 전체 로그, 스크린샷 PNG, icons.sh 출력)은 git에 넣지 않고 스크래치패드 `/tmp/claude-0/-home-claude/79152f61-3d49-5a1c-acde-dc6cabf2d3d7/scratchpad/factory/J###/`에 두고 경로만 적는다. 기록 파일에는 요약·종료 코드·실패 줄 발췌만.
+- 기준 SHA(스펙 작성 시 HEAD)와 변경 SHA(작업 커밋)를 항상 둘 다 적는다; rebase나 선행 작업 커밋으로 기준이 바뀌면 그 사실과 새 SHA를 빌드 절에 적는다.
+- 커밋은 작업당 1개, 첫 줄 `J###: <한국어 요약>`, 본문에 `시험: …` 줄, 끝에 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` / `Claude-Session: https://claude.ai/code/session_01SE7CNTckuSnG5kNiUFh6EX`. push·merge·브랜치 전환·reset/clean/stash 금지.
