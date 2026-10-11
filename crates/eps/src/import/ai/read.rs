@@ -618,7 +618,7 @@ impl<'a> Reader<'a> {
         let color = a.color.unwrap_or(LayerColor::Preset(0));
         let mut layer = Node::new(
             self.doc.alloc_id(),
-            NodeKind::Layer { color, template: false, printable: a.printable, children, clip, preview: a.preview, dim_images: a.dim },
+            NodeKind::Layer { color, template: false, printable: a.printable, children, clip, preview: a.preview, dim_images: a.dim, legend: None },
         );
         layer.name = Some(a.name.clone());
         layer.visible = a.visible;

@@ -118,6 +118,11 @@ pub struct Tokens {
     /// Trowel: a favourite's star and unsaved marks, and a favourite legend entry's name.
     pub clay: Color32,
     pub clay_text: Color32,
+    /// Trowel (J005): the 「따로 N」 badge of a legend row with lines set apart from its look,
+    /// its text, its edge and its wash.
+    pub caution: Color32,
+    pub caution_edge: Color32,
+    pub caution_wash: Color32,
 }
 
 impl Tokens {
@@ -175,6 +180,9 @@ impl Tokens {
             on_action: Color32::WHITE,
             clay: hex(0xef6058),
             clay_text: hex(0xf0a283),
+            caution: hex(0xf0a330),
+            caution_edge: hex(0x8a6a2a),
+            caution_wash: hex(0x3f3524),
         };
         match b {
             Brightness::Dark => base,
@@ -233,6 +241,9 @@ impl Tokens {
                 ring: hex(0x8c8c8c),
                 clay: hex(0xd97757),
                 clay_text: hex(0x9c4a2f),
+                caution: hex(0x7a5a00),
+                caution_edge: hex(0xd9c27a),
+                caution_wash: hex(0xf7efd6),
                 ..base
             },
             Brightness::Light => Tokens {
@@ -263,6 +274,9 @@ impl Tokens {
                 ring: hex(0xb4b4b4),
                 clay: hex(0xd97757),
                 clay_text: hex(0x9c4a2f),
+                caution: hex(0x7a5a00),
+                caution_edge: hex(0xd9c27a),
+                caution_wash: hex(0xf7efd6),
                 ..base
             },
             // Quiet Plate: Trowel's own light theme (ivory ground, ink text, a clay accent on the
@@ -323,6 +337,9 @@ impl Tokens {
                 on_action: Color32::WHITE,
                 clay: hex(0xd97757),
                 clay_text: hex(0x9c4a2f),
+                caution: hex(0x7a5a00),
+                caution_edge: hex(0xd9c27a),
+                caution_wash: hex(0xf7efd6),
             },
         }
     }
@@ -498,6 +515,24 @@ mod tests {
             let t = Tokens::for_brightness(b);
             assert!(contrast(t.on_action, t.action) >= 3.0, "{b:?}: the save glyph on its well");
             assert!(contrast(t.clay_text, t.panel) >= 3.0, "{b:?}: a favourite's name on the panel");
+        }
+    }
+
+    /// J005: the 「따로 N」 badge on a legend row (lines set apart from their row's look) is a
+    /// caution mark, its text and edge on a wash: Plate's are design 2.1's, and every level's text
+    /// reads on its wash and the wash shows on the panel.
+    #[test]
+    fn every_preset_has_the_caution_tokens() {
+        let plate = Tokens::for_brightness(Brightness::Plate);
+        assert_eq!(plate.caution, hex(0x7A5A00));
+        assert_eq!(plate.caution_edge, hex(0xD9C27A));
+        assert_eq!(plate.caution_wash, hex(0xF7EFD6));
+        for b in Brightness::ALL {
+            let t = Tokens::for_brightness(b);
+            assert!(contrast(t.caution, t.caution_wash) >= 4.5, "{b:?}: the badge text on its wash");
+            assert!(contrast(t.caution, t.panel) >= 3.0, "{b:?}: the badge text on the panel");
+            assert_ne!(t.caution_wash, t.panel, "{b:?}: the badge shows on the panel");
+            assert_ne!(t.caution_edge, t.caution_wash, "{b:?}: the badge has an edge");
         }
     }
 

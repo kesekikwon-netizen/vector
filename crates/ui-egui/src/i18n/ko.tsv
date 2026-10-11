@@ -4090,72 +4090,132 @@ lighting	Light	조명
 	guide	안내선
 	align	정렬
 	Pins go on the artwork	핀은 아트워크 위에만 놓을 수 있습니다
+# Trowel legend rows (J005): engine command labels.
+	Set Legend Entry	범례 줄 설정
+	Use Legend Entry	범례 줄 쓰기
+	Revert to the Legend	범례대로 되돌리기
+	Change Weights at Once	굵기 한 번에 바꾸기
+	Add Legend Group	범례 묶음 넣기
+	Add to Legend	범례에 더하기
 # Trowel's own window (design 2.1, `tw!`): context `trowel`, its archaeology-drawing wording, ahead of
 # the plain rows above (굵기, 실선, 허용치, 선종, 맞추기 where the plain rows say 두께, 단색, 허용 오차, 선, 정렬).
+trowel	= {mm} mm	= {mm} mm
+trowel	Add a Legend	범례 넣기
 trowel	Add a Weight	굵기 추가
+trowel	Add a legend group's rows	범례 묶음의 줄을 넣습니다
+trowel	Add the Finds Legend	유물용 범례 넣기
+trowel	Add the Plan Legend	평면용 범례 넣기
+trowel	Add the Section and Elevation Legend	단면·입면용 범례 넣기
 trowel	Add to Legend	범례에 더하기
+trowel	After	바꾼 뒤
 trowel	Align	맞추기
 trowel	Align Underlay…	밑그림 맞추기…
+trowel	All Weights ×{r} …	모든 굵기 ×{r} …
 trowel	All saved	모두 저장됨
 trowel	Alternate	번갈아
+trowel	Apart	따로
+trowel	Apart {n}	따로 {n}
+trowel	Apart {n} → Legend	따로 {n} → 범례대로
 trowel	Archaeology	고고학
 trowel	Area and Perimeter	면적·둘레 계산
 trowel	Back to the Legend	범례대로
+trowel	Back to the row's look	범례 줄 모양으로 되돌리기
 trowel	Bucket	칠통
-trowel	Change All Weights…	모든 굵기 바꾸기…
-trowel	Change Weights at Once…	굵기 한 번에 바꾸기…
+trowel	Change	바꾸기
+trowel	Change Values	값 바꾸기
+trowel	Change Weights at Once…	굵기 한 번에…
+trowel	Change every line's weight at once	모든 선의 굵기를 한 번에 바꿉니다
 trowel	Choose	고르세요
+trowel	Choose a Strata Layer	Strata 레이어 고르기
 trowel	Coordinate system not set	좌표계 정하지 않음
 trowel	Cut Face	잘린 면
 trowel	Dash-dot	일점쇄선
 trowel	Dotted	점선
-trowel	Draw on this layer	이 레이어에 그리기
+trowel	Draw with this row · double-click to change it	이 줄로 그립니다 · 두 번 누르면 고칩니다
 trowel	Drawing	도면
 trowel	Drawing Elements	도면 요소
 trowel	Drawing Palette	그리기 팔레트
 trowel	Drawing Set	도면집
+trowel	Drawing · Trowel	그리기 · Trowel
+trowel	Estimated	추정
 trowel	Estimated (Dashed)	추정 (파선)
+trowel	Estimated Lines	추정선
 trowel	Find Number	유물 번호
 trowel	Find a command	명령 찾기
 trowel	Finds	유물
+trowel	Finds Legend	유물용 범례
 trowel	Fold the properties	속성 접기
 trowel	Follow Pressure	필압 따라
+trowel	For Finds	유물용
+trowel	For Plans	평면용
+trowel	For Sections and Elevations	단면·입면용
+trowel	Give the selected lines, or the next line, their row's look	고른 선을, 고른 것이 없으면 다음에 그릴 선을 범례 줄 모양으로 되돌립니다
 trowel	Hatch	빗금
 trowel	Hide the objects	객체 목록 접기
+trowel	How	어떻게
 trowel	How near the pointer snaps to a point	포인터가 점에 붙는 거리
 trowel	Import	가져오기
 trowel	Insert Legend Table	범례표 넣기
 trowel	Insert Title Block	표제란 넣기
 trowel	Layers panel	레이어 패널
-trowel	Layers: {n}	레이어 {n}개
 trowel	Layout before Trowel	Trowel 이전 배치
 trowel	Legend	범례
+trowel	Legend Row	범례 줄
+trowel	Legend Row {n}	범례 줄 {n}
 trowel	Legend Table	범례표
+trowel	Legend rows added: {n}	범례 줄 {n}개를 넣었습니다
 trowel	Legend · Layers	범례 · 레이어
 trowel	Line	선종
+trowel	Lines back to the legend: {n}	선 {n}개를 범례대로 되돌렸습니다
+trowel	Lines back to the legend: {n} · locked ones left as they were: {m}	선 {n}개를 범례대로 되돌렸습니다 · 잠긴 선 {m}개는 그대로 둡니다
+trowel	Lines changed: {n}	선 {n}개를 바꿨습니다
+trowel	Lines set apart take the change on their own weight	따로 바꾼 선도 각자의 굵기를 기준으로 함께 바뀝니다
+trowel	Lines set apart too	따로 바꾼 선도 함께
+trowel	Lines that change: {n}. One {undo} puts them all back.	선 {n}개가 바뀝니다. {undo} 한 번이면 모두 돌아옵니다.
+trowel	Lines: {n}	{n}개
+trowel	Locked lines left as they are: {n}.	잠긴 선 {n}개는 그대로 둡니다.
 trowel	Make Level Lines	해발선 만들기
+trowel	Make a legend row of this look and put the selected lines on it	이 모양으로 범례 줄을 만들고 고른 선을 그 줄로 옮깁니다
+trowel	Moved {n} to {row}	{n}개를 「{row}」 줄로 옮겼습니다
+trowel	My Defaults	내 기본값
+trowel	Name label	이름표
 trowel	New Drawing	새 도면
 trowel	New drawing	새 도면
 trowel	New layer	새 레이어
 trowel	Next line · pt	다음에 그릴 선 · pt
-trowel	No dashes	끊김 없이 이어진 선
 trowel	No layer to draw on	그릴 수 있는 레이어가 없습니다
+trowel	No legend rows to add	넣을 범례 줄이 없습니다
+trowel	No line is set apart	따로 바꾼 선이 없습니다
+trowel	No weight	굵기 없음
 trowel	No.	번호
 trowel	North Arrow	방위
 trowel	Not saved	저장 안 됨
+trowel	Nothing changes	바뀌는 것이 없습니다
+trowel	Now	지금
+trowel	Often Used	자주 씀
+trowel	One Step	한 단계
+trowel	One Step Thicker	한 단계 굵게
+trowel	One Step Thinner	한 단계 가늘게
 trowel	Open Drawings	열린 도면
-trowel	Overrides to Legend	따로 → 범례대로
 trowel	Pen	펜
 trowel	Pen Pressure	펜 필압
 trowel	Period	시대
 trowel	Place a scan under the drawing	스캔한 실측도를 도면 밑에 놓기
 trowel	Plan	평면
+trowel	Plan Legend	평면용 범례
 trowel	Plate	도판
 trowel	Posthole Depth	주혈 깊이
 trowel	Press and hold for more tools	길게 누르면 다른 도구가 나옵니다
 trowel	Properties panel	속성 패널
+trowel	Put every line set apart back to its row's look	따로 바꾼 선을 모두 범례대로 되돌립니다
+trowel	Put this row's lines set apart back to its look	이 줄에서 따로 바꾼 선을 범례대로 되돌립니다
+trowel	Ratio	비율
 trowel	Revert to the Legend	범례대로 되돌리기
+trowel	Rows changed: {r} · lines: {n}	범례 줄 {r}개 · 선 {n}개를 바꿨습니다
 trowel	Same Weight	굵기 그대로
+trowel	Same weight, dashed	같은 굵기 파선
+trowel	Saved in	저장
+trowel	Saved in this drawing file for now	지금은 이 도면 파일에 저장됩니다
 trowel	Scale Bar	축척
 trowel	Scale and Coordinate System…	축척과 좌표계…
 trowel	Scale and coordinate system	축척·좌표계
@@ -4163,29 +4223,51 @@ trowel	Scale and coordinate system not set	축척·좌표계 정하지 않음
 trowel	Scale not set	축척 정하지 않음
 trowel	Section	단면
 trowel	Section Line	단면선
+trowel	Section and Elevation Legend	단면·입면용 범례
+trowel	Select All	모두 고르기
+trowel	Select this row's lines	이 줄의 선을 모두 고릅니다
 trowel	Selected lines · pt	고른 선 · pt
 trowel	Send to Strata…	Strata로 보내기…
 trowel	Show or hide the underlay	밑그림 보이기·숨기기
 trowel	Show the objects	객체 목록 펼치기
 trowel	Show the properties	속성 펼치기
+trowel	Shown first in its section, its name in clay	묶음 맨 위에, 이름은 흙색으로 보입니다
 trowel	Slope Hachure	경사 표시
 trowel	Snap	자석
 trowel	Snap off	자석 끔
 trowel	Snap on	자석 켬
 trowel	Solid	실선
 trowel	Spot Height	표고
+trowel	Step	단계
+trowel	Survey Data · Same Layers as Strata	조사 데이터 · Strata와 같은 레이어
+trowel	Template File	양식 파일
+trowel	Text	글자
+trowel	Text Size	글자 크기
 trowel	The layer and weight the next line is drawn with	다음 선을 그릴 레이어와 굵기
+trowel	The next line takes {row}'s look	다음 선은 「{row}」 줄 모양으로 그립니다
+trowel	The ratio is between 0.1 and 10	비율은 0.1에서 10 사이입니다
+trowel	The row leaves its lines' weights alone	이 줄은 선 굵기를 바꾸지 않습니다
+trowel	The selected lines, or every line set apart when nothing is selected	고른 선을, 고른 것이 없으면 따로 바꾼 선을 모두 범례대로 되돌립니다
+trowel	This Survey Only	이 조사에만
 trowel	This drawing	이 도면
 trowel	This drawing's layers	이 도면의 레이어
+trowel	This row is the layer	이 줄이 곧 레이어입니다
+trowel	This row's layer is locked: unlock it to change the row	이 줄의 레이어가 잠겨 있습니다. 잠금을 풀어야 고칠 수 있습니다
+trowel	This row's lines	이 줄의 선
 trowel	Title Block	표제란
 trowel	To Strata	Strata로
 trowel	Tolerance	허용치
 trowel	Tool	도구
+trowel	Type a weight in points, such as 0.5	굵기를 0.5처럼 pt 단위로 적어 주세요
 trowel	Underlay	밑그림
+trowel	Values	값
 trowel	Weight	굵기
 trowel	Weight, hatch and line type: in the Drawing Palette at the right	굵기 · 빗금 · 선종은 오른쪽 「그리기 팔레트」에서
+trowel	Weights at Once	굵기 한 번에
 trowel	Weights at once	굵기 한 번에
 trowel	When Closed	닫으면
+trowel	Where	어디
+trowel	Whole Drawing Set	도면집 전체
 trowel	{layer} is hidden: drawing on {target}	{layer} 숨김: {target}에 그립니다
 trowel	{layer} is hidden: no layer to draw on	{layer} 숨김: 그릴 수 있는 레이어가 없습니다
 trowel	{layer} is locked: drawing on {target}	{layer} 잠김: {target}에 그립니다
@@ -4194,3 +4276,5 @@ trowel	{n} not saved	저장 안 됨 {n}건
 trowel	{n} objects	객체 {n}개
 trowel	{what} · Coming soon · {job}	{what} · 준비 중 · {job}
 trowel	{what}: coming soon ({job})	{what}: 준비 중 ({job})
+trowel	{w} Apart ↺	{w} 따로 ↺
+trowel	…and {n} more	…외 {n}줄

@@ -1,10 +1,15 @@
 //! The drawing palette, always at the top of the right column (design 2.1 §3): the weight in
-//! points of the selected lines, or of the next line drawn, the hatch and the line type, and Cut
-//! Face. The weights and Solid run now; the hatches, the other line types and the legend buttons
-//! come with J014 and J005, and adding a weight with J018.
+//! points of the selected lines, or of the next line drawn, the hatch and the line type, Cut Face
+//! and the legend's two buttons: Add to Legend makes a row of the look and opens its editor, Back
+//! to the Legend puts the selected lines (or the next line) back to their row's look. The hatches
+//! and Cut Face come with J014, adding a weight with J018.
+
+use std::collections::HashSet;
 
 use serde_json::json;
+use vectorcraft_doc::{LineType, NodeId};
 
+use super::legend::{Card, open_card};
 use super::*;
 
 /// The palette's height: its head, three rows of chips and the buttons under them.
@@ -31,7 +36,6 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let stroke = crate::panels::current_stroke(app);
     let mixed = crate::panels::stroke_mixed(app, ui.ctx());
     let weight = crate::panels::stroke::shown_weight(app, stroke.as_ref(), &mixed);
-    let solid = !mixed.dash && stroke.as_ref().is_none_or(|s| s.dash.is_none());
     let row = |i: usize| head.bottom() + 2.0 + ROW_H * (i as f32 + 0.5);
     let mut set = None;
     // Weight.
@@ -82,49 +86,76 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         }
         x = chip_r.right() + 4.0;
     }
-    // Line type: Solid now, the others with J014.
+    // Line type: the first selected line's, or the next line's; none when the selected lines'
+    // dashes differ.
     let cy = row(2);
     text(ui, pos2(r.left() + 14.0, cy), Align2::LEFT_CENTER, tw!("Line"), font(11.0), t.text_dim);
-    let kinds = [("solid", tw!("Solid")), ("dashed", tw!("Dashed")), ("dotted", tw!("Dotted")), ("dashdot", tw!("Dash-dot"))];
-    let widths: Vec<f32> = kinds.iter().map(|(_, l)| width_of(ui, l, font(12.0)) + 18.0).collect();
-    let seg = Rect::from_min_size(pos2(r.left() + CHIPS_X, cy - 13.0), vec2(widths.iter().sum(), 26.0));
-    field_box(ui, seg, t.input, t.input_border);
-    let mut x = seg.left();
-    for (i, ((key, label), w)) in kinds.iter().zip(&widths).enumerate() {
-        let part = Rect::from_min_size(pos2(x, seg.top()), vec2(*w, seg.height()));
-        let live = *key == "solid";
-        if !live {
-            // On the wash like the chips that come later; the last one's outer corners are the box's.
-            let r = if i + 1 == kinds.len() { 8 } else { 0 };
-            ui.painter().rect_filled(part, CornerRadius { nw: 0, sw: 0, ne: r, se: r }, t.panel_darker);
-        }
-        if i > 0 {
-            ui.painter().vline(part.left() + 0.5, part.y_range().shrink(1.0), Stroke::new(1.0, t.border));
-        }
-        if live && solid {
-            // Solid comes first: its outer corners are the box's.
-            ui.painter().rect(part, CornerRadius { nw: 8, sw: 8, ne: 0, se: 0 }, t.row_selected, Stroke::new(1.0, t.text), StrokeKind::Inside);
-        }
-        text(ui, part.center(), Align2::CENTER_CENTER, *label, font(12.0), if live { t.text } else { t.text_disabled });
-        if live {
-            let resp = ui.interact(part, wid("dash", key), Sense::click());
-            if resp.on_hover_text(tw!("No dashes")).clicked() {
-                set = Some(json!({ "dash": null }));
-            }
-        } else {
-            soon_widget(ui, wid("dash", key), part, label, "J014");
-        }
-        x += w;
+    let shown = (!mixed.dash).then(|| stroke.as_ref().map_or(LineType::Solid, LineType::of));
+    let kinds = line_types();
+    let parts: Vec<Seg> =
+        kinds.iter().map(|(key, label, kind)| Seg { key, label, on: shown.as_ref().is_some_and(|s| s.same(kind)), soon: None }).collect();
+    let look = SegLook { h: 26.0, pad: 9.0, font: font(12.0) };
+    if let (Some(key), _) = segments(ui, "dash", pos2(r.left() + CHIPS_X, cy), &look, &parts, &t)
+        && let Some((_, _, kind)) = kinds.iter().find(|(k, _, _)| *k == key)
+    {
+        set = Some(json!({ "dash": kind.dash_pt() }));
     }
-    ui.painter().rect_stroke(seg, CornerRadius::same(8), Stroke::new(1.0, t.input_border), StrokeKind::Inside);
     // Cut Face, and the legend's own buttons.
     let cy = head.bottom() + 2.0 + 3.0 * ROW_H + 4.0 + 13.0;
     let x = button_soon(ui, wid("palette-cut", ()), pos2(r.left() + 14.0, cy), tw!("Cut Face"), true, "J014", &t) + 4.0;
-    let x = button_soon(ui, wid("palette-to-legend", ()), pos2(x, cy), tw!("Add to Legend"), false, "J005", &t) + 4.0;
-    button_soon(ui, wid("palette-from-legend", ()), pos2(x, cy), tw!("Back to the Legend"), false, "J005", &t);
+    let open = app.session.active().is_some();
+    let add = small_button(ui, wid("palette-to-legend", ()), pos2(x, cy), tw!("Add to Legend"), open, &t)
+        .on_hover_text(tw!("Make a legend row of this look and put the selected lines on it"));
+    let back = small_button(ui, wid("palette-from-legend", ()), pos2(add.rect.right() + 4.0, cy), tw!("Back to the Legend"), open, &t)
+        .on_hover_text(tw!("Give the selected lines, or the next line, their row's look"));
     if let Some(p) = set {
         crate::panels::stroke::set(app, p);
     }
+    let done = if add.clicked() {
+        add_row(app, ui.ctx())
+    } else if back.clicked() {
+        back_to_legend(app)
+    } else {
+        Ok(())
+    };
+    if let Err(e) = done {
+        app.status(e);
+    }
+}
+
+/// Make a legend row of the selected line's look (or the next line's) named "Legend Row n", the
+/// selection moving onto it, and open the row's editor.
+fn add_row(app: &mut VectorcraftApp, ctx: &egui::Context) -> Result<(), String> {
+    let Some(st) = app.session.active() else { return Ok(()) };
+    let taken: HashSet<String> = st.doc.layers.iter().map(|l| l.display_name()).collect();
+    // One of the first taken + 1 numbers is free.
+    let name = (1..=taken.len() + 1)
+        .map(|n| crate::i18n::fmt(tw!("Legend Row {n}"), &[("n", &n.to_string())]))
+        .find(|s| !taken.contains(s))
+        .unwrap_or_default();
+    let done = app.run("legend.add", json!({ "name": name }))?;
+    let Some(id) = done["id"].as_u64() else { return Ok(()) };
+    let moved = done["moved"].as_u64().unwrap_or(0);
+    if moved > 0 {
+        app.status(crate::i18n::fmt(tw!("Moved {n} to {row}"), &[("n", &moved.to_string()), ("row", &name)]));
+    }
+    open_card(app, ctx, Card::Row(NodeId(id)), None);
+    Ok(())
+}
+
+/// Put the selected lines back to their row's look; with nothing selected the next line takes the
+/// current row's look.
+fn back_to_legend(app: &mut VectorcraftApp) -> Result<(), String> {
+    if app.session.active().is_some_and(|st| !st.selection.objects.is_empty()) {
+        return super::legend::revert(app, json!({}));
+    }
+    app.run("legend.revert", json!({}))?;
+    let row = app.session.active().and_then(|st| st.doc.node(st.current_layer().and_then(|l| st.doc.layer_of(l))?));
+    if let Some(row) = row.filter(|n| n.legend().is_some_and(|l| l.look().is_some())) {
+        let note = crate::i18n::fmt(tw!("The next line takes {row}'s look"), &[("row", &row.display_name())]);
+        app.status(note);
+    }
+    Ok(())
 }
 
 /// A chip: on, two points of ink around an oat fill; else a one-point edge.

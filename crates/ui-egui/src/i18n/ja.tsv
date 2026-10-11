@@ -4091,3 +4091,9 @@ lighting	Light	ライト
 	Stroke Pressure	ストロークの筆圧
 	Right Diagonal	右斜め
 	Left Diagonal	左斜め
+	Set Legend Entry	凡例項目を設定
+	Use Legend Entry	凡例項目を使用
+	Revert to the Legend	凡例に戻す
+	Change Weights at Once	線幅を一括変更
+	Add Legend Group	凡例グループを追加
+	Add to Legend	凡例に追加

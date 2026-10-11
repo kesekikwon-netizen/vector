@@ -311,7 +311,7 @@ fn select_all(ui: &Ui, id: egui::Id, text: &str) {
 
 /// Numeric fields take the whole text, unit included, when they gain focus or are double-clicked
 /// (egui would select one word): typing a number or an expression replaces it.
-fn select_all_on_focus(ui: &Ui, resp: &Response, text: &str) {
+pub(crate) fn select_all_on_focus(ui: &Ui, resp: &Response, text: &str) {
     if !(resp.gained_focus() || resp.double_clicked()) {
         return;
     }

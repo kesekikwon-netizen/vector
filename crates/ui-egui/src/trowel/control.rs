@@ -1,6 +1,6 @@
-//! The Control bar. With a drawing tool: the tool, the legend entry it draws with (for now the
-//! current layer and the next line's weight) and the options later jobs bring; with any other tool,
-//! the classic Control bar's controls. Snap and its tolerance stay at the right.
+//! The Control bar. With a drawing tool: the tool, the legend row it draws with (its look, its
+//! name and the next line's weight) and the options later jobs bring; with any other tool, the
+//! classic Control bar's controls. Snap and its tolerance stay at the right.
 
 use serde_json::json;
 
@@ -46,23 +46,12 @@ fn snap_controls(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect, t: &Tokens) -> 
         app.run("prefs.set", json!({"key": "snapToPointTolerance", "value": v})).ok();
     }
     let label = text(ui, pos2(field.left() - GAP, cy), Align2::RIGHT_CENTER, tw!("Tolerance"), font(12.0), t.text_dim);
-    let on = app.ui.view.snap_to_point;
-    let w = width_of(ui, tw!("Snap"), font(12.0)) + 20.0;
-    let toggle = Rect::from_min_size(pos2(label.left() - GAP - w, cy - H / 2.0), vec2(w, H));
-    let resp = ui.interact(toggle, wid("ctl-snap", ()), Sense::click());
-    let fill = if on {
-        t.row_selected
-    } else if resp.hovered() {
-        t.hover
-    } else {
-        t.input
-    };
-    field_box(ui, toggle, fill, if on { t.ring } else { t.input_border });
-    text(ui, toggle.center(), Align2::CENTER_CENTER, tw!("Snap"), font(12.0), t.text);
-    if resp.on_hover_text(tl!("Snap to Point")).clicked() {
+    let snap = toggle_rect(ui, pos2(label.left() - GAP, cy), H, tw!("Snap"));
+    let snap = snap.translate(vec2(-snap.width(), 0.0));
+    if toggle(ui, wid("ctl-snap", ()), snap, tw!("Snap"), app.ui.view.snap_to_point, t).on_hover_text(tl!("Snap to Point")).clicked() {
         crate::menus::invoke(app, "view.snapToPoint", json!({}));
     }
-    toggle.left()
+    snap.left()
 }
 
 /// The snapping tolerance in whole pixels (1 to 8) in `r`: its digits, then "px". A click lists the
@@ -98,7 +87,9 @@ fn drawing(app: &mut VectorcraftApp, ui: &mut Ui, room: Rect, t: &Tokens) {
     label(tw!("Legend"), t.text_dim, &mut x);
     x = layer_field(app, ui, pos2(x, cy), t) + GAP;
     // What later jobs bring: estimated lines, closing, pen pressure.
-    x = toggle_soon(ui, wid("ctl-estimate", ()), pos2(x, cy), tw!("Estimated (Dashed)"), "J014", t) + GAP;
+    let estimate = toggle_rect(ui, pos2(x, cy), H, tw!("Estimated (Dashed)"));
+    toggle_soon(ui, wid("ctl-estimate", ()), estimate, tw!("Estimated (Dashed)"), "J014", t);
+    x = estimate.right() + GAP;
     x = divider(ui, x, cy, t);
     let mut x2 = x;
     label(tw!("When Closed"), t.text_dim, &mut x2);
@@ -117,9 +108,23 @@ fn divider(ui: &Ui, x: f32, cy: f32, t: &Tokens) -> f32 {
     x + 1.0 + GAP
 }
 
-/// The legend field: the colour and name of the layer the next line goes to and its weight; a click
-/// lists the layers to draw on. When the current layer is locked or hidden it shows the layer that
-/// takes the line instead, edged in clay, and says why on hover. Returns where it ends.
+/// What stands before a layer's name in the legend field and its list: its row's look, or the
+/// layer's colour (`edge` thick) when it is not a legend row.
+fn look_patch(ui: &Ui, r: Rect, doc: &vectorcraft_doc::Document, id: vectorcraft_doc::NodeId, edge: f32, t: &Tokens) {
+    match doc.legend(id) {
+        Some(legend) => super::legend::sample(ui, r, legend, t),
+        None => {
+            let c = crate::panels::layers::layer_colour(doc, id);
+            ui.painter().rect(r, 0.0, c.gamma_multiply(0.25), Stroke::new(edge, c), StrokeKind::Inside);
+        }
+    }
+}
+
+/// The legend field: the look (or colour) and name of the layer the next line goes to and its
+/// weight; a click lists the rows to draw with, and picking one gives the pen its look
+/// (`legend.pick`, the selection staying where it is). When the current layer is locked or hidden
+/// it shows the layer that takes the line instead, edged in clay, and says why on hover. Returns
+/// where it ends.
 fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f32 {
     let Some(st) = app.session.active() else { return at.x };
     let current = st.current_layer();
@@ -128,9 +133,8 @@ fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f
         Some(n) => n.display_name(),
         None => tw!("No layer to draw on").to_string(),
     };
-    let colour = target.into.map(|id| crate::panels::layers::layer_colour(&st.doc, id));
-    // With no layer to draw on there is no colour or weight to show: the field says so from its left.
-    let weight = match colour {
+    // With no layer to draw on there is no look or weight to show: the field says so from its left.
+    let weight = match target.into {
         Some(_) => {
             let stroke = crate::panels::current_stroke(app);
             let mixed = crate::panels::stroke_mixed(app, ui.ctx());
@@ -138,7 +142,7 @@ fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f
         }
         None => String::new(),
     };
-    let lead = if colour.is_some() { 20.0 + 6.0 } else { 0.0 };
+    let lead = if target.into.is_some() { 20.0 + 6.0 } else { 0.0 };
     let name_w = width_of(ui, &name, font(12.0)).min(220.0);
     let weight_w = width_of(ui, &weight, mono(12.0));
     let w = (8.0 + lead + name_w + 6.0 + weight_w + 8.0 + 8.0 + 8.0).max(196.0);
@@ -146,8 +150,8 @@ fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f
     let resp = ui.interact(r, wid("ctl-layer", ()), Sense::click());
     field_box(ui, r, if resp.hovered() { t.panel } else { t.input }, if target.note.is_some() { t.clay } else { t.input_border });
     let patch = Rect::from_min_size(pos2(r.left() + 8.0, at.y - 6.0), vec2(20.0, 12.0));
-    if let Some(c) = colour {
-        ui.painter().rect(patch, 0.0, c.gamma_multiply(0.25), Stroke::new(2.0, c), StrokeKind::Inside);
+    if let (Some(into), Some(st)) = (target.into, app.session.active()) {
+        look_patch(ui, patch, &st.doc, into, 2.0, t);
     }
     let p = ui.painter().with_clip_rect(r);
     let x = r.left() + 8.0 + lead;
@@ -167,9 +171,8 @@ fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f
                 if rr.hovered() {
                     ui.painter().rect_filled(row, CornerRadius::same(4), t.hover);
                 }
-                let c = crate::panels::layers::layer_colour(&st.doc, layer.id);
                 let patch = Rect::from_min_size(pos2(row.left() + 6.0, row.center().y - 6.0), vec2(20.0, 12.0));
-                ui.painter().rect(patch, 0.0, c.gamma_multiply(0.25), Stroke::new(1.5, c), StrokeKind::Inside);
+                look_patch(ui, patch, &st.doc, layer.id, 1.5, t);
                 let f = if Some(layer.id) == current { bold(12.0) } else { font(12.0) };
                 // A locked or hidden layer takes no lines: dimmed, with why at the right.
                 let editable = st.doc.is_editable(layer.id);
@@ -199,20 +202,10 @@ fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f
         }
     });
     if let Some(id) = pick
-        && let Err(e) = app.run("layer.setCurrent", json!({ "id": id.0 }))
+        && let Err(e) = app.run("legend.pick", json!({ "id": id.0 }))
     {
         app.status(e);
     }
-    r.right()
-}
-
-/// A toggle a later job brings, labelled `label`, at `at` (its left centre). Returns where it ends.
-fn toggle_soon(ui: &Ui, id: egui::Id, at: Pos2, label: &str, job: &str, t: &Tokens) -> f32 {
-    let w = width_of(ui, label, font(12.0)) + 20.0;
-    let r = Rect::from_min_size(pos2(at.x, at.y - H / 2.0), vec2(w, H));
-    field_box(ui, r, t.panel_darker, t.input_border);
-    text(ui, r.center(), Align2::CENTER_CENTER, label, font(12.0), t.text_disabled);
-    soon_widget(ui, id, r, label, job);
     r.right()
 }
 

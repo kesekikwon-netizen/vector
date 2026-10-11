@@ -65,6 +65,7 @@ struct Painted {
     text: String,
     rect: Rect,
     color: egui::Color32,
+    font: egui::FontId,
     shown: Rect,
 }
 
@@ -113,12 +114,14 @@ impl Harness {
             .iter()
             .filter_map(|c| match &c.shape {
                 egui::Shape::Text(t) => {
-                    let color = t.galley.job.sections.first().map(|s| s.format.color).filter(|c| *c != egui::Color32::PLACEHOLDER);
+                    let format = t.galley.job.sections.first().map(|s| &s.format);
+                    let color = format.map(|f| f.color).filter(|c| *c != egui::Color32::PLACEHOLDER);
                     let rect = t.visual_bounding_rect();
                     Some(Painted {
                         text: t.galley.text().to_string(),
                         rect,
                         color: color.unwrap_or(t.fallback_color),
+                        font: format.map(|f| f.font_id.clone()).unwrap_or_default(),
                         shown: rect.intersect(c.clip_rect),
                     })
                 }
@@ -177,6 +180,35 @@ impl Harness {
         }
     }
 
+    /// Two clicks in a row on the widget `id`.
+    fn double_click(&mut self, id: egui::Id) {
+        let at = self.rect(id).unwrap_or_else(|| panic!("no widget {id:?}")).center();
+        self.frame(vec![Event::PointerMoved(at)]);
+        for _ in 0..2 {
+            for pressed in [true, false] {
+                self.frame(vec![Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Default::default() }]);
+            }
+        }
+        self.settle();
+    }
+
+    /// Press and let go of `key`.
+    fn key(&mut self, key: egui::Key) {
+        for pressed in [true, false] {
+            self.frame(vec![Event::Key { key, physical_key: None, pressed, repeat: false, modifiers: Default::default() }]);
+        }
+        self.settle();
+    }
+
+    /// Click the text field `id`, select what it holds and type `text` over it, then Enter.
+    fn type_into(&mut self, id: egui::Id, text: &str) {
+        self.click(id);
+        let all = egui::Modifiers::COMMAND;
+        self.frame(vec![Event::Key { key: egui::Key::A, physical_key: None, pressed: true, repeat: false, modifiers: all }]);
+        self.frame(vec![Event::Text(text.to_string())]);
+        self.key(egui::Key::Enter);
+    }
+
     fn hover(&mut self, id: egui::Id) {
         let at = self.rect(id).unwrap_or_else(|| panic!("no widget {id:?}")).center();
         self.frame(vec![Event::PointerMoved(at)]);
@@ -224,6 +256,51 @@ impl Harness {
                 _ => None,
             })
             .next_back()
+    }
+
+    /// The rectangles painted inside `area`: where, their fill and their edge.
+    fn rects_in(&self, area: Rect) -> Vec<(Rect, egui::Color32, egui::Stroke)> {
+        self.shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Rect(s) if area.expand(0.5).contains_rect(s.rect) => Some((s.rect, s.fill, s.stroke)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The straight line segments painted inside `area`.
+    fn segments_in(&self, area: Rect) -> Vec<([Pos2; 2], egui::Stroke)> {
+        self.shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::LineSegment { points, stroke } if points.iter().all(|p| area.expand(0.5).contains(*p)) => Some((*points, *stroke)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Where colour gradients (a scroll area's fading edges) were painted over `area`.
+    fn gradients_over(&self, area: Rect) -> Vec<Rect> {
+        self.shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Mesh(m) if m.vertices.len() == 4 && m.vertices.iter().any(|v| v.color != m.vertices[0].color) => {
+                    Some(m.calc_bounds()).filter(|b| b.intersects(area))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The font `text` was painted in inside `area`.
+    fn font_of(&self, text: &str, area: Rect) -> Option<egui::FontId> {
+        self.texts.iter().find(|p| p.text == text && area.expand(0.5).contains_rect(p.rect)).map(|p| p.font.clone())
+    }
+
+    /// What the status bar says.
+    fn status_line(&self) -> String {
+        self.line_in(self.panel(STATUS))
     }
 
     fn tokens(&self) -> Tokens {
@@ -330,7 +407,8 @@ fn drawing_menu_sits_before_view_and_waits_for_its_jobs() {
     h.click_at(at(&h, "Drawing"));
     let items = h.popup_buttons();
     assert_eq!(items.len(), 9, "the Drawing menu's items: {items:?}");
-    assert!(items.iter().all(|(_, enabled)| !enabled), "they wait for their jobs");
+    // The first two run since J005; the others wait for their jobs.
+    assert!(items.iter().skip(2).all(|(_, enabled)| !enabled), "they wait for their jobs");
     let shown: String = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join("|");
     for item in ["Weights at Once…", "Make Level Lines", "Scale and Coordinate System…", "Send to Strata…"] {
         assert!(shown.contains(item), "{item} in {shown}");
@@ -489,7 +567,7 @@ fn a_short_window_scrolls_the_right_column_without_overlap() {
     assert!(right.contains_rect(more), "{more:?} in {right:?}");
     let clash = h.overlapping_texts(right);
     assert!(clash.is_empty(), "scrolled to the properties: {clash:?}");
-    let layers = h.texts.iter().find(|p| p.text == "This drawing's layers").expect("the legend's caption").shown;
+    let layers = h.texts.iter().find(|p| p.text == "Legend · Layers").expect("the legend's head").shown;
     assert!(right.contains_rect(layers) && layers.bottom() < more.top(), "the legend above the properties");
     h.click(wid("props-more", ()));
     assert_eq!(h.app.ui.open_panel.as_deref(), Some("properties"));
@@ -513,8 +591,8 @@ fn the_legend_list_stays_above_its_footer() {
         assert!(h.panel(RIGHT).contains_rect(weights), "{w} × {height}: {weights:?}");
         // legend::footer: its line is 6 above its buttons.
         let line = weights.top() - 6.0;
-        let caption = h.texts.iter().find(|p| p.text == "This drawing's layers").expect("the legend's caption").rect;
-        h.wheel(pos2(caption.center().x, (caption.bottom() + line) / 2.0), vec2(0.0, -4000.0));
+        let head = h.texts.iter().find(|p| p.text == "Legend · Layers").expect("the legend's head").rect;
+        h.wheel(pos2(head.center().x, (head.bottom() + line) / 2.0), vec2(0.0, -4000.0));
         let rows: Vec<&Painted> = h.texts.iter().filter(|p| names.contains(&p.text) && p.shown.is_positive()).collect();
         for p in &rows {
             assert!(p.shown.bottom() <= line, "{w} × {height}: {:?} over the footer: {:?}, its line at {line}", p.text, p.shown);
@@ -752,9 +830,9 @@ fn palette_weight_chip_sets_the_next_stroke() {
     assert!(stroke.dash.is_some());
     h.click(wid("dash", "solid"));
     assert!(h.app.session.shown_stroke().unwrap().dash.is_none());
-    // Hatches, the other line types and adding a weight wait for J014 and J018: on the wash, like
-    // the other things that come later.
-    for id in [wid("hatch", "45"), wid("hatch", "135"), wid("hatch", "alt"), wid("dash", "dashed"), wid("dash", "dashdot"), wid("weight-add", ())] {
+    // Hatches and adding a weight wait for J014 and J018: on the wash, like the other things that
+    // come later (the line types run since J005).
+    for id in [wid("hatch", "45"), wid("hatch", "135"), wid("hatch", "alt"), wid("weight-add", ())] {
         assert_eq!(h.fill_at(h.rect(id).unwrap()), Some(t.panel_darker), "{id:?}");
     }
     h.click(wid("hatch", "45"));
@@ -899,11 +977,11 @@ fn status_bar_shows_messages_for_a_while() {
         assert!(!line.contains("to add a corner point"), "the error, the {time} time: {line}");
         h.later(7.0);
     }
-    // Section (J004) and Change All Weights (J005): what they are and when, a name's "…" left off.
+    // Section (J004) and Cut Face (J014): what they are and when.
     h.click(wid("tile", "section"));
     assert!(h.line_in(bar).contains("Section: coming soon (J004)"), "{}", h.line_in(bar));
-    h.click(wid("legend-weights", ()));
-    assert!(h.line_in(bar).contains("Change All Weights: coming soon (J005)"), "{}", h.line_in(bar));
+    h.click(wid("palette-cut", ()));
+    assert!(h.line_in(bar).contains("Cut Face: coming soon (J014)"), "{}", h.line_in(bar));
     h.later(5.0);
     assert!(!h.line_in(bar).contains("coming soon"), "{}", h.line_in(bar));
 }
@@ -1076,4 +1154,694 @@ fn every_trowel_icon_is_bundled() {
     assert!(names.len() >= 37, "{names:?}");
     let missing: Vec<_> = names.iter().filter(|n| !crate::icons::exists(n)).collect();
     assert!(missing.is_empty(), "icons not bundled: {missing:?}");
+}
+
+// ---------- J005: the legend's rows ----------
+
+/// A rectangle drawn on the current layer with the pen's look; its id.
+fn draw_rect(h: &mut Harness, x: f64) -> NodeId {
+    NodeId(h.app.run("shape.rectangle", json!({"x": x, "y": 10, "width": 20, "height": 20})).unwrap()["id"].as_u64().unwrap())
+}
+
+/// A new top layer `name` (the current one) made a legend row with `legend`, `legend.set`'s params.
+fn legend_row(h: &mut Harness, name: &str, legend: serde_json::Value) -> NodeId {
+    let id = NodeId(h.app.run("layer.new", json!({ "name": name })).unwrap()["id"].as_u64().unwrap());
+    let mut p = legend;
+    p["id"] = json!(id.0);
+    h.app.run("legend.set", p).unwrap();
+    id
+}
+
+fn weight_of(h: &Harness, id: NodeId) -> f64 {
+    h.app.session.active().unwrap().doc.node(id).unwrap().appearance.stroke().unwrap().width
+}
+
+/// The rows of `ids` laid out in the legend, top to bottom.
+fn row_order(h: &Harness, ids: &[NodeId]) -> Vec<NodeId> {
+    let mut v: Vec<(f32, NodeId)> = ids.iter().filter_map(|id| h.rect(wid("legend-row", id.0)).map(|r| (r.top(), *id))).collect();
+    v.sort_by(|a, b| a.0.total_cmp(&b.0));
+    v.into_iter().map(|(_, id)| id).collect()
+}
+
+/// A legend row shows its look (a sample drawn at its weight, the weight in points), ★ and a bold
+/// clay name when it is a favourite, how many of its lines are set apart, and its number of
+/// objects; a mark row shows its mark, and a layer without a row its colour as before (design 2.1
+/// §7, criterion 11).
+#[test]
+fn legend_rows_show_the_look_star_and_overrides() {
+    let mut h = Harness::new();
+    let t = h.tokens();
+    let first = h.layer_ids()[0];
+    let pits = legend_row(&mut h, "Pit outline", json!({"weight": 0.8, "sample": "area", "favourite": true}));
+    // Its lines: two in its look, one set apart at 0.5.
+    h.app.run("stroke.set", json!({"weight": 0.8})).unwrap();
+    for x in [10.0, 40.0] {
+        draw_rect(&mut h, x);
+    }
+    let apart = draw_rect(&mut h, 70.0);
+    h.app.run("select.set", json!({ "ids": [apart.0] })).unwrap();
+    h.app.run("stroke.set", json!({"weight": 0.5})).unwrap();
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    let section = legend_row(&mut h, "Section line", json!({"weight": 0.2, "line": "dashdot"}));
+    let datum = legend_row(&mut h, "Datum", json!({"weight": null, "sample": {"mark": "△"}}));
+    h.settle();
+    let row = |h: &Harness, id: NodeId| h.rect(wid("legend-row", id.0)).unwrap();
+    let pr = row(&h, pits);
+    assert_eq!(h.texts_in(pr), ["★", "Pit outline", "Apart 1", "0.8", "3"]);
+    assert_eq!(h.color_of("★", pr), Some(t.clay));
+    assert_eq!(h.color_of("Pit outline", pr), Some(t.clay_text), "a favourite's name is clay");
+    assert_eq!(h.font_of("Pit outline", pr).unwrap().family, crate::theme::semibold(12.0).family, "and bold");
+    assert_eq!(h.color_of("Apart 1", pr), Some(t.caution));
+    assert_eq!(h.color_of("0.8", pr), Some(t.text_dim));
+    let badge = h.texts.iter().find(|p| p.text == "Apart 1").unwrap().rect;
+    let rects = h.rects_in(pr);
+    assert!(
+        rects.iter().any(|(r, fill, edge)| *fill == t.caution_wash && edge.color == t.caution_edge && r.contains_rect(badge)),
+        "the badge on the caution wash: {rects:?}"
+    );
+    // Its sample: an area 20 × 12 edged at 0.8 pt's 2 points.
+    assert!(
+        rects.iter().any(|(r, _, edge)| (r.width() - 20.0).abs() < 0.5
+            && (r.height() - 12.0).abs() < 0.5
+            && (edge.width - 2.0).abs() < 1e-3
+            && edge.color == t.text),
+        "the area sample: {rects:?}"
+    );
+    // A dash-dot line at 0.2 pt: thin dashes, 0.6 points wide.
+    let sr = row(&h, section);
+    assert_eq!(h.texts_in(sr), ["Section line", "0.2", "0"]);
+    let sample = Rect::from_min_max(pos2(sr.left() + 56.0, sr.top()), pos2(sr.left() + 90.0, sr.bottom()));
+    let dashes: Vec<_> = h.segments_in(sample).into_iter().filter(|(_, s)| (s.width - 0.6).abs() < 1e-3 && s.color == t.text).collect();
+    assert!(dashes.len() >= 3, "dashes: {:?}", h.segments_in(sample));
+    // A mark row: its mark and no weight. It is the current row: on oat, its name regular.
+    let dr = row(&h, datum);
+    assert_eq!(h.texts_in(dr), ["△", "Datum", "0"]);
+    assert_eq!(h.font_of("Datum", dr).unwrap().family, egui::FontFamily::Proportional);
+    assert_eq!(h.color_of("Datum", dr), Some(t.text));
+    // A layer without a row, as before: its colour, name and count.
+    let lr = row(&h, first);
+    assert_eq!(h.texts_in(lr), ["Layer 1", "0"]);
+    assert!(h.rects_in(lr).iter().any(|(_, _, edge)| (edge.width - 1.5).abs() < 1e-3), "its colour patch");
+    // ★ and ↺ are in the fonts the app bundles: no missing-glyph boxes on any system.
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx);
+    ctx.run_ui(egui::RawInput::default(), |_| {}).textures_delta.clear();
+    for c in ['★', '↺', '△', '→', '×'] {
+        assert!(ctx.fonts_mut(|f| f.has_glyph(&egui::FontId::proportional(11.0), c)), "{c}");
+    }
+}
+
+/// In the legend the favourites come first, then the other rows in layer order, top first
+/// (criterion 12).
+#[test]
+fn favourites_come_first_in_each_section() {
+    let mut h = Harness::new();
+    let first = h.layer_ids()[0];
+    let a = legend_row(&mut h, "A", json!({"weight": 0.5}));
+    let b = legend_row(&mut h, "B", json!({"weight": 0.5, "favourite": true}));
+    let c = legend_row(&mut h, "C", json!({"weight": 0.2}));
+    h.settle();
+    assert_eq!(row_order(&h, &[first, a, b, c]), [b, c, a, first]);
+    assert!(h.texts.iter().any(|p| p.text == "This drawing's layers"), "one section without Strata rows");
+    // No longer a favourite, B goes back to its place.
+    h.app.run("legend.set", json!({"id": b.0, "favourite": false})).unwrap();
+    h.settle();
+    assert_eq!(row_order(&h, &[first, a, b, c]), [c, b, a, first]);
+}
+
+/// Rows matching a Strata layer get a section of their own above the others, each section with its
+/// favourites first (criterion 12).
+#[test]
+fn strata_rows_have_their_own_section() {
+    let mut h = Harness::sized(1600.0, 1600.0);
+    let first = h.layer_ids()[0];
+    let added: Vec<NodeId> = h.app.run("legend.addGroup", json!({"group": "plan"})).unwrap()["added"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| NodeId(v.as_u64().unwrap()))
+        .collect();
+    assert_eq!(added.len(), 15);
+    h.settle();
+    let doc = h.app.session.active().unwrap().doc.clone();
+    let legend = |id: NodeId| doc.node(id).unwrap().legend().cloned().unwrap();
+    let caption = |h: &Harness, s: &str| h.texts.iter().find(|p| p.text == s).map(|p| p.rect).unwrap_or_else(|| panic!("no caption {s}"));
+    let survey = caption(&h, "Survey Data · Same Layers as Strata");
+    let drawing = caption(&h, "Drawing · Trowel");
+    assert!(!h.texts.iter().any(|p| p.text == "This drawing's layers"));
+    let top = |id: NodeId| h.rect(wid("legend-row", id.0)).unwrap_or_else(|| panic!("row {id:?} laid out")).top();
+    let (strata, other): (Vec<NodeId>, Vec<NodeId>) = added.iter().partition(|id| legend(**id).strata.is_some());
+    for id in &strata {
+        assert!(survey.bottom() < top(*id) && top(*id) < drawing.top(), "{id:?} in the Strata section");
+    }
+    for id in other.iter().chain([&first]) {
+        assert!(top(*id) > drawing.bottom(), "{id:?} in the drawing's section");
+    }
+    // Each section: favourites first, then the rest, both in the group's order (its first row on
+    // top); the layer without a row last.
+    let want = |rows: Vec<(&str, vectorcraft_doc::Legend)>| -> Vec<String> {
+        let (fav, rest): (Vec<_>, Vec<_>) = rows.into_iter().partition(|(_, l)| l.favourite);
+        fav.into_iter().chain(rest).map(|(n, _)| n.to_string()).collect()
+    };
+    let plan = vectorcraft_engine::cmd::legend::group_rows(vectorcraft_doc::LegendGroup::Plan);
+    let name = |id: &NodeId| doc.node(*id).unwrap().display_name();
+    let shown = |mut ids: Vec<NodeId>| -> Vec<String> {
+        ids.sort_by(|a, b| top(*a).total_cmp(&top(*b)));
+        ids.iter().map(name).collect()
+    };
+    assert_eq!(shown(strata), want(plan.iter().filter(|(_, l)| l.strata.is_some()).cloned().collect()));
+    let mut rest = want(plan.iter().filter(|(_, l)| l.strata.is_none()).cloned().collect());
+    rest.push("Layer 1".to_string());
+    assert_eq!(shown(other.into_iter().chain([first]).collect()), rest);
+}
+
+/// A click on a legend row makes it the layer drawn on and gives the pen its look; a layer without a
+/// row leaves the pen as it is (criterion 13).
+#[test]
+fn clicking_a_row_picks_it_for_the_pen() {
+    let mut h = Harness::new();
+    let first = h.layer_ids()[0];
+    let section = legend_row(&mut h, "Section line", json!({"weight": 0.2, "line": "dashdot"}));
+    h.settle();
+    h.click(wid("legend-row", first.0));
+    assert_eq!(h.current_layer(), Some(first));
+    assert_eq!(h.app.session.new_art_stroke().width, 1.0, "no look: the pen as it was");
+    h.click(wid("legend-row", section.0));
+    assert_eq!(h.current_layer(), Some(section));
+    let pen = h.app.session.new_art_stroke();
+    assert_eq!(pen.width, 0.2);
+    assert_eq!(pen.dash.map(|d| d.pattern), vectorcraft_doc::LineType::DashDot.dash_pt());
+}
+
+/// With a selection tool in hand, a click on a row moves the selected objects into it and gives
+/// their lines its look, one undo step (criterion 13).
+#[test]
+fn clicking_a_row_with_the_selection_tool_moves_the_selection() {
+    let mut h = Harness::new();
+    let first = h.layer_ids()[0];
+    let line = draw_rect(&mut h, 10.0);
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.app.run("select.set", json!({ "ids": [line.0] })).unwrap();
+    h.app.select_tool("selection");
+    h.settle();
+    h.click(wid("legend-row", pits.0));
+    let layer_of = |h: &Harness| h.app.session.active().unwrap().doc.layer_containing(line);
+    assert_eq!(layer_of(&h), Some(pits));
+    assert_eq!(weight_of(&h, line), 0.8);
+    assert_eq!(h.current_layer(), Some(pits));
+    assert!(h.status_line().contains("Moved 1 to Pits"), "{}", h.status_line());
+    h.app.run("edit.undo", json!({})).unwrap();
+    assert_eq!(layer_of(&h), Some(first));
+    assert_eq!(weight_of(&h, line), 1.0);
+}
+
+/// With a drawing tool in hand the line just drawn stays selected; a click on another row to draw
+/// the next line with leaves it where it is (criterion 13, decision 1).
+#[test]
+fn clicking_a_row_while_drawing_does_not_move_the_new_line() {
+    let mut h = Harness::new();
+    let first = h.layer_ids()[0];
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.app.run("layer.setCurrent", json!({ "id": first.0 })).unwrap();
+    h.app.select_tool("pen");
+    let line = draw_rect(&mut h, 10.0);
+    h.app.run("select.set", json!({ "ids": [line.0] })).unwrap();
+    h.settle();
+    h.click(wid("legend-row", pits.0));
+    assert_eq!(h.current_layer(), Some(pits));
+    assert_eq!(h.app.session.active().unwrap().doc.layer_containing(line), Some(first));
+    assert_eq!(weight_of(&h, line), 1.0);
+}
+
+/// An open row lists its objects; a line set apart shows its weight and ↺ at the right, which puts
+/// it back to the row's look (criterion 14).
+#[test]
+fn object_rows_show_overrides_and_revert() {
+    let mut h = Harness::new();
+    let t = h.tokens();
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.app.run("stroke.set", json!({"weight": 0.8})).unwrap();
+    let a = draw_rect(&mut h, 10.0);
+    let b = draw_rect(&mut h, 40.0);
+    h.app.run("select.set", json!({ "ids": [b.0] })).unwrap();
+    h.app.run("stroke.set", json!({"weight": 0.5})).unwrap();
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.settle();
+    h.click(wid("legend-open", pits.0));
+    let (ra, rb) = (h.rect(wid("legend-obj", a.0)).unwrap(), h.rect(wid("legend-obj", b.0)).unwrap());
+    assert!(!h.line_in(ra).contains("Apart"), "{}", h.line_in(ra));
+    let badge = h.texts.iter().find(|p| p.text == "0.5 Apart ↺" && rb.contains_rect(p.rect)).expect("b's badge").rect;
+    assert_eq!(h.color_of("0.5 Apart ↺", rb), Some(t.caution));
+    assert!(badge.right() > rb.right() - 12.0, "at the row's right: {badge:?} in {rb:?}");
+    h.click(wid("legend-revert", b.0));
+    assert_eq!(weight_of(&h, b), 0.8);
+    assert!(h.rect(wid("legend-revert", b.0)).is_none(), "no longer apart");
+    assert!(!h.line_in(h.rect(wid("legend-row", pits.0)).unwrap()).contains("Apart"));
+    h.app.run("edit.undo", json!({})).unwrap();
+    assert_eq!(weight_of(&h, b), 0.5, "one undo step");
+}
+
+/// The head's group button adds a legend group's rows, then names the group most rows come from
+/// (criterion 15).
+#[test]
+fn the_group_menu_adds_a_legend_group() {
+    let mut h = Harness::new();
+    let button = wid("legend-group", ());
+    assert!(h.texts_in(h.rect(button).expect("the group button")).contains(&"Add a Legend".to_string()));
+    h.click(button);
+    let items = h.popup_buttons();
+    assert_eq!(items.len(), 3, "{items:?}");
+    let shown: String = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join("|");
+    for want in ["Add the Plan Legend", "Add the Section and Elevation Legend", "Add the Finds Legend"] {
+        assert!(shown.contains(want), "{want} in {shown}");
+    }
+    h.click_at(items[0].0.center());
+    assert_eq!(h.layer_ids().len(), 16);
+    assert!(h.status_line().contains("Legend rows added: 15"), "{}", h.status_line());
+    assert!(h.texts_in(h.rect(button).unwrap()).contains(&"For Plans".to_string()), "{:?}", h.texts_in(h.rect(button).unwrap()));
+    // Again: every row is there already.
+    h.click(button);
+    let items = h.popup_buttons();
+    h.click_at(items[0].0.center());
+    assert_eq!(h.layer_ids().len(), 16);
+    assert!(h.status_line().contains("No legend rows to add"), "{}", h.status_line());
+    // The finds group's 7 rows are fewer than the plan's 15: still For Plans.
+    h.click(button);
+    let items = h.popup_buttons();
+    h.click_at(items[2].0.center());
+    assert_eq!(h.layer_ids().len(), 23);
+    assert!(h.texts_in(h.rect(button).unwrap()).contains(&"For Plans".to_string()));
+}
+
+/// Under the list, Weights at Once: "All Weights ×0.8 …" opens its card, and "Apart N → Legend"
+/// puts every line set apart back to its row's look, dimmed when none is (criterion 16).
+#[test]
+fn the_footer_opens_the_weights_card_and_reverts_all_overrides() {
+    let mut h = Harness::new();
+    let t = h.tokens();
+    let revert = wid("legend-overrides", ());
+    let foot = |h: &Harness| h.rect(revert).expect("Apart N → Legend");
+    assert_eq!(h.texts_in(foot(&h)), ["Apart 0 → Legend"]);
+    assert_eq!(h.color_of("Apart 0 → Legend", foot(&h)), Some(t.text_disabled), "nothing to revert");
+    legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.app.run("stroke.set", json!({"weight": 0.5})).unwrap();
+    let (a, b) = (draw_rect(&mut h, 10.0), draw_rect(&mut h, 40.0));
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.settle();
+    assert_eq!(h.texts_in(foot(&h)), ["Apart 2 → Legend"]);
+    assert_eq!(h.color_of("Apart 2 → Legend", foot(&h)), Some(t.text));
+    h.click(revert);
+    assert_eq!((weight_of(&h, a), weight_of(&h, b)), (0.8, 0.8));
+    assert!(h.status_line().contains("Lines back to the legend: 2"), "{}", h.status_line());
+    assert_eq!(h.texts_in(foot(&h)), ["Apart 0 → Legend"]);
+    let weights = wid("legend-weights", ());
+    assert_eq!(h.texts_in(h.rect(weights).unwrap()), ["All Weights ×0.8 …"]);
+    h.click(weights);
+    assert!(h.rect(wid("weights-card", ())).is_some(), "the card opens");
+}
+
+/// When the legend's rows overflow its list, the rows at its edges show as plainly as the others:
+/// no fade (egui fades a scroll area's edges) that would read as a hidden layer (criterion 21, F2).
+#[test]
+fn the_legend_list_does_not_fade_its_last_row() {
+    let mut h = Harness::new();
+    for i in 0..30 {
+        h.app.run("layer.new", json!({ "name": format!("Pit {i}") })).unwrap();
+    }
+    h.settle();
+    let top_row = h.rect(wid("legend-row", h.layer_ids().last().unwrap().0)).unwrap();
+    let line = h.rect(wid("legend-weights", ())).unwrap().top() - 6.0;
+    let list = Rect::from_min_max(pos2(top_row.left(), top_row.top() - 40.0), pos2(top_row.right(), line));
+    assert!(h.gradients_over(list).is_empty(), "at the top: {:?}", h.gradients_over(list));
+    h.wheel(top_row.center(), vec2(0.0, -200.0));
+    assert!(h.gradients_over(list).is_empty(), "scrolled: {:?}", h.gradients_over(list));
+}
+
+// ---------- J005: the row editor and Weights at Once ----------
+
+/// Double-clicking a legend row opens its editor, a card beside the right column level with the
+/// row; ✕, Esc and a press outside it close it (criterion 17).
+#[test]
+fn double_clicking_a_row_opens_its_editor() {
+    let mut h = Harness::new();
+    let pits = legend_row(&mut h, "Pit outline", json!({"weight": 0.8, "strata": "feature_poly"}));
+    h.settle();
+    let (card, row) = (wid("row-card", ()), wid("legend-row", pits.0));
+    assert!(h.rect(card).is_none());
+    h.double_click(row);
+    let c = h.rect(card).expect("the editor");
+    let (right, r, status) = (h.panel(RIGHT), h.rect(row).unwrap(), h.panel(STATUS));
+    assert!((c.width() - 304.0).abs() < 1.0 && c.right() <= right.left() && right.left() - c.right() <= 12.0, "{c:?} beside {right:?}");
+    // Level with the row, or pushed up to stay above the status bar.
+    assert!((c.top() - r.top()).abs() < 1.0 || (c.bottom() - status.top()).abs() < 1.0, "level with the row: {c:?}, {r:?}");
+    assert!(c.bottom() <= status.top() + 0.5, "{c:?} over the status bar {status:?}");
+    let line = h.line_in(c);
+    for want in [
+        "Legend Row",
+        "Pit outline",
+        "Name",
+        "유구_면 · feature_poly",
+        "This row is the layer",
+        "Weight",
+        "= 0.28 mm",
+        "Solid",
+        "Dash-dot",
+        "Often Used",
+        "This row's lines",
+        "Select All",
+        "Back to the Legend",
+        "Saved in this drawing file for now",
+        "Layer Options…",
+    ] {
+        assert!(line.contains(want), "{want} in {line}");
+    }
+    h.click(wid("card-close", ()));
+    assert!(h.rect(card).is_none(), "✕ closes it");
+    // Right away: egui alone would take the row's second click for a third one.
+    h.double_click(row);
+    assert!(h.rect(card).is_some(), "it opens again right after ✕");
+    h.key(egui::Key::Escape);
+    assert!(h.rect(card).is_none(), "Esc closes it");
+    h.double_click(row);
+    assert!(h.rect(card).is_some());
+    h.click_at(h.app.canvas_rect.unwrap().center());
+    assert!(h.rect(card).is_none(), "a press outside closes it");
+}
+
+/// The editor changes its row: a weight chip restyles the row's lines that followed it (one set
+/// apart keeps its own), and so do the number field and the line types; ★, Select All, Back to the
+/// Legend, the name and No Weight work on the row (criterion 17).
+#[test]
+fn the_row_editor_changes_the_row_and_its_lines() {
+    let mut h = Harness::new();
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.app.run("stroke.set", json!({"weight": 0.8})).unwrap();
+    let (a, b, c) = (draw_rect(&mut h, 10.0), draw_rect(&mut h, 40.0), draw_rect(&mut h, 70.0));
+    h.app.run("select.set", json!({ "ids": [c.0] })).unwrap();
+    h.app.run("stroke.set", json!({"weight": 0.3})).unwrap();
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.settle();
+    h.double_click(wid("legend-row", pits.0));
+    let legend = |h: &Harness| h.app.session.active().unwrap().doc.node(pits).unwrap().legend().cloned().unwrap();
+    h.click(wid("card-weight", "0.5"));
+    assert_eq!(legend(&h).weight, Some(0.5));
+    assert_eq!((weight_of(&h, a), weight_of(&h, b), weight_of(&h, c)), (0.5, 0.5, 0.3));
+    assert!(h.status_line().contains("Lines changed: 2"), "{}", h.status_line());
+    h.type_into(wid("card-pt", ()), "0.6");
+    assert_eq!(legend(&h).weight, Some(0.6));
+    assert_eq!((weight_of(&h, a), weight_of(&h, c)), (0.6, 0.3));
+    assert!(h.line_in(h.rect(wid("row-card", ())).unwrap()).contains("= 0.21 mm"));
+    h.click(wid("card-line", "dashed"));
+    assert_eq!(legend(&h).line, vectorcraft_doc::LineType::Dashed);
+    let dash =
+        |h: &Harness, id: NodeId| h.app.session.active().unwrap().doc.node(id).unwrap().appearance.stroke().unwrap().dash.clone().map(|d| d.pattern);
+    assert_eq!(dash(&h, a), vectorcraft_doc::LineType::Dashed.dash_pt());
+    h.click(wid("card-favourite", ()));
+    assert!(legend(&h).favourite);
+    h.click(wid("card-select", ()));
+    let mut selected = h.app.session.active().unwrap().selection.objects.clone();
+    selected.sort();
+    assert_eq!(selected, [a, b, c]);
+    h.click(wid("card-revert", ()));
+    assert_eq!((weight_of(&h, c), dash(&h, c)), (0.6, vectorcraft_doc::LineType::Dashed.dash_pt()));
+    h.type_into(wid("card-name", ()), "Pit outlines");
+    assert_eq!(h.app.session.active().unwrap().doc.node(pits).unwrap().display_name(), "Pit outlines");
+    h.click(wid("card-weight", "none"));
+    assert_eq!(legend(&h).weight, None);
+    assert_eq!(weight_of(&h, a), 0.6, "no look: the lines stay");
+}
+
+/// The rows Weights at Once's card shows: those of `plan`, the ones changing alike together.
+fn plan_table(h: &Harness, params: serde_json::Value) -> Vec<(String, String, String)> {
+    let plan = vectorcraft_engine::cmd::legend::plan_weights(&h.app.session.active().unwrap().doc, &params).unwrap();
+    let mut rows: Vec<(String, String, String)> = vec![];
+    for row in &plan.rows {
+        let (from, to) = (super::legend::pt(row.from), super::legend::pt(row.to));
+        match rows.iter_mut().find(|r| r.1 == from && r.2 == to) {
+            Some(r) => r.0 = format!("{} · {}", r.0, row.name),
+            None => rows.push((row.name.clone(), from, to)),
+        }
+    }
+    rows
+}
+
+/// Weights at Once's card previews the change as the engine plans it (the rows that change alike
+/// together) and Change applies it, one undo step (criterion 18).
+#[test]
+fn weights_card_previews_and_applies_a_ratio() {
+    let mut h = Harness::sized(1600.0, 1400.0);
+    h.app.run("legend.addGroup", json!({"group": "plan"})).unwrap();
+    let doc = h.app.session.active().unwrap().doc.clone();
+    let named = |name: &str| doc.layers.iter().find(|l| l.display_name() == name).unwrap().id;
+    let pit = named("굴광선 (유구 면)");
+    h.app.run("legend.pick", json!({ "id": pit.0 })).unwrap();
+    let line = draw_rect(&mut h, 10.0);
+    assert_eq!(weight_of(&h, line), 0.8);
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.settle();
+    h.click(wid("legend-weights", ()));
+    let card = h.rect(wid("weights-card", ())).expect("the card");
+    let line_in = h.line_in(card);
+    for want in ["Weights at Once", "This drawing", "Ratio", "Change Values", "One Step", "Lines set apart too", "Change", "Close"] {
+        assert!(line_in.contains(want), "{want} in {line_in}");
+    }
+    assert_eq!(h.texts_in(h.rect(wid("weights-ratio", ())).unwrap()), ["×", "0.8"]);
+    // The table, as the engine plans it.
+    let want = plan_table(&h, json!({"how": "ratio", "ratio": 0.8}));
+    assert!(want.len() >= 4, "{want:?}");
+    for (names, from, to) in &want {
+        let cell = h.texts.iter().find(|p| p.text == *names && card.contains_rect(p.rect)).unwrap_or_else(|| panic!("{names} in {line_in}")).rect;
+        let row: Vec<String> = h
+            .texts
+            .iter()
+            .filter(|p| card.contains_rect(p.rect) && (p.rect.center().y - cell.center().y).abs() < 2.0)
+            .map(|p| p.text.clone())
+            .collect();
+        assert!(row.contains(from) && row.contains(to), "{names}: {from} → {to} in {row:?}");
+    }
+    assert!(line_in.contains("Lines that change: 1. One Ctrl+Z puts them all back."), "{line_in}");
+    h.click(wid("weights-apply", ()));
+    let legend = |h: &Harness, id: NodeId| h.app.session.active().unwrap().doc.node(id).unwrap().legend().cloned().unwrap();
+    assert_eq!(legend(&h, pit).weight, Some(0.64));
+    assert_eq!(weight_of(&h, line), 0.64);
+    assert_eq!(legend(&h, named("조사구역 경계")).weight, Some(0.8));
+    h.app.run("edit.undo", json!({})).unwrap();
+    assert_eq!((legend(&h, pit).weight, weight_of(&h, line)), (Some(0.8), 0.8), "one undo step");
+}
+
+/// The card's other ways: Change Values (only rows at the first weight take the second) and One
+/// Step (thinner by default, or thicker), with lines set apart left unless asked (criterion 18).
+#[test]
+fn weights_card_value_and_step_modes() {
+    let mut h = Harness::sized(1600.0, 1400.0);
+    h.app.run("legend.addGroup", json!({"group": "plan"})).unwrap();
+    let doc = h.app.session.active().unwrap().doc.clone();
+    let named = |name: &str| doc.layers.iter().find(|l| l.display_name() == name).unwrap().id;
+    let (floor, pit, boundary) = (named("바닥선"), named("굴광선 (유구 면)"), named("조사구역 경계"));
+    // A line on the floor row set apart at 0.2.
+    h.app.run("legend.pick", json!({ "id": floor.0 })).unwrap();
+    let apart = draw_rect(&mut h, 10.0);
+    h.app.run("stroke.set", json!({"weight": 0.2})).unwrap();
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.settle();
+    let legend = |h: &Harness, id: NodeId| h.app.session.active().unwrap().doc.node(id).unwrap().legend().cloned().unwrap().weight;
+    h.click(wid("legend-weights", ()));
+    h.click(wid("weights-how", "value"));
+    h.type_into(wid("weights-from", ()), "0.5");
+    h.type_into(wid("weights-to", ()), "0.4");
+    let card = h.rect(wid("weights-card", ())).unwrap();
+    let want = plan_table(&h, json!({"how": "value", "from": 0.5, "to": 0.4}));
+    assert_eq!(want.len(), 1, "{want:?}");
+    assert!(h.texts.iter().any(|p| p.text == want[0].0 && card.contains_rect(p.rect)), "{want:?} in {}", h.line_in(card));
+    h.click(wid("weights-apply", ()));
+    assert_eq!((legend(&h, floor), legend(&h, pit)), (Some(0.4), Some(0.8)));
+    assert_eq!(weight_of(&h, apart), 0.2, "set apart: left");
+    // One step: thinner by default; thicker, with the lines set apart too.
+    h.click(wid("weights-how", "step"));
+    h.click(wid("weights-apply", ()));
+    assert_eq!((legend(&h, floor), legend(&h, pit), legend(&h, boundary)), (Some(0.3), Some(0.5), Some(0.8)));
+    assert_eq!(weight_of(&h, apart), 0.2, "set apart: left");
+    h.click(wid("weights-step", "up"));
+    h.click(wid("weights-overrides", ()));
+    h.click(wid("weights-apply", ()));
+    assert_eq!((legend(&h, floor), legend(&h, pit), legend(&h, boundary)), (Some(0.5), Some(0.8), Some(1.0)));
+    assert_eq!(weight_of(&h, apart), 0.3, "set apart, with Lines set apart too");
+}
+
+// ---------- J005: the drawing palette, the Drawing menu and the Control bar ----------
+
+/// The palette's line types run (criterion 19): with nothing selected they set the next line's
+/// dashes, with lines selected theirs (Solid takes them off) and the pen stays as it was; the
+/// first selected line's type shows on, none when the selected lines' dashes differ.
+#[test]
+fn palette_line_types_set_the_dash() {
+    use vectorcraft_doc::LineType;
+    let mut h = Harness::new();
+    let t = h.tokens();
+    let on = |h: &Harness, key: &str| h.fill_at(h.rect(wid("dash", key)).unwrap()) == Some(t.row_selected);
+    assert!(on(&h, "solid") && !on(&h, "dashed"));
+    for (key, want) in [("dashed", LineType::Dashed), ("dotted", LineType::Dotted), ("dashdot", LineType::DashDot), ("solid", LineType::Solid)] {
+        h.click(wid("dash", key));
+        assert_eq!(LineType::of(&h.app.session.new_art_stroke()), want, "the next line, {key}");
+        assert!(on(&h, key), "{key} shows on");
+    }
+    let (a, b) = (draw_rect(&mut h, 10.0), draw_rect(&mut h, 40.0));
+    h.app.run("select.set", json!({ "ids": [a.0, b.0] })).unwrap();
+    h.settle();
+    h.click(wid("dash", "dotted"));
+    let line_of = |h: &Harness, id: NodeId| LineType::of(h.app.session.active().unwrap().doc.node(id).unwrap().appearance.stroke().unwrap());
+    assert_eq!((line_of(&h, a), line_of(&h, b)), (LineType::Dotted, LineType::Dotted));
+    assert_eq!(LineType::of(&h.app.session.new_art_stroke()), LineType::Solid, "the pen as it was");
+    assert!(on(&h, "dotted") && !on(&h, "solid"));
+    // Dashes that differ: none on.
+    h.app.run("select.set", json!({ "ids": [b.0] })).unwrap();
+    h.app.run("stroke.set", json!({ "dash": null })).unwrap();
+    h.app.run("select.set", json!({ "ids": [a.0, b.0] })).unwrap();
+    h.settle();
+    assert!(["solid", "dashed", "dotted", "dashdot"].iter().all(|k| !on(&h, k)), "mixed: none on");
+}
+
+/// The chosen line type's ink edge shows on all four sides: nothing is drawn over it after it, not
+/// the box's edge or the lines between the parts (criterion 19, F1 of J003's review).
+#[test]
+fn the_chosen_line_type_chip_keeps_its_border() {
+    use vectorcraft_doc::LineType;
+    let mut h = Harness::new();
+    let t = h.tokens();
+    let ink = egui::Stroke::new(1.0, t.text);
+    for (key, kind) in [("dashed", LineType::Dashed), ("solid", LineType::Solid), ("dashdot", LineType::DashDot)] {
+        h.app.run("stroke.set", json!({ "dash": kind.dash_pt() })).unwrap();
+        h.settle();
+        let part = h.rect(wid("dash", key)).unwrap();
+        let shapes: Vec<&egui::Shape> = h.shapes.iter().map(|c| &c.shape).collect();
+        let at = shapes.iter().rposition(|s| {
+            matches!(s, egui::Shape::Rect(r) if (r.rect.min - part.min).length() < 0.6 && (r.rect.max - part.max).length() < 0.6 && r.stroke == ink)
+        });
+        let at = at.unwrap_or_else(|| panic!("{key}: no ink edge at {part:?}"));
+        let edge = part.expand(0.5);
+        let over: Vec<&&egui::Shape> = shapes
+            .iter()
+            .skip(at + 1)
+            .filter(|s| match s {
+                egui::Shape::Rect(r) => r.rect.intersects(edge),
+                egui::Shape::LineSegment { points, .. } => Rect::from_two_pos(points[0], points[1]).intersects(edge),
+                _ => false,
+            })
+            .collect();
+        assert!(over.is_empty(), "{key}: drawn over its edge: {over:?}");
+    }
+}
+
+/// Add to Legend makes a row of the selected line's look (the pen's when nothing is selected),
+/// moves the line into it and opens the row's editor; Back to the Legend puts the selected lines
+/// back to their row's look, or with nothing selected gives the pen the current row's look
+/// (criterion 19).
+#[test]
+fn palette_legend_buttons_add_and_revert() {
+    use vectorcraft_doc::LineType;
+    let mut h = Harness::new();
+    let t = h.tokens();
+    let (add, back) = (wid("palette-to-legend", ()), wid("palette-from-legend", ()));
+    for id in [add, back] {
+        assert_ne!(h.fill_at(h.rect(id).unwrap()), Some(t.panel_darker), "{id:?} runs");
+    }
+    let first = h.layer_ids()[0];
+    let line = draw_rect(&mut h, 10.0);
+    h.app.run("select.set", json!({ "ids": [line.0] })).unwrap();
+    h.app.run("stroke.set", json!({ "weight": 0.35, "dash": LineType::Dashed.dash_pt() })).unwrap();
+    h.settle();
+    h.click(add);
+    let row = h.current_layer().unwrap();
+    assert_ne!(row, first);
+    let doc = h.app.session.active().unwrap().doc.clone();
+    let node = doc.node(row).unwrap();
+    assert_eq!(node.display_name(), "Legend Row 1");
+    let legend = node.legend().cloned().unwrap();
+    assert_eq!((legend.weight, legend.line), (Some(0.35), LineType::Dashed));
+    assert_eq!(doc.layer_containing(line), Some(row), "the line moves into its row");
+    let card = h.rect(wid("row-card", ())).expect("the row's editor opens");
+    assert!(h.line_in(card).contains("Legend Row 1"), "{}", h.line_in(card));
+    // The row's look changes, the line is set apart, then put back.
+    h.app.run("legend.set", json!({ "id": row.0, "weight": 0.5 })).unwrap();
+    assert_eq!(weight_of(&h, line), 0.5);
+    h.app.run("stroke.set", json!({ "weight": 0.2 })).unwrap();
+    h.settle();
+    h.click(back);
+    assert_eq!(weight_of(&h, line), 0.5);
+    assert!(h.status_line().contains("Lines back to the legend: 1"), "{}", h.status_line());
+    // Nothing selected: the pen takes the current row's look.
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.app.run("stroke.set", json!({ "weight": 0.1, "dash": null })).unwrap();
+    h.settle();
+    h.click(back);
+    let pen = h.app.session.new_art_stroke();
+    assert_eq!((pen.width, LineType::of(&pen)), (0.5, LineType::Dashed));
+    assert!(h.status_line().contains("The next line takes Legend Row 1's look"), "{}", h.status_line());
+    // The next row takes the next number.
+    h.click(add);
+    let name = h.app.session.active().unwrap().doc.node(h.current_layer().unwrap()).unwrap().display_name();
+    assert_eq!(name, "Legend Row 2");
+}
+
+/// The Drawing menu's first two items run (criterion 20): Change Weights at Once… opens its card,
+/// Revert to the Legend puts the selected lines back to their row's look, or every line set apart
+/// when nothing is selected. The others still wait for their jobs.
+#[test]
+fn drawing_menu_opens_the_weights_card_and_reverts() {
+    let mut h = Harness::new();
+    legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.app.run("stroke.set", json!({"weight": 0.5})).unwrap();
+    let (a, b) = (draw_rect(&mut h, 10.0), draw_rect(&mut h, 40.0));
+    h.settle();
+    let bar = h.panel(MENU);
+    let open = |h: &mut Harness| {
+        let at = h.texts.iter().find(|p| p.text == "Drawing" && bar.contains_rect(p.rect)).unwrap().rect.center();
+        h.click_at(at);
+        h.popup_buttons()
+    };
+    let items = open(&mut h);
+    let enabled: Vec<bool> = items.iter().map(|(_, e)| *e).collect();
+    assert_eq!(enabled, [true, true, false, false, false, false, false, false, false]);
+    h.click_at(h.texts.iter().find(|p| p.text == "Drawing" && bar.contains_rect(p.rect)).unwrap().rect.center());
+    h.app.run("select.set", json!({ "ids": [b.0] })).unwrap();
+    h.settle();
+    let items = open(&mut h);
+    h.click_at(items[1].0.center());
+    assert_eq!((weight_of(&h, a), weight_of(&h, b)), (0.5, 0.8), "the selected line");
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.settle();
+    let items = open(&mut h);
+    h.click_at(items[1].0.center());
+    assert_eq!(weight_of(&h, a), 0.8, "nothing selected: every line set apart");
+    assert!(h.status_line().contains("Lines back to the legend: 1"), "{}", h.status_line());
+    let items = open(&mut h);
+    h.click_at(items[0].0.center());
+    assert!(h.rect(wid("weights-card", ())).is_some(), "Weights at Once opens");
+}
+
+/// The Control bar's legend field lists the rows with their look (a layer without a row, its
+/// colour) and shows the chosen one's; picking one there makes it the layer drawn on with its
+/// look and moves nothing (criterion 13).
+#[test]
+fn control_bar_lists_rows_with_their_look() {
+    use vectorcraft_doc::LineType;
+    let mut h = Harness::new();
+    let first = h.layer_ids()[0];
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8, "line": "dashed"}));
+    h.app.run("layer.setCurrent", json!({ "id": first.0 })).unwrap();
+    h.app.select_tool("pen");
+    let line = draw_rect(&mut h, 10.0);
+    h.app.run("select.set", json!({ "ids": [line.0] })).unwrap();
+    h.settle();
+    let colour = |h: &Harness, id: NodeId| crate::panels::layers::layer_colour(&h.app.session.active().unwrap().doc, id);
+    let patch_in = |h: &Harness, area: Rect, id: NodeId| h.rects_in(area).iter().any(|(_, _, s)| s.color == colour(h, id));
+    h.click(wid("ctl-layer", ()));
+    assert!(patch_in(&h, h.rect(wid("ctl-layer-row", first.0)).unwrap(), first), "a layer without a row: its colour");
+    assert!(!patch_in(&h, h.rect(wid("ctl-layer-row", pits.0)).unwrap(), pits), "a row: its look");
+    h.click(wid("ctl-layer-row", pits.0));
+    assert_eq!(h.current_layer(), Some(pits));
+    let pen = h.app.session.new_art_stroke();
+    assert_eq!((pen.width, LineType::of(&pen)), (0.8, LineType::Dashed));
+    assert_eq!(h.app.session.active().unwrap().doc.layer_containing(line), Some(first), "nothing moves");
+    assert!(!patch_in(&h, h.rect(wid("ctl-layer", ())).unwrap(), pits), "the field shows the row's look");
 }

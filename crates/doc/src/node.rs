@@ -416,6 +416,9 @@ pub enum NodeKind {
         /// percentage (0–100); `None`: not dimmed.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         dim_images: Option<u8>,
+        /// Trowel: the legend row this top-level layer is (the default look of its lines).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        legend: Option<Box<crate::Legend>>,
     },
     /// A group. With `clip`, the first (bottom-most) child is the clipping path.
     Group {
@@ -620,7 +623,7 @@ impl Node {
     pub fn layer(id: NodeId, name: &str, color: LayerColor) -> Self {
         let mut n = Self::new(
             id,
-            NodeKind::Layer { color, template: false, printable: true, children: vec![], clip: false, preview: true, dim_images: None },
+            NodeKind::Layer { color, template: false, printable: true, children: vec![], clip: false, preview: true, dim_images: None, legend: None },
         );
         n.name = Some(name.to_string());
         n

@@ -67,7 +67,7 @@ pub fn node_summary_opts(n: &Node, opts: SummaryOpts) -> Value {
         v["strokeOptions"] = stroke_options(&st);
     }
     match &n.kind {
-        NodeKind::Layer { color, template, printable, preview, dim_images, clip, .. } => {
+        NodeKind::Layer { color, template, printable, preview, dim_images, clip, legend, .. } => {
             let [r, g, b] = color.rgb();
             v["color"] = json!(format!("#{r:02x}{g:02x}{b:02x}"));
             v["template"] = json!(template);
@@ -75,6 +75,10 @@ pub fn node_summary_opts(n: &Node, opts: SummaryOpts) -> Value {
             v["preview"] = json!(preview);
             v["dimImages"] = json!(dim_images);
             v["clip"] = json!(clip);
+            // Trowel: the layer's legend row (J005).
+            if let Some(legend) = legend {
+                v["legend"] = json!(legend);
+            }
         }
         NodeKind::Path { path, .. } => {
             v["anchors"] = json!(path.anchor_count());

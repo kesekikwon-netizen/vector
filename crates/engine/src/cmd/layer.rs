@@ -221,7 +221,7 @@ pub(crate) fn accepts(d: &Document, parent: Option<NodeId>, n: &Node) -> bool {
 }
 
 /// Whether `id` or a container around it is locked.
-fn locked_within(d: &Document, id: NodeId) -> bool {
+pub(crate) fn locked_within(d: &Document, id: NodeId) -> bool {
     d.ancestry(id).unwrap_or_default().iter().any(|a| d.node(*a).is_some_and(|n| n.locked))
 }
 
@@ -264,7 +264,7 @@ fn layer_color_param(v: &Value) -> std::result::Result<LayerColor, String> {
 }
 
 /// Layer Options in `p` applied to layer or row `n` (validated first by [`check_options`]).
-fn apply_options(n: &mut Node, p: &Value) {
+pub(crate) fn apply_options(n: &mut Node, p: &Value) {
     if let Some(v) = str_param(p, "name") {
         if v.trim().is_empty() {
             // A layer keeps a name; an object goes back to its generated `<Kind>` one.

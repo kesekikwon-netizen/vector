@@ -13,6 +13,7 @@ use crate::VectorcraftApp;
 use crate::theme::{self, Tokens};
 
 mod caption;
+mod card;
 mod center;
 mod control;
 mod drawings;
@@ -21,8 +22,10 @@ mod menu;
 mod palette;
 mod props;
 mod ribbon;
+mod rowedit;
 mod status;
 mod tools;
+mod weights;
 
 /// The panels' ids (egui keeps where each was laid out under it).
 pub(crate) const CAPTION: &str = "trowel-caption";
@@ -170,8 +173,10 @@ fn field_box(ui: &Ui, r: Rect, fill: Color32, edge: Color32) {
 fn panel_head(ui: &Ui, r: Rect, title: &str, sub: &str, buttons: usize, t: &Tokens) {
     line_below(ui, r, t.border);
     let x = text(ui, pos2(r.left() + 12.0, r.center().y), Align2::LEFT_CENTER, title, font(13.0), t.text).right() + 6.0;
-    let room = Rect::from_min_max(r.min, pos2(r.right() - 12.0 - 24.0 * buttons as f32 - 4.0, r.bottom()));
-    ui.painter().with_clip_rect(room).text(pos2(x, r.center().y), Align2::LEFT_CENTER, sub, font(11.0), t.text_dim);
+    if !sub.is_empty() {
+        let room = Rect::from_min_max(r.min, pos2(r.right() - 12.0 - 24.0 * buttons as f32 - 4.0, r.bottom()));
+        ui.painter().with_clip_rect(room).text(pos2(x, r.center().y), Align2::LEFT_CENTER, sub, font(11.0), t.text_dim);
+    }
 }
 
 /// A panel head's button `slot` places from the right (0: the last one): `icon` in a 24-point
@@ -199,6 +204,35 @@ fn keep_id() -> egui::Id {
     wid("flyout-keep", ())
 }
 
+/// A small button labelled `label` at `at` (its left centre), 26 points tall (the mockup's
+/// `.btn`): ink on the surface, or dimmed and not pressable when not `enabled`.
+fn small_button(ui: &Ui, id: egui::Id, at: Pos2, label: &str, enabled: bool, t: &Tokens) -> egui::Response {
+    let f = font(11.0);
+    let r = Rect::from_min_size(pos2(at.x, at.y - 13.0), vec2(width_of(ui, label, f.clone()) + 16.0, 26.0));
+    let resp = ui.interact(r, id, if enabled { Sense::click() } else { Sense::hover() });
+    let fill = if !enabled {
+        t.panel_darker
+    } else if resp.hovered() {
+        t.hover
+    } else {
+        t.input
+    };
+    field_box(ui, r, fill, t.input_border);
+    text(ui, r.center(), Align2::CENTER_CENTER, label, f, if enabled { t.text } else { t.text_disabled });
+    resp
+}
+
+/// Paint `s` from `at` (its left centre) up to `right`, cut short with "…" when it is longer.
+/// Returns where it went.
+fn text_to(ui: &Ui, at: Pos2, right: f32, s: &str, font: FontId, color: Color32) -> Rect {
+    let mut job = egui::text::LayoutJob::simple_singleline(s.to_string(), font, color);
+    job.wrap = egui::text::TextWrapping { max_width: (right - at.x).max(0.0), max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
+    let galley = ui.painter().layout_job(job);
+    let r = Rect::from_min_size(pos2(at.x, at.y - galley.size().y / 2.0), galley.size());
+    ui.painter().with_clip_rect(Rect::from_min_max(pos2(at.x, r.top()), pos2(right.max(at.x), r.bottom()))).galley(r.min, galley, color);
+    r
+}
+
 /// A small button a later job brings, labelled `label` at `at` (its left centre), 26 points tall.
 /// Returns where it ends.
 fn button_soon(ui: &Ui, id: egui::Id, at: Pos2, label: &str, strong: bool, job: &str, t: &Tokens) -> f32 {
@@ -208,6 +242,119 @@ fn button_soon(ui: &Ui, id: egui::Id, at: Pos2, label: &str, strong: bool, job: 
     text(ui, r.center(), Align2::CENTER_CENTER, label, f, t.text_disabled);
     soon_widget(ui, id, r, label, job);
     r.right()
+}
+
+/// Where a toggle labelled `label` goes from `at` (its left centre), `h` tall: its text in 12
+/// points and 10 either side.
+fn toggle_rect(ui: &Ui, at: Pos2, h: f32, label: &str) -> Rect {
+    Rect::from_min_size(pos2(at.x, at.y - h / 2.0), vec2(width_of(ui, label, font(12.0)) + 20.0, h))
+}
+
+/// A toggle labelled `label` in `r` (the mockup's `.tog`): on, oat inside the ring.
+fn toggle(ui: &Ui, id: egui::Id, r: Rect, label: &str, on: bool, t: &Tokens) -> egui::Response {
+    let resp = ui.interact(r, id, Sense::click());
+    let fill = if on {
+        t.row_selected
+    } else if resp.hovered() {
+        t.hover
+    } else {
+        t.input
+    };
+    field_box(ui, r, fill, if on { t.ring } else { t.input_border });
+    text(ui, r.center(), Align2::CENTER_CENTER, label, font(12.0), t.text);
+    resp
+}
+
+/// A toggle a later job brings, labelled `label`, in `r`.
+fn toggle_soon(ui: &Ui, id: egui::Id, r: Rect, label: &str, job: &str, t: &Tokens) {
+    field_box(ui, r, t.panel_darker, t.input_border);
+    text(ui, r.center(), Align2::CENTER_CENTER, label, font(12.0), t.text_disabled);
+    soon_widget(ui, id, r, label, job);
+}
+
+/// The line types a row and the palette offer: key (`legend.set`'s `line`, the parts' ids), label
+/// and type.
+fn line_types() -> [(&'static str, &'static str, vectorcraft_doc::LineType); 4] {
+    use vectorcraft_doc::LineType;
+    [
+        ("solid", tw!("Solid"), LineType::Solid),
+        ("dashed", tw!("Dashed"), LineType::Dashed),
+        ("dotted", tw!("Dotted"), LineType::Dotted),
+        ("dashdot", tw!("Dash-dot"), LineType::DashDot),
+    ]
+}
+
+/// One part of a segmented choice: its key (in its id), its label, whether it is on, and when a
+/// later job brings it, what it sets and that job.
+struct Seg<'a> {
+    key: &'a str,
+    label: &'a str,
+    on: bool,
+    soon: Option<(&'a str, &'a str)>,
+}
+
+/// How a segmented choice is drawn: its height, the room either side of a label and the labels'
+/// font.
+struct SegLook {
+    h: f32,
+    pad: f32,
+    font: FontId,
+}
+
+/// A segmented choice of `parts` from `at` (its left centre), each part `wid(kind, key)` (the
+/// mockup's `.seg`): the part that is on in oat inside an ink edge, drawn last so all four of its
+/// sides show; a part a later job brings on the wash, saying so when pressed. Returns the key of
+/// the part pressed and where the choice ends.
+fn segments<'a>(ui: &Ui, kind: &str, at: Pos2, look: &SegLook, parts: &[Seg<'a>], t: &Tokens) -> (Option<&'a str>, f32) {
+    let widths: Vec<f32> = parts.iter().map(|p| width_of(ui, p.label, look.font.clone()) + 2.0 * look.pad).collect();
+    let r = Rect::from_min_size(pos2(at.x, at.y - look.h / 2.0), vec2(widths.iter().sum(), look.h));
+    let rects: Vec<Rect> = widths
+        .iter()
+        .scan(r.left(), |x, w| {
+            let part = Rect::from_min_size(pos2(*x, r.top()), vec2(*w, look.h));
+            *x += w;
+            Some(part)
+        })
+        .collect();
+    // A part at an end has the box's outer corners.
+    let last = parts.len().saturating_sub(1);
+    let corners = |i: usize, radius: u8| {
+        let (start, end) = (if i == 0 { radius } else { 0 }, if i == last { radius } else { 0 });
+        CornerRadius { nw: start, sw: start, ne: end, se: end }
+    };
+    field_box(ui, r, t.input, t.input_border);
+    let mut pressed = None;
+    for (i, (p, part)) in parts.iter().zip(&rects).enumerate() {
+        let id = wid(kind, p.key);
+        let inside = part.intersect(r.shrink(1.0));
+        match p.soon {
+            Some((what, job)) => {
+                ui.painter().rect_filled(inside, corners(i, 7), t.panel_darker);
+                soon_widget(ui, id, *part, what, job);
+            }
+            None => {
+                let resp = ui.interact(*part, id, Sense::click());
+                if resp.hovered() && !p.on {
+                    ui.painter().rect_filled(inside, corners(i, 7), t.hover);
+                }
+                if resp.clicked() {
+                    pressed = Some(p.key);
+                }
+            }
+        }
+        // A line between two parts, unless one of them is on: its edge stands there.
+        let before = i.checked_sub(1).and_then(|j| parts.get(j)).map(|q| q.on);
+        if before.is_some_and(|on| !on) && !p.on {
+            ui.painter().vline(part.left() + 0.5, part.y_range().shrink(1.0), Stroke::new(1.0, t.border));
+        }
+    }
+    for (i, (p, part)) in parts.iter().zip(&rects).enumerate() {
+        if p.on {
+            ui.painter().rect(*part, corners(i, 8), t.row_selected, Stroke::new(1.0, t.text), StrokeKind::Inside);
+        }
+        text(ui, part.center(), Align2::CENTER_CENTER, p.label, look.font.clone(), if p.soon.is_some() { t.text_disabled } else { t.text });
+    }
+    (pressed, r.right())
 }
 
 /// A small filled triangle around `c`, `size` wide, pointing down (`down`) or right: the mockup's
@@ -230,7 +377,7 @@ fn list_caption(ui: &Ui, x: f32, right: f32, cy: f32, label: &str, t: &Tokens) {
     }
 }
 
-/// The hover text of `what` a later job brings: "Change All Weights… · Coming soon · J005".
+/// The hover text of `what` a later job brings: "Cut Face · Coming soon · J014".
 fn soon(what: &str, job: &str) -> String {
     crate::i18n::fmt(tw!("{what} · Coming soon · {job}"), &[("what", what), ("job", job)])
 }
