@@ -23,7 +23,7 @@ const PROOF_TARGETS: [(&str, &str); 6] = [
 
 fn run(app: &mut VectorcraftApp, id: &str, p: Value) {
     if let Err(e) = app.run(id, p) {
-        app.ui.status = e;
+        app.status(e);
     }
 }
 
@@ -121,10 +121,13 @@ fn settings_section(app: &mut VectorcraftApp, ui: &mut Ui) {
             match app.run("color.gamutCheck", json!({})) {
                 Ok(r) => {
                     let n = r["outOfGamut"].as_array().map_or(0, Vec::len);
-                    app.ui.status =
-                        if n == 0 { "All colours are within the CMYK gamut".into() } else { format!("{n} colour(s) are out of the CMYK gamut") };
+                    app.status(if n == 0 {
+                        "All colours are within the CMYK gamut".into()
+                    } else {
+                        format!("{n} colour(s) are out of the CMYK gamut")
+                    });
                 }
-                Err(e) => app.ui.status = e,
+                Err(e) => app.status(e),
             }
         }
     });

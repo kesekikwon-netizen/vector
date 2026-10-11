@@ -645,7 +645,7 @@ pub(crate) fn apply(app: &mut VectorcraftApp, ctx: &egui::Context, pick: FontPic
             }
             let (cmd, params) = font_command(app, &f, style.as_deref());
             if let Err(e) = app.session.preview(cmd, &params) {
-                app.ui.status = e.to_string();
+                app.status(e.to_string());
             }
             app.sync_views();
         }

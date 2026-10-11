@@ -579,14 +579,16 @@ fn family_display_name_follows_show_font_names_in_english() {
 fn korean_fallback_families_are_for_hangul_only() {
     use crate::fontdb::fallback_families;
     let korean = ["Noto Sans CJK KR", "Noto Sans KR", "NanumGothic"];
-    // A syllable, compatibility jamo, jamo, halfwidth Hangul.
-    for c in ['한', 'ㄱ', 'ᄀ', 'ﾡ'] {
+    // A syllable, compatibility jamo, jamo, halfwidth Hangul, the circled and parenthesized letters
+    // of report and drawing numbers (㉠, ㈀) and a tone mark.
+    for c in ['한', 'ㄱ', 'ᄀ', 'ﾡ', '㉠', '㉿', '㈀', '\u{302E}'] {
         let f = fallback_families(c);
         assert!(korean.iter().all(|k| f.contains(k)), "{c}: {f:?}");
         let at = |name: &str| f.iter().position(|x| *x == name).unwrap();
         assert!(at("Noto Sans CJK JP") < at("Noto Sans CJK KR") && at("NanumGothic") < at("Arial Unicode MS"), "{c}: {f:?}");
     }
-    for c in ['漢', 'か', 'A', '→'] {
+    // A parenthesized ideograph (㈠) sits between the Hangul ones.
+    for c in ['漢', 'か', 'A', '→', '㈠'] {
         let f = fallback_families(c);
         assert!(!korean.iter().any(|k| f.contains(k)), "{c}: {f:?}");
     }

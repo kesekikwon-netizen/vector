@@ -51,7 +51,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         x = chip_r.right() + 4.0;
     }
     let add = Rect::from_min_size(pos2(x, cy - CHIP_H / 2.0), vec2(24.0, CHIP_H));
-    chip(ui, add, false, false, &t);
+    chip_soon(ui, add, &t);
     crate::icons::paint(ui, "plus", Rect::from_center_size(add.center(), vec2(12.0, 12.0)), t.text_disabled);
     soon_widget(ui, wid("weight-add", ()), add, tw!("Add a Weight"), "J018");
     // Hatch: none until J014 brings them.
@@ -63,7 +63,11 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         let w = 6.0 + if sample { 16.0 + 4.0 } else { 0.0 } + width_of(ui, label, font(11.0)) + 6.0;
         let chip_r = Rect::from_min_size(pos2(x, cy - CHIP_H / 2.0), vec2(w, CHIP_H));
         let on = key == "none";
-        chip(ui, chip_r, on, false, &t);
+        if on {
+            chip(ui, chip_r, true, false, &t);
+        } else {
+            chip_soon(ui, chip_r, &t);
+        }
         let color = if on { t.text } else { t.text_disabled };
         let mut tx = chip_r.left() + 6.0;
         if sample {
@@ -88,10 +92,15 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let mut x = seg.left();
     for (i, ((key, label), w)) in kinds.iter().zip(&widths).enumerate() {
         let part = Rect::from_min_size(pos2(x, seg.top()), vec2(*w, seg.height()));
+        let live = *key == "solid";
+        if !live {
+            // On the wash like the chips that come later; the last one's outer corners are the box's.
+            let r = if i + 1 == kinds.len() { 8 } else { 0 };
+            ui.painter().rect_filled(part, CornerRadius { nw: 0, sw: 0, ne: r, se: r }, t.panel_darker);
+        }
         if i > 0 {
             ui.painter().vline(part.left() + 0.5, part.y_range().shrink(1.0), Stroke::new(1.0, t.border));
         }
-        let live = *key == "solid";
         if live && solid {
             // Solid comes first: its outer corners are the box's.
             ui.painter().rect(part, CornerRadius { nw: 8, sw: 8, ne: 0, se: 0 }, t.row_selected, Stroke::new(1.0, t.text), StrokeKind::Inside);
@@ -107,6 +116,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         }
         x += w;
     }
+    ui.painter().rect_stroke(seg, CornerRadius::same(8), Stroke::new(1.0, t.input_border), StrokeKind::Inside);
     // Cut Face, and the legend's own buttons.
     let cy = head.bottom() + 2.0 + 3.0 * ROW_H + 4.0 + 13.0;
     let x = button_soon(ui, wid("palette-cut", ()), pos2(r.left() + 14.0, cy), tw!("Cut Face"), true, "J014", &t) + 4.0;
@@ -125,6 +135,11 @@ fn chip(ui: &Ui, r: Rect, on: bool, hovered: bool, t: &Tokens) {
         (false, false) => (t.input, Stroke::new(1.0, t.input_border)),
     };
     ui.painter().rect(r, CornerRadius::same(6), fill, edge, StrokeKind::Inside);
+}
+
+/// The chip of something a later job brings: on the wash, like its other controls.
+fn chip_soon(ui: &Ui, r: Rect, t: &Tokens) {
+    ui.painter().rect(r, CornerRadius::same(6), t.panel_darker, Stroke::new(1.0, t.input_border), StrokeKind::Inside);
 }
 
 /// A hatch's sample in `r`: lines rising to the right every 4 points (45°), falling (135°), or

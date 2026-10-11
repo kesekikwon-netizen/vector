@@ -216,7 +216,7 @@ pub fn panel_menu(app: &mut VectorcraftApp, ui: &mut Ui, id: &str, rect: Rect) {
             if crate::widgets::menu_item(ui, label, true, false)
                 && let Err(e) = app.run(cmd, json!({ "panel": id }))
             {
-                app.ui.status = e;
+                app.status(e);
             }
         });
     });
@@ -397,7 +397,7 @@ pub(crate) fn live_run(app: &mut VectorcraftApp, label: &str, cmd: &str, params:
         Live::Dragging | Live::Released => {
             if app.session.begin_interaction(label).is_ok() {
                 if let Err(e) = app.session.preview(cmd, &params) {
-                    app.ui.status = e.to_string();
+                    app.status(e.to_string());
                 }
                 if phase == Live::Released {
                     app.session.commit_interaction().ok();

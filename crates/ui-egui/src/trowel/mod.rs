@@ -86,22 +86,39 @@ pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {
 }
 
 /// The right column: the drawing palette on top, the properties at the bottom, the legend and
-/// layers between them. The dock's own panels pop out to its left.
+/// layers between them. A window too short for them all scrolls them, the legend with room for two
+/// layers. The dock's own panels pop out to its left.
 fn right_column(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     egui::Panel::right(RIGHT).resizable(false).exact_size(RIGHT_W).show_separator_line(false).frame(egui::Frame::NONE.fill(t.panel)).show(ui, |ui| {
         let r = ui.max_rect();
         line_left(ui, r, t.border);
         ui.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id()));
-        let top = Rect::from_min_size(r.min, vec2(r.width(), palette::HEIGHT));
-        let bottom = Rect::from_min_max(pos2(r.left(), (r.bottom() - props::height(ui.ctx())).max(top.bottom())), r.max);
-        palette::show(app, ui, top);
-        legend::show(app, ui, Rect::from_min_max(top.left_bottom(), bottom.right_top()));
-        props::show(app, ui, bottom);
+        let props_h = props::height(ui.ctx());
+        let tall = palette::HEIGHT + legend::MIN_HEIGHT + props_h;
+        if r.height() >= tall {
+            right_parts(app, ui, r, props_h);
+        } else {
+            let mut column = ui.new_child(egui::UiBuilder::new().max_rect(r).layout(egui::Layout::top_down(egui::Align::Min)));
+            egui::ScrollArea::vertical().id_salt(wid("right-scroll", ())).auto_shrink([false, false]).show(&mut column, |ui| {
+                let (_, content) = ui.allocate_space(vec2(ui.available_width(), tall));
+                right_parts(app, ui, content, props_h);
+            });
+        }
         // Its panels pop out to its left, level with its top.
         let keep = ui.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id())).unwrap_or_default();
         crate::dock::set_flyout(ui.ctx(), crate::dock::Flyout { left: r.left(), top: r.top() + 6.0, keep });
     });
+}
+
+/// The right column's parts in `r`: the palette at the top, the properties `props_h` tall at the
+/// bottom, the legend between them.
+fn right_parts(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect, props_h: f32) {
+    let top = Rect::from_min_size(r.min, vec2(r.width(), palette::HEIGHT));
+    let bottom = Rect::from_min_max(pos2(r.left(), r.bottom() - props_h), r.max);
+    palette::show(app, ui, top);
+    legend::show(app, ui, Rect::from_min_max(top.left_bottom(), bottom.right_top()));
+    props::show(app, ui, bottom);
 }
 
 fn font(size: f32) -> FontId {
@@ -237,8 +254,10 @@ fn soon_widget(ui: &Ui, id: egui::Id, r: Rect, what: &str, job: &str) -> egui::R
     resp.on_hover_text(soon(what, job))
 }
 
-/// Say in the status bar that `what` comes with `job`.
+/// Say in the status bar that `what` comes with `job`; a name that opens a dialog loses its "…"
+/// before the colon.
 fn note_soon(ctx: &egui::Context, what: &str, job: &str) {
+    let what = what.strip_suffix('…').unwrap_or(what);
     let note = crate::i18n::fmt(tw!("{what}: coming soon ({job})"), &[("what", what), ("job", job)]);
     let now = ctx.input(|i| i.time);
     ctx.data_mut(|d| d.insert_temp(note_id(), (note, now)));

@@ -70,7 +70,7 @@ fn collapse_header(ui: &mut Ui, collapsed: bool) -> bool {
 fn toggle(app: &mut VectorcraftApp, collapsed: bool) {
     // It only fails on bad params, which this never sends; show it all the same.
     if let Err(e) = app.run("window.collapseDock", json!({ "collapsed": collapsed })) {
-        app.ui.status = e;
+        app.status(e);
     }
 }
 

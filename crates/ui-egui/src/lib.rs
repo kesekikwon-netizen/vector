@@ -602,7 +602,7 @@ impl VectorcraftApp {
         }
         if id.starts_with("edit.paste") {
             if let Err(e) = self.adopt_system_clipboard() {
-                self.ui.status = e.clone();
+                self.status(e.clone());
                 return Err(e);
             }
             // Paste (also without formatting) goes to the centre of the view.
@@ -627,7 +627,7 @@ impl VectorcraftApp {
         }
         self.sync_views();
         match &r {
-            Err(e) => self.ui.status = e.clone(),
+            Err(e) => self.status(e.clone()),
             Ok(v) => {
                 if id == "file.new" {
                     self.ui.status.clear();
@@ -655,7 +655,7 @@ impl VectorcraftApp {
             Some(open) => open(url),
             None => self.pending_url = Some(url.to_string()),
         }
-        self.ui.status = format!("Opened {url}");
+        self.status(format!("Opened {url}"));
     }
 
     /// Run a Help link command and open the URL it returns.
@@ -672,7 +672,7 @@ impl VectorcraftApp {
     pub fn select_tool(&mut self, id: &str) {
         let v = self.view_info();
         if let Err(e) = self.session.select_tool(id, v) {
-            self.ui.status = e.to_string();
+            self.status(e.to_string());
         }
         if let Some(g) = vectorcraft_tools::catalog::group_of(id)
             && let Some(slot) = self.ui.group_tool.get_mut(g)
@@ -815,9 +815,10 @@ impl VectorcraftApp {
         }
     }
 
-    /// Show a transient status message.
+    /// Show a transient status message (the same one again shows again).
     pub fn status(&mut self, s: impl Into<String>) {
         self.ui.status = s.into();
+        self.ui.status_seq = self.ui.status_seq.wrapping_add(1);
     }
 
     fn drain_inbox(&mut self) {

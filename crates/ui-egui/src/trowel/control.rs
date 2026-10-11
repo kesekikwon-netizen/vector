@@ -13,6 +13,9 @@ const DRAWING_TOOLS: &[&str] =
 
 const H: f32 = 28.0;
 const GAP: f32 = 10.0;
+/// How wide the legend field's list of layers is: a padlock or eye at a row's right stays by its
+/// name.
+const LIST_W: f32 = 260.0;
 
 pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
@@ -126,12 +129,19 @@ fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f
         None => tw!("No layer to draw on").to_string(),
     };
     let colour = target.into.map(|id| crate::panels::layers::layer_colour(&st.doc, id));
-    let stroke = crate::panels::current_stroke(app);
-    let mixed = crate::panels::stroke_mixed(app, ui.ctx());
-    let weight = crate::panels::stroke::shown_weight(app, stroke.as_ref(), &mixed).map(|w| app.session.stroke_unit().format(w)).unwrap_or_default();
+    // With no layer to draw on there is no colour or weight to show: the field says so from its left.
+    let weight = match colour {
+        Some(_) => {
+            let stroke = crate::panels::current_stroke(app);
+            let mixed = crate::panels::stroke_mixed(app, ui.ctx());
+            crate::panels::stroke::shown_weight(app, stroke.as_ref(), &mixed).map(|w| app.session.stroke_unit().format(w)).unwrap_or_default()
+        }
+        None => String::new(),
+    };
+    let lead = if colour.is_some() { 20.0 + 6.0 } else { 0.0 };
     let name_w = width_of(ui, &name, font(12.0)).min(220.0);
     let weight_w = width_of(ui, &weight, mono(12.0));
-    let w = (8.0 + 20.0 + 6.0 + name_w + 6.0 + weight_w + 8.0 + 8.0 + 8.0).max(196.0);
+    let w = (8.0 + lead + name_w + 6.0 + weight_w + 8.0 + 8.0 + 8.0).max(196.0);
     let r = Rect::from_min_size(pos2(at.x, at.y - H / 2.0), vec2(w, H));
     let resp = ui.interact(r, wid("ctl-layer", ()), Sense::click());
     field_box(ui, r, if resp.hovered() { t.panel } else { t.input }, if target.note.is_some() { t.clay } else { t.input_border });
@@ -140,16 +150,19 @@ fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f
         ui.painter().rect(patch, 0.0, c.gamma_multiply(0.25), Stroke::new(2.0, c), StrokeKind::Inside);
     }
     let p = ui.painter().with_clip_rect(r);
-    let n = p.text(pos2(patch.right() + 6.0, at.y), Align2::LEFT_CENTER, &name, font(12.0), t.text);
-    p.text(pos2(n.right().min(patch.right() + 6.0 + name_w) + 6.0, at.y), Align2::LEFT_CENTER, &weight, mono(12.0), t.text_disabled);
+    let x = r.left() + 8.0 + lead;
+    let n = p.text(pos2(x, at.y), Align2::LEFT_CENTER, &name, font(12.0), t.text);
+    if !weight.is_empty() {
+        p.text(pos2(n.right().min(x + name_w) + 6.0, at.y), Align2::LEFT_CENTER, &weight, mono(12.0), t.text_disabled);
+    }
     triangle(ui, pos2(r.right() - 8.0 - 4.0, at.y), 8.0, true, t.text_dim);
     let resp = resp.on_hover_text(target.note.as_deref().unwrap_or(tw!("The layer and weight the next line is drawn with")));
     let mut pick = None;
     egui::Popup::menu(&resp).show(|ui| {
-        ui.set_min_width(220.0);
+        ui.set_min_width(LIST_W);
         if let Some(st) = app.session.active() {
             for layer in st.doc.layers.iter().rev() {
-                let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::hover());
+                let (row, _) = ui.allocate_exact_size(vec2(LIST_W, 24.0), Sense::hover());
                 let rr = ui.interact(row, wid("ctl-layer-row", layer.id.0), Sense::click());
                 if rr.hovered() {
                     ui.painter().rect_filled(row, CornerRadius::same(4), t.hover);
@@ -160,7 +173,8 @@ fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f
                 let f = if Some(layer.id) == current { bold(12.0) } else { font(12.0) };
                 // A locked or hidden layer takes no lines: dimmed, with why at the right.
                 let editable = st.doc.is_editable(layer.id);
-                ui.painter().text(
+                let name = Rect::from_min_max(pos2(patch.right() + 8.0, row.top()), pos2(row.right() - 28.0, row.bottom()));
+                ui.painter().with_clip_rect(name).text(
                     pos2(patch.right() + 8.0, row.center().y),
                     Align2::LEFT_CENTER,
                     layer.display_name(),

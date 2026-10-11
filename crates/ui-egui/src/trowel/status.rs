@@ -48,7 +48,8 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
 }
 
 /// A save or export running; else a note from something a later job brings ([`soon_note`]); else
-/// the last message, for [`MESSAGE_SECS`] after it changes, so the hint comes back.
+/// the last message, for [`MESSAGE_SECS`] after it is put there (the same one again too), so the
+/// hint comes back.
 fn message(app: &VectorcraftApp, ctx: &egui::Context) -> Option<String> {
     let status = crate::chrome::status_message(app);
     if let Some((running, true)) = status {
@@ -60,10 +61,10 @@ fn message(app: &VectorcraftApp, ctx: &egui::Context) -> Option<String> {
     let (message, _) = status?;
     let now = ctx.input(|i| i.time);
     let seen = wid("status-seen", ());
-    let since = match ctx.data(|d| d.get_temp::<(String, f64)>(seen)) {
-        Some((s, at)) if s == app.ui.status => at,
+    let since = match ctx.data(|d| d.get_temp::<(u64, String, f64)>(seen)) {
+        Some((seq, s, at)) if seq == app.ui.status_seq && s == app.ui.status => at,
         _ => {
-            ctx.data_mut(|d| d.insert_temp(seen, (app.ui.status.clone(), now)));
+            ctx.data_mut(|d| d.insert_temp(seen, (app.ui.status_seq, app.ui.status.clone(), now)));
             now
         }
     };

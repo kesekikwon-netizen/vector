@@ -129,7 +129,7 @@ fn insert(app: &mut VectorcraftApp, ch: char) {
     } else if super::character::text_style(app).is_some() {
         app.run("type.insert", json!({"text": s})).ok();
     } else {
-        app.ui.status = "Select text or click into text with the Type tool to insert glyphs".into();
+        app.status("Select text or click into text with the Type tool to insert glyphs");
     }
 }
 

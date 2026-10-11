@@ -151,7 +151,7 @@ fn body(app: &mut VectorcraftApp, ui: &mut Ui, cols: usize, floating: Option<egu
         // It only fails on bad params, which this never sends; show it all the same.
         && let Err(e) = app.run("window.toolbarColumns", json!({ "double": cols == 1 }))
     {
-        app.ui.status = e;
+        app.status(e);
     }
     let grip_tip = if floating.is_some() { tl!("Drag to the window's left edge to dock") } else { tl!("Drag to float the toolbar") };
     gresp.on_hover_cursor(egui::CursorIcon::Grab).on_hover_text(grip_tip);

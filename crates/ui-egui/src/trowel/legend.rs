@@ -16,6 +16,12 @@ const ROW_H: f32 = 24.0;
 const OBJECT_H: f32 = 20.0;
 /// The panel's padding at the sides.
 const PAD: f32 = 14.0;
+/// Its head and caption over the list, and Weights at Once under it ([`footer`]).
+const ABOVE: f32 = 32.0 + 10.0 + 7.0 + 7.0 + 4.0;
+const BELOW: f32 = 6.0 + FOOT_H;
+const FOOT_H: f32 = 6.0 + 26.0 + 10.0;
+/// How tall the legend has to be to list two layers.
+pub(super) const MIN_HEIGHT: f32 = ABOVE + 2.0 * ROW_H + BELOW;
 
 /// A layer's row as shown.
 struct Row<'a> {
@@ -60,8 +66,8 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let more = more_button(ui, wid("legend-more", ()), head, 0, tw!("Layers panel"), &t).clicked();
     let cap = head.bottom() + 10.0 + 7.0;
     list_caption(ui, r.left() + PAD, r.right() - PAD, cap, tw!("This drawing's layers"), &t);
-    let foot = footer(ui, r, &t);
-    let area = Rect::from_min_max(pos2(r.left() + PAD, cap + 7.0 + 4.0), pos2(r.right() - PAD, foot.top() - 6.0));
+    footer(ui, r, &t);
+    let area = Rect::from_min_max(pos2(r.left() + PAD, r.top() + ABOVE), pos2(r.right() - PAD, r.bottom() - BELOW));
     let act = list(app, ui, area, &t);
     if more {
         crate::menus::invoke(app, "window.panel", json!({ "panel": "layers" }));
@@ -100,7 +106,9 @@ fn list(app: &VectorcraftApp, ui: &mut Ui, area: Rect, t: &Tokens) -> Option<Act
     let lang = crate::i18n::current();
     let mut act = None;
     let mut list = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::top_down(egui::Align::Min)));
-    egui::ScrollArea::vertical().id_salt(wid("legend-scroll", ())).auto_shrink([false, false]).show_viewport(&mut list, |ui, view| {
+    // Exactly `area`, however short: egui would make it at least 64 tall, over the footer.
+    let scroll = egui::ScrollArea::vertical().id_salt(wid("legend-scroll", ())).auto_shrink([false, false]).min_scrolled_height(0.0);
+    scroll.show_viewport(&mut list, |ui, view| {
         ui.set_height(total);
         let origin = ui.max_rect().min;
         let w = ui.available_width();
@@ -226,13 +234,12 @@ fn object_row(ui: &Ui, node: &Node, selected: bool, lang: crate::i18n::Lang, rr:
     resp.clicked()
 }
 
-/// Weights at Once under the list (J005). Returns its rect.
-fn footer(ui: &Ui, r: Rect, t: &Tokens) -> Rect {
-    let foot = Rect::from_min_max(pos2(r.left() + PAD, r.bottom() - 10.0 - 26.0 - 6.0), pos2(r.right() - PAD, r.bottom()));
+/// Weights at Once under the list (J005), [`FOOT_H`] tall.
+fn footer(ui: &Ui, r: Rect, t: &Tokens) {
+    let foot = Rect::from_min_max(pos2(r.left() + PAD, r.bottom() - FOOT_H), pos2(r.right() - PAD, r.bottom()));
     line_above(ui, foot, t.border);
     let cy = foot.top() + 6.0 + 13.0;
     let x = text(ui, pos2(foot.left(), cy), Align2::LEFT_CENTER, tw!("Weights at once"), font(11.0), t.text_dim).right() + 6.0;
     let x = button_soon(ui, wid("legend-weights", ()), pos2(x, cy), tw!("Change All Weights…"), false, "J005", t) + 4.0;
     button_soon(ui, wid("legend-overrides", ()), pos2(x, cy), tw!("Overrides to Legend"), false, "J005", t);
-    foot
 }

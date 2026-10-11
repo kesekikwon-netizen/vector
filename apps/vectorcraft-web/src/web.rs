@@ -122,7 +122,8 @@ async fn run(host: Host, canvas: web_sys::HtmlCanvasElement, moving: Option<Movi
                     None => {
                         let mut app = VectorcraftApp::new(Session::new(), services);
                         // The web app keeps no preferences: it opens in Trowel's window.
-                        vectorcraft_ui_egui::workspaces::start_trowel(&mut app.ui);
+                        let lang = app.ui_language();
+                        vectorcraft_ui_egui::workspaces::start_trowel(&mut app.ui, lang);
                         app
                     }
                 };

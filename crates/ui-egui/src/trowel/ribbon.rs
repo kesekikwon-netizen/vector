@@ -152,13 +152,14 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         let r = ui.max_rect();
         line_below(ui, r, t.border);
         let groups = groups();
-        // The tiles as in the mockup with Find a Command beside them while they fit; then Find a
-        // Command folds to its magnifier, then the tiles narrow, then they scroll.
+        // The tiles as in the mockup with Find a Command beside them while they fit; then the
+        // tiles narrow, then Find a Command folds to its magnifier, then the tiles scroll. Each
+        // narrower window gives up more, so Find a Command doesn't fold and open again.
         let room = r.width();
         let (fit, find_w) = if tiles_width(&groups, FULL) + PAD + FIND.x + PAD <= room {
             (FULL, FIND.x)
-        } else if tiles_width(&groups, FULL) + PAD + FIND_FOLDED + PAD <= room {
-            (FULL, FIND_FOLDED)
+        } else if tiles_width(&groups, NARROW) + PAD + FIND.x + PAD <= room {
+            (NARROW, FIND.x)
         } else {
             (NARROW, FIND_FOLDED)
         };

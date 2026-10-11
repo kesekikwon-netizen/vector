@@ -9,6 +9,8 @@ use super::*;
 
 /// The ×'s size.
 const CLOSE: f32 = 10.0;
+/// The narrowest the current tab gets: a letter or two and its ×.
+const MIN_TAB: f32 = 14.0 + 16.0 + 8.0 + CLOSE + 8.0;
 
 /// The canvas under the tabs (screen mode 3: the canvas alone) and what floats on it.
 pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, mode: u8) {
@@ -28,12 +30,15 @@ fn tabs(app: &mut VectorcraftApp, ui: &mut Ui, full: Rect) -> f32 {
     ui.painter().rect_filled(strip, 0.0, t.panel);
     line_below(ui, strip, t.border);
     let home = crate::menus::home_showing(app);
-    let corner_left = corner(app, ui, strip, home, &t);
     let active = app.session.active_index().filter(|_| !home);
     let titles: Vec<String> = app.session.documents().iter().map(|d| d.title()).collect();
     let home_w = width_of(ui, tw!("Home"), font(12.0)) + 28.0;
     let widths: Vec<f32> = titles.iter().map(|n| 14.0 + width_of(ui, n, font(12.0)) + 8.0 + CLOSE + 8.0).collect();
     let left = strip.left() + 8.0;
+    // What is at the right leaves the tabs their room, the current one's first.
+    let current_w = active.and_then(|i| widths.get(i)).copied().unwrap_or(0.0);
+    let need = [left + home_w + widths.iter().sum::<f32>() + 8.0, left + home_w + current_w + 8.0];
+    let corner_left = corner(app, ui, strip, home, need, &t);
     let room = corner_left - 8.0 - (left + home_w);
     // The current drawing's tab stays in view; the drawing set lists them all.
     let first = crate::chrome::first_tab_shown(&widths, active, room);
@@ -42,16 +47,19 @@ fn tabs(app: &mut VectorcraftApp, ui: &mut Ui, full: Rect) -> f32 {
     let mut activate = None;
     let mut close = None;
     let home_tab = Rect::from_min_size(pos2(left, strip.top()), vec2(home_w, h));
-    if tab(ui, wid("tab-home", ()), home_tab, tw!("Home"), home, &t).clicked() {
+    if tab(ui, wid("tab-home", ()), home_tab, tw!("Home"), home, false, &t).clicked() {
         go_home = true;
     }
+    let end = left + home_w + room;
     let mut x = home_tab.right();
     for (i, (title, w)) in titles.iter().zip(&widths).enumerate().skip(first) {
-        if x + w > left + home_w + room && Some(i) != active {
+        if x + w > end && Some(i) != active {
             break;
         }
-        let r = Rect::from_min_size(pos2(x, strip.top()), vec2(*w, h));
-        let resp = tab(ui, wid("tab", i), r, title, Some(i) == active, &t);
+        // The current tab takes the room there is, its name cut short.
+        let w = if x + w > end { (end - x).max(MIN_TAB) } else { *w };
+        let r = Rect::from_min_size(pos2(x, strip.top()), vec2(w, h));
+        let resp = tab(ui, wid("tab", i), r, title, Some(i) == active, true, &t);
         let x_rect = Rect::from_center_size(pos2(r.right() - 8.0 - CLOSE / 2.0, r.center().y), vec2(CLOSE, CLOSE));
         let x_resp = ui.interact(x_rect.expand(3.0), wid("tab-close", i), Sense::click());
         if resp.hovered() || x_resp.hovered() {
@@ -79,29 +87,53 @@ fn tabs(app: &mut VectorcraftApp, ui: &mut Ui, full: Rect) -> f32 {
     strip.bottom()
 }
 
-/// One tab in `r`: `label`, underlined when it is the `current` one.
-fn tab(ui: &Ui, id: egui::Id, r: Rect, label: &str, current: bool, t: &Tokens) -> egui::Response {
+/// One tab in `r`: `label`, cut short with "…" when it doesn't fit before the × (`close`) or the
+/// tab's end, and underlined when it is the `current` one.
+fn tab(ui: &Ui, id: egui::Id, r: Rect, label: &str, current: bool, close: bool, t: &Tokens) -> egui::Response {
     let resp = ui.interact(r, id, Sense::click());
     let color = if current || resp.hovered() { t.text } else { t.text_dim };
-    ui.painter().with_clip_rect(r).text(pos2(r.left() + 14.0, r.center().y), Align2::LEFT_CENTER, label, font(12.0), color);
+    let x = r.left() + 14.0;
+    let room = r.right() - if close { 8.0 + CLOSE + 8.0 } else { 14.0 } - x;
+    let mut job = egui::text::LayoutJob::simple_singleline(label.to_string(), font(12.0), color);
+    if width_of(ui, label, font(12.0)) > room {
+        job.wrap = egui::text::TextWrapping::truncate_at_width(room.max(0.0));
+    }
+    let name = ui.painter().layout_job(job);
+    ui.painter().with_clip_rect(r).galley(pos2(x, r.center().y - name.size().y / 2.0), name, color);
     if current {
         ui.painter().rect_filled(Rect::from_min_max(pos2(r.left(), r.bottom() - 2.0), r.max), 0.0, t.text);
     }
     resp
 }
 
-/// The current drawing's name at the right end of the strip, and whether it is saved. Returns
-/// where it begins.
-fn corner(app: &VectorcraftApp, ui: &Ui, strip: Rect, home: bool, t: &Tokens) -> f32 {
+/// The current drawing's name at the right end of the strip, and whether it is saved. The tabs
+/// want the strip up to `need`: all of them, the current one. The name, which its tab shows too,
+/// shows when all of them fit; "Not saved" when the current one does, else its dot, which says it
+/// on hover. Returns where it begins.
+fn corner(app: &VectorcraftApp, ui: &Ui, strip: Rect, home: bool, need: [f32; 2], t: &Tokens) -> f32 {
     let Some(d) = app.session.active().filter(|_| !home) else { return strip.right() };
     let cy = strip.center().y;
-    let mut x = strip.right() - 12.0;
-    if d.is_dirty() {
-        x = text(ui, pos2(x, cy), Align2::RIGHT_CENTER, tw!("Not saved"), font(12.0), t.text).left() - 5.0;
+    let right = strip.right() - 12.0;
+    let dirty = d.is_dirty();
+    let (dot, note) = if dirty { (6.0, width_of(ui, tw!("Not saved"), font(12.0)) + 5.0) } else { (0.0, 0.0) };
+    let name = width_of(ui, &d.title(), font(12.0)) + if dirty { 8.0 } else { 0.0 };
+    let show_name = right - (name + dot + note) >= need[0];
+    let show_note = right - (dot + note) >= need[1];
+    let mut x = right;
+    if dirty {
+        if show_note {
+            x = text(ui, pos2(x, cy), Align2::RIGHT_CENTER, tw!("Not saved"), font(12.0), t.text).left() - 5.0;
+        } else {
+            ui.interact(Rect::from_center_size(pos2(x - 3.0, cy), vec2(14.0, 14.0)), wid("tab-unsaved", ()), Sense::hover())
+                .on_hover_text(tw!("Not saved"));
+        }
         ui.painter().circle_filled(pos2(x - 3.0, cy), 3.0, t.clay);
-        x -= 6.0 + 8.0;
+        x -= 6.0;
     }
-    text(ui, pos2(x, cy), Align2::RIGHT_CENTER, d.title(), font(12.0), t.text).left()
+    if show_name {
+        x = text(ui, pos2(x - if dirty { 8.0 } else { 0.0 }, cy), Align2::RIGHT_CENTER, d.title(), font(12.0), t.text).left();
+    }
+    x
 }
 
 /// The tool band, the zoom buttons and the screen readout, over the canvas.

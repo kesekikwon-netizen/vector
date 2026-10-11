@@ -54,7 +54,7 @@ impl VectorcraftApp {
         match self.services.system_clipboard.as_mut() {
             Some(cb) => {
                 if let Err(e) = cb.write(&self.session.clipboard_flavours()) {
-                    self.ui.status = format!("Couldn't copy to the system clipboard: {e}");
+                    self.status(format!("Couldn't copy to the system clipboard: {e}"));
                 }
             }
             None if self.session.prefs.copy_as_svg => {

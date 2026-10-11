@@ -59,11 +59,13 @@ const SLOTS: [&str; 14] = [
 /// The archaeology tools under them.
 const ARCH: [&str; 5] = ["section-line", "spot-height", "find-number", "posthole", "hachure"];
 
-/// Text painted in the last frame: what it says, where and in what colour.
+/// Text painted in the last frame: what it says, where and in what colour, and the part of it
+/// that shows (inside its clip).
 struct Painted {
     text: String,
     rect: Rect,
     color: egui::Color32,
+    shown: Rect,
 }
 
 struct Harness {
@@ -85,7 +87,8 @@ impl Harness {
     fn sized(w: f32, h: f32) -> Self {
         let mut app = VectorcraftApp::new(Session::new(), crate::Services::default());
         app.custom_titlebar = true;
-        crate::workspaces::start_trowel(&mut app.ui);
+        let lang = app.ui_language();
+        crate::workspaces::start_trowel(&mut app.ui, lang);
         app.run("file.new", json!({"name": "Site 1", "width": 400, "height": 300})).unwrap();
         let mut h = Harness { app, ctx: egui::Context::default(), screen: vec2(w, h), time: 0.0, texts: vec![], shapes: vec![] };
         // The first frame installs the fonts, the second lays the window out, the third sees it.
@@ -111,7 +114,13 @@ impl Harness {
             .filter_map(|c| match &c.shape {
                 egui::Shape::Text(t) => {
                     let color = t.galley.job.sections.first().map(|s| s.format.color).filter(|c| *c != egui::Color32::PLACEHOLDER);
-                    Some(Painted { text: t.galley.text().to_string(), rect: t.visual_bounding_rect(), color: color.unwrap_or(t.fallback_color) })
+                    let rect = t.visual_bounding_rect();
+                    Some(Painted {
+                        text: t.galley.text().to_string(),
+                        rect,
+                        color: color.unwrap_or(t.fallback_color),
+                        shown: rect.intersect(c.clip_rect),
+                    })
                 }
                 _ => None,
             })
@@ -184,6 +193,21 @@ impl Harness {
     /// The colour `text` was painted in inside `area`.
     fn color_of(&self, text: &str, area: Rect) -> Option<egui::Color32> {
         self.texts.iter().find(|p| p.text == text && area.expand(0.5).contains_rect(p.rect)).map(|p| p.color)
+    }
+
+    /// Pairs of texts showing in `area` that are drawn over each other.
+    fn overlapping_texts(&self, area: Rect) -> Vec<(String, String)> {
+        let shown: Vec<&Painted> = self.texts.iter().filter(|p| p.shown.is_positive() && p.shown.intersects(area)).collect();
+        let mut v = vec![];
+        for (i, a) in shown.iter().enumerate() {
+            for b in shown.iter().skip(i + 1) {
+                let both = a.shown.intersect(b.shown);
+                if both.width() > 1.0 && both.height() > 1.0 {
+                    v.push((a.text.clone(), b.text.clone()));
+                }
+            }
+        }
+        v
     }
 
     /// Everything painted inside `area` as one string, left to right.
@@ -375,8 +399,11 @@ fn control_bar_shows_the_layer_and_next_weight() {
     for want in ["Pen", "Pit outline", "1 pt", "Snap", "Tolerance"] {
         assert!(line.contains(want), "{want} in {line}");
     }
-    // The legend field lists the layers; picking one makes it current.
+    // The legend field lists the layers, in rows about as wide as the field so a padlock or eye at
+    // the right stays by its name; picking one makes it current.
     h.click(wid("ctl-layer", ()));
+    let row = h.rect(wid("ctl-layer-row", first.0)).expect("the list");
+    assert!((220.0..=280.0).contains(&row.width()), "{row:?}");
     h.click(wid("ctl-layer-row", first.0));
     assert_eq!(h.current_layer(), Some(first));
     assert!(h.line_in(bar).contains("Layer 1"), "{}", h.line_in(bar));
@@ -395,16 +422,19 @@ fn control_bar_shows_the_layer_and_next_weight() {
 }
 
 /// Smaller windows keep every tile and tool and the fill and stroke in reach: a 1920 × 1080 screen
-/// at 125 % less the task bar, a 1366 × 768 laptop's, the smallest window. The ribbon folds Find a
-/// Command to its magnifier, then narrows its tiles, then scrolls (the mouse wheel too); the tool
-/// column tightens, then scrolls above the fill and stroke, which stay at its foot.
+/// at 125 % less the task bar, a 1440 × 900 laptop's, a 1366 × 768 one's, the smallest window. The
+/// ribbon narrows its tiles, then folds Find a Command to its magnifier, then scrolls (the mouse
+/// wheel too); the tool column tightens, then scrolls above the fill and stroke, which stay at its
+/// foot.
 #[test]
 fn small_windows_keep_every_tile_and_tool_in_reach() {
-    for (w, height) in [(1536.0, 816.0), (1366.0, 728.0), (800.0, 500.0)] {
+    for (w, height) in [(1536.0, 816.0), (1440.0, 900.0), (1366.0, 728.0), (800.0, 500.0)] {
         let mut h = Harness::sized(w, height);
         let (ribbon, column) = (h.panel(RIBBON), h.panel(TOOLS));
         let find = h.rect(wid("find", ())).unwrap_or_else(|| panic!("{w}: Find a Command"));
         assert!(ribbon.contains_rect(find), "{w}: {find:?} in {ribbon:?}");
+        // Find a Command keeps its field while narrower tiles leave it room (from 1383 points).
+        assert_eq!(find.width(), if w >= 1383.0 { 150.0 } else { 32.0 }, "{w}: Find a Command's width");
         let tile_shown = |h: &Harness, k: &str| {
             let r = h.rect(wid("tile", k)).unwrap_or_else(|| panic!("{w}: no tile {k}"));
             ribbon.contains_rect(r) && r.right() <= find.left()
@@ -437,6 +467,113 @@ fn small_windows_keep_every_tile_and_tool_in_reach() {
         // Find a Command still opens the command palette.
         h.click(wid("find", ()));
         assert!(h.app.ui.palette_open, "{w}");
+    }
+}
+
+/// A window too short for the right column scrolls it (the smallest, 800 × 500): the drawing
+/// palette, the legend with room for two layers and the properties stay apart, and the wheel brings
+/// the properties in. A taller one shows them all as they come.
+#[test]
+fn a_short_window_scrolls_the_right_column_without_overlap() {
+    for (w, height) in [(1600.0, 988.0), (1366.0, 728.0), (800.0, 500.0)] {
+        let h = Harness::sized(w, height);
+        let right = h.panel(RIGHT);
+        let clash = h.overlapping_texts(right);
+        assert!(clash.is_empty(), "{w} × {height}: {clash:?}");
+        assert!(right.contains_rect(h.rect(wid("weight", "0.1")).unwrap()), "{w} × {height}: the palette at the top");
+    }
+    let mut h = Harness::sized(800.0, 500.0);
+    let right = h.panel(RIGHT);
+    h.wheel(h.rect(wid("weight", "0.1")).unwrap().center(), vec2(0.0, -4000.0));
+    let more = h.rect(wid("props-more", ())).expect("the properties' ⋯");
+    assert!(right.contains_rect(more), "{more:?} in {right:?}");
+    let clash = h.overlapping_texts(right);
+    assert!(clash.is_empty(), "scrolled to the properties: {clash:?}");
+    let layers = h.texts.iter().find(|p| p.text == "This drawing's layers").expect("the legend's caption").shown;
+    assert!(right.contains_rect(layers) && layers.bottom() < more.top(), "the legend above the properties");
+    h.click(wid("props-more", ()));
+    assert_eq!(h.app.ui.open_panel.as_deref(), Some("properties"));
+}
+
+/// However short the window, the legend's list keeps to its own room: no layer's row runs over the
+/// line and buttons of Weights at Once under it, and scrolled to its end the list shows the bottom
+/// layer whole.
+#[test]
+fn the_legend_list_stays_above_its_footer() {
+    for (w, height) in [(1280.0, 662.0), (800.0, 500.0)] {
+        let mut h = Harness::sized(w, height);
+        for i in 0..5 {
+            h.app.run("layer.new", json!({ "name": format!("Pit {i}") })).unwrap();
+        }
+        h.settle();
+        let names: Vec<String> = h.app.session.active().unwrap().doc.layers.iter().map(|l| l.display_name()).collect();
+        // Down the column to the legend's foot (a short one scrolls), then down the list to its end.
+        h.wheel(h.rect(wid("weight", "0.1")).unwrap().center(), vec2(0.0, -4000.0));
+        let weights = h.rect(wid("legend-weights", ())).expect("Change All Weights…");
+        assert!(h.panel(RIGHT).contains_rect(weights), "{w} × {height}: {weights:?}");
+        // legend::footer: its line is 6 above its buttons.
+        let line = weights.top() - 6.0;
+        let caption = h.texts.iter().find(|p| p.text == "This drawing's layers").expect("the legend's caption").rect;
+        h.wheel(pos2(caption.center().x, (caption.bottom() + line) / 2.0), vec2(0.0, -4000.0));
+        let rows: Vec<&Painted> = h.texts.iter().filter(|p| names.contains(&p.text) && p.shown.is_positive()).collect();
+        for p in &rows {
+            assert!(p.shown.bottom() <= line, "{w} × {height}: {:?} over the footer: {:?}, its line at {line}", p.text, p.shown);
+        }
+        let bottom = rows.iter().find(|p| Some(&p.text) == names.first()).expect("the bottom layer in view");
+        assert!(close(bottom.shown, bottom.rect), "{w} × {height}: the bottom layer cut: {:?} of {:?}", bottom.shown, bottom.rect);
+    }
+}
+
+/// The tab strip in a narrow window, or with a long name, never draws a tab over the drawing's
+/// name and "Not saved" at its right. The name there (its tab shows it too) gives way first when the
+/// tabs don't all fit, then "Not saved" leaves its dot when the current tab doesn't; past that the
+/// current tab's name is cut short with "…".
+#[test]
+fn the_tabs_and_the_name_at_their_right_never_overlap() {
+    let long = "Excavation area 3, trench 12, north section, second season";
+    // The window, the drawing opened after "Site 1" (the current one), and what shows at the right:
+    // the name, "Not saved", whether the current tab's name is cut short.
+    let cases = [
+        (1600.0, 988.0, None, true, true, false),
+        (1366.0, 728.0, Some(long), false, true, false),
+        (800.0, 500.0, Some("Trench 12 north"), false, false, false),
+        (800.0, 500.0, Some("Trench 12 north section"), false, false, true),
+    ];
+    for (w, height, other, name_shown, note_shown, cut) in cases {
+        let mut h = Harness::sized(w, height);
+        if let Some(name) = other {
+            h.app.run("file.new", json!({"name": name, "width": 400, "height": 300})).unwrap();
+        }
+        let name = other.unwrap_or("Site 1");
+        h.app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 50, "height": 40})).unwrap();
+        h.settle();
+        let (set, right, control) = (h.panel(SET), h.panel(RIGHT), h.panel(CONTROL));
+        let strip = r(set.right(), control.bottom(), right.left(), control.bottom() + 32.0);
+        let clash = h.overlapping_texts(strip);
+        assert!(clash.is_empty(), "{w} {name}: {clash:?}");
+        // Nor does a tab (its ×, its underline) run under what is at the right.
+        let docs = h.app.session.documents().len();
+        let tabs: Vec<Rect> = std::iter::once(wid("tab-home", ())).chain((0..docs).map(|i| wid("tab", i))).filter_map(|id| h.rect(id)).collect();
+        for p in h.texts.iter().filter(|p| p.shown.is_positive() && strip.contains_rect(p.shown)) {
+            if !tabs.iter().any(|t| t.expand(0.5).contains_rect(p.rect)) {
+                assert!(tabs.iter().all(|t| !t.intersects(p.shown)), "{w} {name}: a tab under {:?}: {tabs:?}", p.text);
+            }
+        }
+        // The current tab shows its name, inside it; cut short only when even the dot leaves no room.
+        let tab = h.rect(wid("tab", h.app.session.active_index().unwrap())).unwrap();
+        let elided: Vec<bool> = h
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) if t.galley.text() == name && tab.expand(0.5).contains_rect(t.visual_bounding_rect()) => Some(t.galley.elided),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(elided, [cut], "{w} {name}: the current tab's name");
+        let shown = h.texts_in(strip);
+        assert_eq!(shown.iter().filter(|s| *s == name).count(), if name_shown { 2 } else { 1 }, "{w} {name}: {shown:?}");
+        assert_eq!(shown.iter().any(|s| s == "Not saved"), note_shown, "{w} {name}: {shown:?}");
+        assert_eq!(h.rect(wid("tab-unsaved", ())).is_some(), !note_shown, "{w} {name}: the dot says it on hover");
     }
 }
 
@@ -587,7 +724,8 @@ fn hints_read_plainly_as_in_the_mockup() {
     let status = hint(&h, h.panel(STATUS));
     assert_eq!(status.len(), 1, "{status:?}");
     let (text, bold) = &status[0];
-    assert!(!bold && !text.contains('|') && text.contains("Click to add a corner point · Drag to add a smooth point"), "{status:?}");
+    assert!(!bold, "{status:?}");
+    assert_eq!(text, "Click to add a corner point · Drag to add a smooth point · Click the first point to close · Enter to finish");
 }
 
 #[test]
@@ -614,7 +752,11 @@ fn palette_weight_chip_sets_the_next_stroke() {
     assert!(stroke.dash.is_some());
     h.click(wid("dash", "solid"));
     assert!(h.app.session.shown_stroke().unwrap().dash.is_none());
-    // Hatches wait for J014.
+    // Hatches, the other line types and adding a weight wait for J014 and J018: on the wash, like
+    // the other things that come later.
+    for id in [wid("hatch", "45"), wid("hatch", "135"), wid("hatch", "alt"), wid("dash", "dashed"), wid("dash", "dashdot"), wid("weight-add", ())] {
+        assert_eq!(h.fill_at(h.rect(id).unwrap()), Some(t.panel_darker), "{id:?}");
+    }
     h.click(wid("hatch", "45"));
     assert_eq!(h.app.session.shown_stroke().unwrap().width, 0.8);
     assert_eq!(h.fill_at(h.rect(wid("hatch", "none")).unwrap()), Some(t.row_selected), "no hatch yet");
@@ -687,10 +829,15 @@ fn a_locked_or_hidden_current_layer_shows_where_lines_go() {
     h.click(wid("legend-eye", pits.0));
     assert_eq!(h.current_layer(), Some(pits));
     assert!(h.line_in(canvas).contains("Pits is hidden: drawing on Layer 1"), "{}", h.line_in(canvas));
-    // With every layer locked or hidden nothing is drawn, and the band says so.
+    // With every layer locked or hidden nothing is drawn, and the band says so; the legend field
+    // too, from its left, with no layer colour or weight.
     h.click(wid("legend-lock", first.0));
     let line = h.line_in(canvas);
     assert!(line.contains("Pits is hidden: no layer to draw on") && !line.contains("Pen · Layer 1"), "{line}");
+    let field = h.rect(wid("ctl-layer", ())).unwrap();
+    assert_eq!(h.texts_in(field), ["No layer to draw on"]);
+    let says = h.texts.iter().find(|p| p.text == "No layer to draw on" && field.contains_rect(p.rect)).unwrap().rect;
+    assert!(says.left() - field.left() < 12.0, "from the field's left: {says:?} in {field:?}");
     assert!(h.app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 50, "height": 40})).is_err());
 }
 
@@ -739,11 +886,24 @@ fn status_bar_shows_messages_for_a_while() {
     h.later(7.0);
     let line = h.line_in(bar);
     assert!(!line.contains("Saved Site 1") && line.contains("to add a corner point"), "{line}");
-    // Section (J004) and Change All Weights (J005): what they are and when.
+    // The same message again shows again: a second save says so too.
+    h.app.status("Saved Site 1");
+    h.settle();
+    assert!(h.line_in(bar).contains("Saved Site 1"), "the same message again: {}", h.line_in(bar));
+    h.later(7.0);
+    // So does the same error twice: the status bar is where it reaches the user.
+    for time in ["first", "second"] {
+        assert!(h.app.run("layer.setCurrent", json!({ "id": 999_999 })).is_err());
+        h.settle();
+        let line = h.line_in(bar);
+        assert!(!line.contains("to add a corner point"), "the error, the {time} time: {line}");
+        h.later(7.0);
+    }
+    // Section (J004) and Change All Weights (J005): what they are and when, a name's "…" left off.
     h.click(wid("tile", "section"));
     assert!(h.line_in(bar).contains("Section: coming soon (J004)"), "{}", h.line_in(bar));
     h.click(wid("legend-weights", ()));
-    assert!(h.line_in(bar).contains("Change All Weights…: coming soon (J005)"), "{}", h.line_in(bar));
+    assert!(h.line_in(bar).contains("Change All Weights: coming soon (J005)"), "{}", h.line_in(bar));
     h.later(5.0);
     assert!(!h.line_in(bar).contains("coming soon"), "{}", h.line_in(bar));
 }

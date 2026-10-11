@@ -427,10 +427,22 @@ const SYSTEM_FALLBACKS: &[&str] = &[
 #[cfg(not(target_arch = "wasm32"))]
 const HANGUL_FALLBACKS: &[&str] = &["Noto Sans CJK KR", "Noto Sans KR", "NanumGothic"];
 
-/// Hangul: jamo, compatibility jamo, jamo extended A and B, syllables, halfwidth letters.
+/// Hangul: jamo, its tone marks, compatibility jamo, the parenthesized and circled letters (㈀, ㉠),
+/// jamo extended A and B, syllables, halfwidth letters.
 #[cfg(not(target_arch = "wasm32"))]
 fn is_hangul(c: char) -> bool {
-    matches!(c as u32, 0x1100..=0x11FF | 0x3130..=0x318F | 0xA960..=0xA97F | 0xAC00..=0xD7AF | 0xD7B0..=0xD7FF | 0xFFA0..=0xFFDF)
+    matches!(
+        c as u32,
+        0x1100..=0x11FF
+            | 0x302E..=0x302F
+            | 0x3130..=0x318F
+            | 0x3200..=0x321E
+            | 0x3260..=0x327F
+            | 0xA960..=0xA97F
+            | 0xAC00..=0xD7AF
+            | 0xD7B0..=0xD7FF
+            | 0xFFA0..=0xFFDF
+    )
 }
 
 /// The families tried, in order, for a character `c` the loaded fonts lack: the Korean ones go

@@ -1,6 +1,6 @@
 # J003 — 메인 창을 디자인 2.1 3절과 같게
 
-상태: review · 재작업 1차 끝, 검토 2차 대기 · 기준 커밋 `9ab182e865427a30a617a165527bc40ba011753a` · 커밋 2개(`fc810fb`, 재작업 1차 `J003: 검토 반영…`) · 화면 + 한글 대체 글꼴(`crates/text`) + `file.place` 새 인자(좌표·단위·파일 형식·의존성 변경 없음)
+상태: review · 재작업 2차(마지막 회) 끝, 검토 3차(확인) 대기 · 기준 커밋 `9ab182e865427a30a617a165527bc40ba011753a` · 커밋 3개(`fc810fb`, 재작업 1차 `d0213f0`, 재작업 2차 `J003: 검토 2차 반영…`) · 화면 + 한글 대체 글꼴(`crates/text`) + `file.place` 새 인자(좌표·단위·파일 형식·의존성 변경 없음)
 
 ## 목표
 
@@ -315,3 +315,151 @@ UI 검토 지적(줄 번호는 `fc810fb`):
 | `CARGO_PROFILE_DEV_DEBUG=0 cargo xtask ci`(디스크를 아끼려고 디버그 정보만 끔, 13:37:17Z–14:00:06Z) | 0 | 7단계 모두 통과(fmt, clippy, test, assets, brands, layers, wasm). 시험 묶음 117개에서 5,116 통과 · 0 실패 · 4 무시(이 작업 전부터 `#[ignore]`) | `rework-ci.log` |
 
 CI 시작 뒤 코드 파일은 바뀌지 않았다(`find crates apps xtask -newermt 13:37:00` 결과 없음). 화면 확인과 GitHub CI는 이 커밋 뒤에 이어 적는다.
+
+### 화면 확인 (재작업 1차)
+
+2026-10-11 14:05Z, `d0213f0`으로 빌드한 `target/debug/vectorcraft`(`CARGO_PROFILE_DEV_DEBUG=0 cargo build -p vectorcraft`, 종료 0, `build-r1.log`)를 `python3 -I scratchpad/j003/drive2.py target/debug/vectorcraft <out> 7993`(종료 0)으로 찍었다. 첫 회차와 같은 문서·같은 레이어 12개·펜 도구다. 그림은 `/mnt/project-files/design/trowel-run/`에 있다.
+
+| 그림 | 확인한 것 |
+|---|---|
+| `J003r1-plan.png`(1600 × 988, 포인터는 빈 곳) | 스마트 가이드 「패스」 표지 없음(U19). 상태줄·띠 안내가 한 가지 글꼴 muted(R9). 배율 「화면 77 %」(U-b). 속성의 「● 필요」 없음(U6). 허용치 칸 모양(U5). 캡션 아래 선(U3, 시안 y=32·앱 y=31) |
+| `J003r1-locked.png`(지금 레이어 = 잠긴 「기준점」) | 띠 「펜 · 조사구역 경계  기준점 잠김: 조사구역 경계에 그립니다」, 컨트롤 바 범례 칸 흙색 테두리 + 「조사구역 경계」, 범례 「기준점」 이름 흙색(R1) |
+| `J003r1-soon.png`(리본 「단면」을 누른 뒤) | 상태줄 왼쪽 「단면: 준비 중 (J004)」(R8) |
+| `J003r1-1366.png`(1366 × 728) | 리본 23칸 모두 44 px로, 명령 찾기는 돋보기 단추. 도구 기둥은 단추를 낮추고 고고학 묶음은 스크롤, 칠·선 상자는 바닥. 범례는 스크롤. 겹친 글자 없음(R2) |
+| `J003r1-side-by-side.png` | 왼쪽 시안 `win-plan.png`, 오른쪽 `J003r1-plan.png` |
+
+시안과 남은 차이(빌드 절의 표에서 바뀐 것만 적는다. 나머지 2–7, 9–11, 13–15행은 그대로):
+
+| # | 곳 | 시안 | 앱 | 맡은 작업 |
+|---|---|---|---|---|
+| 1 | 흐린 「준비 중」 칸 | 모두 쓸 수 있는 모양 | 흐림. 올리면 「{기능} · 준비 중 · J0xx」, 누르면 상태줄에 4초 | 목록 참고 |
+| 8 | 허용치 | 12 px | 2 px(앱 범위 1–8 px) | **사용자 결정**(백로그 J016 메모) |
+| 12 | 배율 | 「화면 34 % · 도면 1:20」 | 「화면 77 %」: 표기는 시안과 같은 정수, 값은 문서 확대율. 「도면 1:20」은 축척이 생기면 | J006 |
+| 16 | 리본 「밑그림」·「격자」 | 켜짐 | 꺼짐: 이 문서에 템플릿 레이어가 없고 격자를 끈 상태라서(모양 차이 아님) | — |
+| 17 | 범례 ▸ | 9 px muted 글자 ▸ | 7 px 삼각형, 시안보다 조금 진함 | nit, 2차 검토에 맡김 |
+| 18 | 컨트롤 바 간격 | | 흐린 「추정 (파선)」 칸이 글꼴 폭 때문에 조금 좁아 뒤 칸들이 최대 7 px 왼쪽 | 바꾸지 않음 |
+
+**GitHub CI (재작업 1차 커밋).** `d0213f0`을 작업 브랜치에 올린 뒤 「Trowel CI」 run 38145551715가 성공했다(리눅스 `cargo xtask ci` 관문, 윈도우 x64 빌드). 첫 커밋 `fc810fb`의 run 38137425667도 성공이었다.
+
+## 검토 (review) 2차
+
+2026-10-11, 대상 커밋 `d0213f0`(기준 `fc810fb`). 검토자 둘은 1차와 같이 구현자와 다른 에이전트이고, 읽기만 했다(저장소를 고치지 않음). 보고서 전문은 스크래치패드 `review2-ui.md`, `review2-code.md`.
+
+- **UI 검토(ui-reviewer, 14:26Z).** 1차 지적을 기록·시험·화면으로 하나씩 확인했다(U1–U19 고침, U12·U-a·U-e는 까닭 있는 남김). 앱을 따로 띄워 31장을 더 찍었다(1536·1440·1366·1280·1024·800 폭, 툴팁·목록·⋯ 패널·잠김·숨김). 시안과 1 px 안에서 같아진 곳: 컨트롤 바, 범례 줄의 ▸·눈·자물쇠, 판 제목, 메뉴 밑줄, 리본 끝 선, 확대 기둥, 상태줄 안내. **판정 pass**. 새로 찾은 것 minor 3, nit 7.
+- **정확성·보안 검토(code-reviewer + correctness-reviewer + security-reviewer 한 번에, 14:28Z).** C1–C10이 기록대로 고쳐졌음을 확인했다. 패닉 경로, egui id, 범례 가상화의 경계, `Flyout`, `start_trowel`, `file.place`의 `template` 인자(제어 채널·MCP 입력), 허용치 목록, 고전 화면 불변을 점검했다. CI가 만든 시험 바이너리로 대상 시험 130개 + 21개를 돌려 모두 통과했다(빌드는 하지 않음). 보안 문제 없음. **판정 pass**. 새로 찾은 것 minor 1(UI N3과 같은 것), nit 3.
+
+둘 다 pass였지만, minor 3건(작은 창의 겹침 둘, 같은 메시지가 다시 안 나옴)은 사용자가 바로 볼 수 있는 결함이다. 그래서 승인 보고서로 넘기지 않고 **재작업 2차(마지막 회)**에서 고쳤다. 공장 규칙상 수정 루프는 최대 2회라, 이 뒤에 남는 것은 `needs-human`으로 넘긴다.
+
+UI 검토 지적(N, 줄 번호는 `d0213f0`):
+
+| # | 심각도 | 곳 | 내용 | 조치 |
+|---|---|---|---|---|
+| N1 | minor | `trowel/mod.rs:96-100`, `legend.rs:56-64, 230-231` | 창 높이가 약 600 px보다 낮으면 오른쪽 기둥이 겹침. 800 × 500에서는 「굴광선」 줄 위에 「속성 선택 없음」이 그려지고 속성 칸이 안 보임. 1차 때부터 있었음 | 고침 R19 |
+| N2 | minor | `center.rs:31-50` | 좁은 창(이 문서 이름으로 약 900 px 아래)이나 긴 이름에서 지금 탭 이름이 오른쪽 구석 「{문서} ● 저장 안 됨」과 겹침. 지금 탭은 자리가 없어도 늘 그렸기 때문. 1차 때부터 있었음 | 고침 R20 |
+| N3 | minor | `status.rs:62-70` | 상태줄 6초를 메시지 글자로 잼: 바로 앞과 같은 메시지(두 번째 저장, 같은 오류)는 다시 나오지 않음 | 고침 R17 |
+| N4 | nit | `control.rs:152` | 범례 칸의 레이어 목록이 약 610 px로 넓어 자물쇠·눈 표시가 이름에서 450 px 떨어짐 | 고침 R21 |
+| N5 | nit | `control.rs:126, 138-143` | 「그릴 수 있는 레이어가 없습니다」일 때 패치 자리가 비고 「0.8 pt」가 붙음 | 고침 R21 |
+| N6 | nit | `palette.rs:54, 66, 87` | 팔레트의 준비 중 칩(빗금, 선종, 굵기 ＋)은 wash 바탕이 아님 | 고침 R22 |
+| N7 | nit | `ko.tsv:3195-3196` | 선택 도구 안내 「여러 객체를 선택」의 「를」(U17 남은 것) | 고침 R24 |
+| N8 | nit | `ribbon.rs:158-163` | 1265–1480 px(1440 × 900 포함)에서 명령 찾기 칸(150)이 들어갈 자리가 남는데 돋보기로 접힘 | 고침 R23 |
+| N9 | nit(기록) | `factory/backlog.md` | 남긴 것 U12·U-e가 백로그에 없음 | 고침 R26 |
+| N10 | nit(번역) | `ko.tsv` `{what}: 준비 중 ({job})` | 「모든 굵기 바꾸기…: 준비 중 (J005)」처럼 말줄임표 바로 뒤에 쌍점 | 고침 R24 |
+
+정확성·보안 검토 지적(K, 줄 번호는 `d0213f0`):
+
+| # | 심각도 | 곳 | 내용 | 조치 |
+|---|---|---|---|---|
+| K1 | minor | `status.rs:63-69` | N3과 같음. 다른 파일의 직접 쓰기(`app.ui.status = …`)도 `app.status()`로 바꾸라는 제안 | 고침 R17 |
+| K2 | nit | `workspaces.rs:60` | `start_trowel`이 첫 프레임 전에 불려 `tw!`가 아직 영어: 한국어 사용자에게도 「Layout before Trowel」로 남음 | 고침 R18 |
+| K3 | nit | `fontdb.rs:433` | `is_hangul`이 괄호 한글(㈀), 원 한글(㉠), 방점을 빼먹음. ㉠은 보고서·도면 번호에 흔함 | 고침 R25 |
+| K4 | nit | `tests.rs:590` | 바꾼 시험이 상태줄 안내의 앞 두 부분만 봄 | 고침 R26 |
+
+범위 밖(한 줄, UI 검토): 선택 도구 이름이 「선택 영역 (도구)」로 나오는 것은 앱 전체 번역(`ko.tsv:2484, 2487`)이고 J003이 만든 것이 아니다.
+
+## 재작업 (rework) 2차
+
+2026-10-11, 기준 `d0213f0`(재작업 1차 커밋, 이미 push됨). 같은 작업 브랜치 제자리, 커밋은 `J003: …` 세 번째 하나로 더한다(1차 회차와 같은 까닭). 공장 규칙의 마지막 수정 루프다.
+
+시험 먼저: 고친 동작마다 실패하는 시험을 먼저 쓰고 빨강을 본 뒤 고쳤다.
+
+- `red-r2-ui.log`: 화면 시험 7개가 기대한 까닭으로 실패. 800 × 500 오른쪽 기둥 글자 겹침 10쌍, 그릴 레이어 없음 칸에 「1 pt」, 레이어 목록 줄 너비 586, 팔레트 칩 바탕 흰색, 1536 폭 명령 찾기 32, 같은 메시지가 다시 안 나옴, 1366 긴 이름에서 구석 이름이 안 비켜남.
+- `red-r2-text.log`: ㉠이 한글로 잡히지 않음.
+- `red-r2-ws.log`: `start_trowel`이 언어를 받지 않아 컴파일 실패(새 시그니처를 쓰는 시험).
+- 탭 시험은 실제 글자 폭을 재어(`Site 1` 27.6 px 등) 경우를 다시 골랐다. 고친 코드를 빼고 최종 시험을 돌려 실패를 다시 확인했다(`red-r2-tabs-final.log`, 종료 101).
+- 상태줄 안내 전체 문장 확인(K4)은 이미 맞는 동작을 더 엄격히 보는 것이라 처음부터 통과했다.
+- 고친 뒤 화면 확인(800 × 500에서 휠로 내림)에서 R19의 결함을 하나 더 찾았다(R27). 이것도 시험을 먼저 써서 빨강을 보고 고쳤다(`red-r2-legend.log`, 종료 101: 1280 × 662에서 맨 아래 레이어 이름이 바닥 선 476보다 아래 480까지 그려짐).
+
+| # | 지적 | 바꾼 것 | 시험 |
+|---|---|---|---|
+| R17 | N3, K1 | `UiState.status_seq`(저장하지 않음)를 두고 `app.status()`가 부를 때마다 올린다. 상태줄 6초는 (번호, 글자)가 바뀐 때부터 잰다. 직접 쓰던 곳을 `status()`로 바꿈: `lib.rs` 4곳(붙여넣기 오류, 명령 오류, 링크 열기, 도구 고르기 오류)과 다른 파일 16곳(`sysclip`, `font_menu`, `dock`, `control`의 제어 채널 `ui.set`, `panels/{image_trace ×2, opentype, glyphs, separations ×3, mod ×2}`, `toolbar`, `find_font ×2`). 신호로 쓰는 「quit」(`unsaved.rs`), 비우기(`picks.rs`, `file.new`), 덧붙이기(`print.rs`)는 그대로 | `status_bar_shows_messages_for_a_while`(같은 메시지 다시, 같은 명령 오류 두 번) |
+| R18 | K2 | `start_trowel(ui, lang)`: 남기는 작업 영역 이름을 넘겨받은 언어로 짓는다(`tr_ctx(lang, "trowel", "Layout before Trowel")`). 호스트 둘(`apps/vectorcraft/src/main.rs`, `apps/vectorcraft-web/src/web.rs`)은 환경설정을 읽은 뒤 `app.ui_language()`를 넘긴다 | `workspaces::tests::the_kept_layout_is_named_in_the_window_language`(한국어 → 「Trowel 이전 배치」) |
+| R19 | N1 | 오른쪽 기둥: 팔레트 166 + 범례 최소 156(머리·캡션 60 + 레이어 두 줄 48 + 바닥 48) + 속성(112, 접으면 33)이 창에 들어가지 않으면 기둥 전체를 세로로 스크롤한다(`right-scroll`). 들어가면 전과 같다(약 662 px 높이부터). 범례의 위·아래 높이를 상수 `ABOVE`·`BELOW`·`FOOT_H`·`MIN_HEIGHT`로 | `a_short_window_scrolls_the_right_column_without_overlap`(1600·1366·800에서 기둥 안 글자가 겹치지 않음. 800 × 500에서 휠로 속성 ⋯까지 내려가 눌러 속성 패널을 엶) |
+| R20 | N2 | 탭 줄: 오른쪽 구석이 탭에 자리를 먼저 내준다. 모든 탭이 들어갈 때만 문서 이름(탭에도 있음), 지금 탭이 들어갈 때 「● 저장 안 됨」, 아니면 흙색 점만(올리면 「저장 안 됨」). 그래도 모자라면 지금 탭 이름을 「…」로 줄인다(탭 최소 56). 탭 이름은 ×(홈 탭은 탭 끝) 앞에서 끝남 | `the_tabs_and_the_name_at_their_right_never_overlap`(1600 / 1366 긴 이름 / 800 중간 이름 / 800 긴 이름: 글자끼리, 탭과 구석 글자가 겹치지 않음. 지금 탭 이름은 탭 안, 마지막 경우만 줄임) |
+| R21 | N4, N5 | 컨트롤 바 범례 칸: 레이어 목록 줄 너비를 260으로 고정(이름은 오른쪽 표시 앞에서 자름). 그릴 레이어가 없으면 색 패치와 굵기를 빼고 글자를 칸 왼쪽부터 | `control_bar_shows_the_layer_and_next_weight`(줄 너비 220–280), `a_locked_or_hidden_current_layer_shows_where_lines_go`(칸 글자가 「그릴 수 있는 레이어가 없습니다」 하나, 칸 왼쪽 12 안) |
+| R22 | N6 | 팔레트의 준비 중 칩(빗금 45°·135°·번갈아, 굵기 ＋)과 선종 칸(파선·점선·일점쇄선)을 다른 준비 중 칸처럼 wash 바탕으로 | `palette_weight_chip_sets_the_next_stroke`(여섯 칸의 바탕색) |
+| R23 | N8 | 리본이 좁아지는 순서: ① 52 칸 + 명령 찾기 → ② 44 칸 + 명령 찾기(1383 px부터) → ③ 44 칸 + 돋보기(1265 px부터) → 가로 스크롤. 1차의 「52 칸 + 돋보기」 단계(1481–1598 px)는 뺐다: 검토 제안처럼 ③ 앞에 단계만 넣으면 창을 줄일 때 명령 찾기 칸이 접혔다가 다시 펴진다 | `small_windows_keep_every_tile_and_tool_in_reach`(1440 × 900 추가, 1383 이상에서 명령 찾기 150·아래에서 32) |
+| R24 | N7, N10 | `ko.tsv` 「여러 객체를 선택」 → 「여러 객체 선택」(일반 행이라 고전 안내 줄에도). 「준비 중」 알림은 이름 끝 「…」을 뗀다(「모든 굵기 바꾸기: 준비 중 (J005)」). 툴팁은 그대로 | `status_bar_shows_messages_for_a_while` |
+| R25 | K3 | `is_hangul`에 방점(U+302E–302F), 괄호 한글(U+3200–321E), 원 한글(U+3260–327F)을 더함 | `tests_sysfonts::korean_fallback_families_are_for_hangul_only`(㉠·㉿·㈀·방점, 아닌 쪽에 괄호 한자 ㈠) |
+| R26 | K4, N9 | 시험 `hints_read_plainly_as_in_the_mockup`이 상태줄 안내를 전체 문장으로 맞춰 봄. 백로그에 U12(J001 줄의 후속)와 U-e(J003 줄의 사람 확인)를 옮김 | 그 시험 |
+| R27 | 화면 확인(R19 결함) | 범례 목록이 자기 칸보다 길게 그려짐: egui 스크롤 영역은 높이가 64 px보다 작으면 64로 늘리는데, 범례가 가장 낮을 때 목록 칸은 48 px(두 줄)라 셋째 줄이 「굵기 한 번에」 줄의 선과 버튼 위로 16 px 넘어감(창 높이 약 680 px 아래). 목록 스크롤에 `min_scrolled_height(0.0)`을 주어 칸 높이 그대로 둠 | `the_legend_list_stays_above_its_footer`(1280 × 662·800 × 500, 레이어 6개: 어떤 줄도 바닥 선을 넘지 않고, 끝까지 내리면 맨 아래 레이어가 잘리지 않음) |
+
+시험 도우미: 화면 시험의 `Painted`에 보이는 부분(`shown` = 글자 사각형 ∩ 자르기 사각형)을 더하고, 보이는 글자끼리 겹치는 쌍을 찾는 `overlapping_texts`를 더했다. 스크롤로 가려진 글자는 겹침으로 세지 않는다.
+
+**바꾼 시험(시험 변경).**
+
+- `trowel::tests::status_bar_shows_messages_for_a_while`: 기댓값 「Change All Weights…: coming soon (J005)」 → 「Change All Weights: coming soon (J005)」. 까닭: N10(말줄임표 바로 뒤 쌍점). 확인 두 가지를 더함(같은 메시지 다시, 같은 오류 두 번).
+- `trowel::tests::hints_read_plainly_as_in_the_mockup`: 상태줄 확인을 앞 두 부분 `contains`에서 전체 문장 `assert_eq`로(K4, 더 엄격).
+- `trowel::tests::small_windows_keep_every_tile_and_tool_in_reach`: 1440 × 900을 더하고 명령 찾기 폭을 확인함. 1536 × 816에서 기대하는 모양이 1차의 돋보기에서 명령 찾기 칸(150)으로 바뀜(R23 동작 변경).
+- `workspaces::tests`의 `start_trowel` 호출 다섯 곳과 화면 시험 도우미 `Harness::sized`: 새 인자(언어)만 넘김. 기댓값은 그대로.
+- 새 시험 `trowel::tests::the_legend_list_stays_above_its_footer`(R27).
+- 나머지는 확인만 더했다(`control_bar_shows_the_layer_and_next_weight`, `a_locked_or_hidden_current_layer_shows_where_lines_go`, `palette_weight_chip_sets_the_next_stroke`, `korean_fallback_families_are_for_hangul_only`). 지운 확인문은 없다.
+
+**명세·검토 제안에서 벗어난 점.**
+
+- R23은 검토 제안(③ 앞에 단계 하나 더하기)과 다르게 1차의 ② 단계를 뺐다. 까닭은 위 표. 1536 폭(1920 × 1080, 125 %)에서는 이제 칸이 44 px이고 명령 찾기 칸이 보인다.
+- R20에서 구석의 문서 이름은 탭이 모두 들어갈 때만 보인다. 이름은 지금 탭에도 있으므로 정보는 줄지 않는다.
+- R17의 번호는 고전 화면에 영향이 없다(고전 상태줄은 다음 메시지까지 계속 보임).
+- R27은 검토 지적이 아니라 이번 재작업의 화면 확인에서 찾은 것이다. 같은 재작업(2차) 안에서 고쳤고, 3차 확인 검토가 함께 본다.
+
+**고친 파일.** `apps/vectorcraft/src/main.rs`, `apps/vectorcraft-web/src/web.rs`, `crates/text/src/{fontdb,tests_sysfonts}.rs`, `crates/ui-egui/src/{control,dock,find_font,font_menu,lib,state,sysclip,toolbar,workspaces}.rs`, `crates/ui-egui/src/panels/{glyphs,image_trace,mod,opentype,separations}.rs`, `crates/ui-egui/src/i18n/ko.tsv`, `crates/ui-egui/src/trowel/{center,control,legend,mod,palette,ribbon,status,tests}.rs`, `factory/backlog.md`, 이 파일. 좌표·단위·파일 형식·의존성·CI 설정은 바꾸지 않았다.
+
+### 재검증 (재작업 2차)
+
+2026-10-11. 대상은 `d0213f0` 위의 미커밋 변경(이 절과 함께 커밋). 로그는 `/tmp/claude-0/-home-claude/79152f61-3d49-5a1c-acde-dc6cabf2d3d7/scratchpad/factory/J003/`, 명령은 `/home/claude/vector`에서, 모두 `CARGO_PROFILE_DEV_DEBUG=0`(디스크를 아끼려고 디버그 정보만 끔).
+
+| 명령 | 종료 코드 | 결과 | 로그 |
+|---|---|---|---|
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel::` | 101 | 19 통과 · 7 실패(기대한 빨강: 800 × 500 기둥 겹침, 그릴 레이어 없음 칸의 굵기, 레이어 목록 폭, 팔레트 칩 바탕, 1536 폭 명령 찾기, 같은 메시지 다시, 1366 긴 이름의 구석) | `red-r2-ui.log` |
+| `cargo test -p vectorcraft-text --lib -- tests_sysfonts::korean` | 101 | 1 실패(기대한 빨강: ㉠이 한글로 잡히지 않음) | `red-r2-text.log` |
+| `cargo test -p vectorcraft-ui-egui --lib --no-run` | 101 | 컴파일 오류 5곳(기대한 빨강: `start_trowel`이 언어를 받지 않음) | `red-r2-ws.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel::tests::the_tabs`(`center.rs`만 `d0213f0`으로 돌린 판, 끝난 뒤 되돌리고 `cmp`로 같음 확인) | 101 | 1 실패(최종 탭 시험이 고치기 전 코드에서 실패함을 다시 확인) | `red-r2-tabs-final.log` |
+| `cargo test -p vectorcraft-text --lib -- tests_sysfonts::` | 0 | 21 통과 | `green-r2-text.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel:: workspaces::` | 0 | 34 통과 | `green-r2-ui.log` |
+| `cargo xtask ci`(15:03:41Z–15:14:24Z) | 0 | 7단계 통과. 5,119 통과 · 0 실패 · 4 무시 | `rework2-ci-first.log` |
+| `cargo check --target wasm32-unknown-unknown -p vectorcraft-web`(웹 앱. xtask의 wasm 단계는 이 앱을 컴파일하지 않아 따로) | 0 | 경고 2개(`ask_update_changed`·`is_c_locale`의 `dead_code`, 이 작업이 건드리지 않은 파일, 전부터 있음) | `rework2-web-check.log` |
+| `cargo build -p vectorcraft` → 화면 1회차(15:18Z) | 0 | 800 × 500에서 휠로 내리자 범례 목록 셋째 줄이 「굵기 한 번에」 선 위로 넘어감을 찾음(R27) | `build-r2.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel::tests::the_legend_list_stays_above_its_footer` | 101 | 1 실패(기대한 빨강: 1280 × 662에서 「Layer 1」이 선 476 아래 480까지) | `red-r2-legend.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel:: workspaces::` | 0 | 35 통과 | `green-r2b-ui.log` |
+| `cargo xtask ci`(15:29:50Z–15:33:45Z) | 0 | 7단계 모두 통과(fmt, clippy, test, assets, brands, layers, wasm). 시험 묶음 117개에서 5,120 통과 · 0 실패 · 4 무시(이 작업 전부터 `#[ignore]`) | `rework2-ci.log` |
+| `cargo check --target wasm32-unknown-unknown -p vectorcraft-web` | 0 | 위와 같은 경고 2개 | `rework2-web-check-b.log` |
+| `cargo build -p vectorcraft` → 화면 2회차(15:35Z) | 0 | 아래 「화면 확인 (재작업 2차)」 | `build-r2b.log` |
+
+두 번째 CI 시작 뒤 코드 파일은 바뀌지 않았다(`find crates apps xtask -newermt 15:29:00` 결과 없음). GitHub CI는 이 커밋을 올린 뒤 이어 적는다.
+
+### 화면 확인 (재작업 2차)
+
+2026-10-11 15:35Z, R27까지 고친 코드로 빌드한 `target/debug/vectorcraft`를 `python3 -I scratchpad/j003/drive3.py target/debug/vectorcraft <out> 7995`(종료 0)로 찍었다. 1차와 같은 문서·레이어 12개·펜 도구다. 1회차(15:18Z, R27 전)와 비교하면 800 × 500 두 장의 범례 목록만 다르다(픽셀 비교). 그림은 `/mnt/project-files/design/trowel-run/`에 있다.
+
+| 그림 | 확인한 것 |
+|---|---|
+| `J003r2-plan.png`(1600 × 988) | 1차와 같은 짜임. 팔레트의 준비 중 칩(빗금 45°·135°·번갈아, 굵기 ＋)과 선종 칸(파선·점선·일점쇄선)이 다른 준비 중 칸처럼 wash 바탕(R22) |
+| `J003r2-soon.png`(범례 바닥 「모든 굵기 바꾸기…」를 누른 뒤) | 상태줄 「모든 굵기 바꾸기: 준비 중 (J005)」, 쌍점 앞 「…」 없음(R24) |
+| `J003r2-layer-list.png`(컨트롤 바 범례 칸을 누름) | 목록 폭 약 260, 「기준점」의 자물쇠가 이름 바로 오른쪽(R21) |
+| `J003r2-no-layer.png`(레이어를 모두 잠금) | 칸 왼쪽부터 「그릴 수 있는 레이어가 없습니다」, 흙색 테두리, 색 패치·굵기 없음(R21) |
+| `J003r2-1536.png`(1536 × 816) | 리본 44 px 칸 + 명령 찾기 칸(R23). 탭과 「1호 주거지 평면 ● 저장 안 됨」이 겹치지 않음 |
+| `J003r2-1440.png`(1440 × 900) | 44 px 칸 + 명령 찾기 칸(R23). 범례 12줄이 모두 보임 |
+| `J003r2-800.png`(800 × 500) | 탭 오른쪽은 흙색 점만(R20). 오른쪽 기둥 위쪽에 팔레트, 아래 범례 두 줄, 겹친 글자 없음(R19) |
+| `J003r2-800-props.png`(800 × 500, 오른쪽 기둥 위에서 휠) | 속성 칸까지 내려감(R19). 범례 목록 두 줄이 「굵기 한 번에」 선 위에서 끝남(R27) |
+| `J003r2-side-by-side.png` | 왼쪽 시안 `win-plan.png`, 오른쪽 `J003r2-plan.png` |
+
+시안과 남은 차이는 「화면 확인 (재작업 1차)」의 표와 같다(달라진 행 없음). 더 본 것 하나: 작은 창에서 범례 목록 아래에 줄이 더 있으면 보이는 끝 줄이 흐려진다(egui 기본 스크롤 흐림, 20 px·50 %, 「더 있음」 표시). 숨긴 레이어의 흐린 이름과 비슷해 보일 수 있으나 앱 전체 기본값이라 이 작업에서는 바꾸지 않았고, 3차 확인 검토에 맡긴다.

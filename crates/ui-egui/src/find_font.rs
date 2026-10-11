@@ -127,7 +127,7 @@ pub fn show(app: &mut VectorcraftApp, ctx: &egui::Context) {
             _ => change(app, &d, from, true),
         };
         if let Err(e) = r {
-            app.ui.status = e;
+            app.status(e);
         }
     }
     if close || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -137,7 +137,7 @@ pub fn show(app: &mut VectorcraftApp, ctx: &egui::Context) {
     }
     // Missing Fonts takes the dialog's place, searching the folder picked.
     if find_in_folder && let Err(e) = app.run("ui.findFontsInFolder", json!({})) {
-        app.ui.status = e;
+        app.status(e);
     }
 }
 

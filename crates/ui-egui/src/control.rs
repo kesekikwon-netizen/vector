@@ -254,7 +254,7 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context, req: &ControlReques
                 r = app.run("window.panel", json!({"panel": pn}));
             }
             if let Some(st) = s("status") {
-                app.ui.status = st.to_string();
+                app.status(st);
             }
             for (k, flag) in [
                 ("rulers", "view.rulers"),

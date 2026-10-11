@@ -23,7 +23,7 @@ fn set(app: &mut VectorcraftApp, f: OtFeatures) {
         None => app.run("text.setStyle", json!({ "features": tags })),
     };
     if let Err(e) = r {
-        app.ui.status = e;
+        app.status(e);
     }
 }
 

@@ -107,7 +107,7 @@ fn view_dropdown(ui: &mut Ui, current: TraceView, width: f32) -> Option<TraceVie
 /// Show the selected Image Trace objects with `view` (no new trace).
 fn set_view(app: &mut VectorcraftApp, view: TraceView) {
     if let Err(e) = app.run("imageTrace.setView", json!({ "view": view.id() })) {
-        app.ui.status = e;
+        app.status(e);
     }
 }
 
@@ -182,7 +182,7 @@ fn trace(app: &mut VectorcraftApp, st: &mut TraceUi) {
     let preset = if st.preset == "Custom" { "Default" } else { st.preset.as_str() };
     match app.run("imageTrace.make", json!({ "preset": preset, "params": st.params, "view": st.view.id() })) {
         Ok(r) => st.info = Some((r["paths"].as_u64().unwrap_or(0), r["anchors"].as_u64().unwrap_or(0), r["colors"].as_u64().unwrap_or(0))),
-        Err(e) => app.ui.status = e,
+        Err(e) => app.status(e),
     }
 }
 

@@ -47,17 +47,21 @@ impl Default for Workspace {
 pub const ESSENTIALS: &str = "Essentials";
 /// Trowel's own window: the last built-in workspace.
 pub const TROWEL: &str = "Trowel";
+/// The layout from before Trowel's window, kept when the user had changed it ([`start_trowel`]).
+const KEPT_LAYOUT: &str = "Layout before Trowel";
 
 /// Switch to Trowel's window on the first start of a version that has it, once: later starts keep
-/// whatever workspace the user chose. The hosts call it after restoring the saved UI state.
-pub fn start_trowel(ui: &mut UiState) {
+/// whatever workspace the user chose. The hosts call it after restoring the saved UI state, before
+/// the first frame, with the language the window opens in ([`crate::VectorcraftApp::ui_language`]).
+pub fn start_trowel(ui: &mut UiState, lang: crate::i18n::Lang) {
     if ui.trowel_started {
         return;
     }
     ui.trowel_started = true;
     // A layout the user changed from its workspace is kept as a workspace of its own, to come back
-    // to from Window › Workspace; one as it comes needs no copy.
-    let name = tw!("Layout before Trowel");
+    // to from Window › Workspace; one as it comes needs no copy. Named in `lang`: nothing has set
+    // the language `tw!` reads yet.
+    let name = crate::i18n::tr_ctx(lang, "trowel", KEPT_LAYOUT);
     let changed = find(ui, &ui.workspace).is_none_or(|w| Workspace { name: String::new(), ..w } != capture(ui, ""));
     if changed && find(ui, name).is_none() {
         let kept = capture(ui, name);
@@ -509,14 +513,14 @@ mod tests {
     fn trowel_keeps_a_changed_layout_to_go_back_to() {
         // Essentials as it comes needs no copy: Window › Workspace brings it back.
         let mut ui = UiState::default();
-        start_trowel(&mut ui);
+        start_trowel(&mut ui, en());
         assert!(ui.trowel && ui.custom_workspaces.is_empty());
         // A layout changed from its workspace is kept as a workspace of its own.
         let mut ui = UiState::default();
         ui.control_bar = !ui.control_bar;
         ui.open_panel = Some("swatches".into());
         let before = capture(&ui, "");
-        start_trowel(&mut ui);
+        start_trowel(&mut ui, en());
         assert!(ui.trowel);
         let kept = find(&ui, "Layout before Trowel").expect("the layout kept");
         assert_eq!(Workspace { name: String::new(), ..kept.clone() }, before);
@@ -524,12 +528,27 @@ mod tests {
         assert!(!ui.trowel && ui.open_panel.as_deref() == Some("swatches"));
     }
 
+    fn en() -> crate::i18n::Lang {
+        crate::i18n::Lang::from_code("en").unwrap()
+    }
+
+    /// The layout kept is named in the language the window opens in, which the hosts know before
+    /// the first frame sets it.
+    #[test]
+    fn the_kept_layout_is_named_in_the_window_language() {
+        let mut ui = UiState::default();
+        ui.control_bar = !ui.control_bar;
+        start_trowel(&mut ui, crate::i18n::Lang::from_code("ko").unwrap());
+        let names: Vec<&str> = ui.custom_workspaces.iter().map(|w| w.name.as_str()).collect();
+        assert_eq!(names, ["Trowel 이전 배치"]);
+    }
+
     #[test]
     fn trowel_starts_once_and_the_classic_layout_comes_back() {
         assert_eq!(builtins().last().map(|w| w.name.clone()), Some(TROWEL.to_string()));
         let mut ui = UiState::default();
         assert!(!ui.trowel && !ui.trowel_started, "the classic chrome until started");
-        start_trowel(&mut ui);
+        start_trowel(&mut ui, en());
         assert!(ui.trowel && ui.trowel_started);
         assert_eq!(ui.workspace, TROWEL);
         assert!(ui.view.rulers && ui.control_bar && ui.toolbar && ui.dock && ui.status_bar);
@@ -537,7 +556,7 @@ mod tests {
         let essentials = find(&ui, ESSENTIALS).unwrap();
         apply(&mut ui, &essentials);
         assert!(!ui.trowel, "Essentials is the classic chrome");
-        start_trowel(&mut ui);
+        start_trowel(&mut ui, en());
         assert!(!ui.trowel, "a later start keeps the user's choice");
         assert_eq!(ui.workspace, ESSENTIALS);
         // Saved by an older version: neither key, so the classic chrome until started.
@@ -547,7 +566,7 @@ mod tests {
         assert!(!saved.trowel);
         // A workspace saved in Trowel's window keeps it.
         let mut ui = UiState::default();
-        start_trowel(&mut ui);
+        start_trowel(&mut ui, en());
         let mine = capture(&ui, "Mine");
         assert!(mine.trowel);
         let mut other = UiState::default();

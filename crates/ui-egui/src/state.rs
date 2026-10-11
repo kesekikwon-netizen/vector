@@ -290,6 +290,10 @@ pub struct UiState {
     /// Last tool shown for each toolbar group (flyout selection sticks).
     pub group_tool: Vec<String>,
     pub status: String,
+    /// Counts the messages put in [`UiState::status`] ([`crate::VectorcraftApp::status`]), so the
+    /// same one again shows again.
+    #[serde(skip)]
+    pub status_seq: u64,
     pub palette_open: bool,
     pub palette_query: String,
     /// Trowel's own window (design 2.1 §3) instead of the classic chrome: the Trowel workspace's
@@ -521,6 +525,7 @@ impl Default for UiState {
             flyout: None,
             group_tool: vectorcraft_tools::TOOL_GROUPS.iter().map(|g| g[0].id.to_string()).collect(),
             status: String::new(),
+            status_seq: 0,
             trowel: false,
             trowel_started: false,
             palette_open: false,

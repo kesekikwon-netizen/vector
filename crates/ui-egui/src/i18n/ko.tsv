@@ -3193,7 +3193,7 @@
 @plural	{n} step|{n} steps	단계 {n}개|단계 {n}개
 @plural	{n} stroke|{n} strokes	획 {n}개|획 {n}개
 	 the object to select  |  	 객체 선택  |  
-	 to select multiple objects  |  	 여러 객체를 선택  |  
+	 to select multiple objects  |  	 여러 객체 선택  |  
 	 the object to duplicate	 객체 복제
 	 an anchor or path segment to select it  |  	 앵커 또는 패스 세그먼트 선택  |  
 	 to move  |  	 이동  |  
