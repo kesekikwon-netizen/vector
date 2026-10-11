@@ -64,6 +64,8 @@ pub struct PlaceState {
     info: Option<((u64, u64, u64), Value)>,
     /// The next Place dialog opens with Template ticked (`file.place` with `template`).
     template: bool,
+    /// And places under every line, on a layer named with this word (`file.place`'s `underlay`).
+    underlay: Option<String>,
 }
 
 /// A place cursor thumbnail: decoded when the cursor is loaded, uploaded when first drawn (and
@@ -105,6 +107,7 @@ pub fn run(app: &mut VectorcraftApp, p: &Value) -> Result<Value, String> {
     }
     if p.get("path").is_none() && p.get("dataBase64").is_none() {
         app.place.template = p.get("template").and_then(Value::as_bool).unwrap_or(false);
+        app.place.underlay = p.get("underlay").and_then(Value::as_str).map(str::to_string);
         let files: Vec<Value> = match p.get("paths").and_then(Value::as_array) {
             Some(a) => a.iter().filter_map(Value::as_str).map(|path| json!({ "path": path })).collect(),
             None => return pick(app).map(|_| Value::Null),
@@ -161,6 +164,7 @@ fn open_dialog(app: &mut VectorcraftApp, files: Vec<Value>) {
             "files": files,
             "link": app.ui.place_link,
             "template": std::mem::take(&mut app.place.template),
+            "__underlay": app.place.underlay.take(),
             "replace": false,
             "__replace": files.len() == 1 && one_object,
             "__documents": files.iter().any(is_vectorcraft_file),
@@ -220,6 +224,8 @@ pub fn confirm(app: &mut VectorcraftApp, d: &crate::state::Dialog) -> Result<Val
         return Err("no files to place".into());
     }
     let (link, template) = (d.bool("link"), d.bool("template"));
+    // An underlay is a template: unticked, the file goes in as any other.
+    let underlay = d.fields.get("__underlay").filter(|u| u.is_string() && template).cloned().unwrap_or(Value::Null);
     app.ui.place_link = link;
     app.ui.dialog = None;
     let r = match &sources[..] {
@@ -227,6 +233,9 @@ pub fn confirm(app: &mut VectorcraftApp, d: &crate::state::Dialog) -> Result<Val
             let mut p = one.clone();
             p["link"] = json!(link);
             p["template"] = json!(template);
+            if underlay.is_string() {
+                p["underlay"] = underlay;
+            }
             if d.bool("replace") && d.bool("__replace") {
                 p["replace"] = json!(true);
             }
@@ -235,7 +244,11 @@ pub fn confirm(app: &mut VectorcraftApp, d: &crate::state::Dialog) -> Result<Val
         many => {
             let paths: Vec<&Value> = many.iter().filter_map(|s| s.get("path")).collect();
             let files: Vec<&Value> = many.iter().filter(|s| s.get("path").is_none()).collect();
-            queue(app, &json!({ "paths": paths, "files": files, "link": link, "template": template }))
+            let mut p = json!({ "paths": paths, "files": files, "link": link, "template": template });
+            if underlay.is_string() {
+                p["underlay"] = underlay;
+            }
+            queue(app, &p)
         }
     };
     app.place.picked.clear();

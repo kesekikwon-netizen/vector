@@ -2,8 +2,8 @@
 //! Once… open beside the right column. It changes the weight of every legend row of the drawing
 //! and of the lines that follow them by a ratio, from one weight to another, or one palette step
 //! (`legend.weights`), the lines set apart only when asked. Its table shows what changes, as the
-//! engine plans it, before Change does it in one undo step; the card stays open after. The whole
-//! drawing set comes with J004.
+//! engine plans it (with what is being typed), before Change does it in one undo step and puts the
+//! card away, the status bar saying what changed. The whole drawing set comes with J004.
 
 use std::sync::Arc;
 
@@ -81,7 +81,7 @@ pub(super) fn forget(ctx: &egui::Context) {
 pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context, place: card::Place) -> bool {
     let Some(st) = app.session.active() else { return false };
     let mut rule = ctx.data(|d| d.get_temp::<Rule>(rule_id())).unwrap_or_default();
-    let plan = plan(ctx, st, &rule.params());
+    let plan = plan(ctx, st, &typing(ctx, &rule).params());
     let sub = match super::legend::main_group(&st.doc) {
         Some(LegendGroup::Plan) => tw!("Plan Legend"),
         Some(LegendGroup::Section) => tw!("Section and Elevation Legend"),
@@ -100,6 +100,8 @@ pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context, place: card::P
                     let rows = done["rows"].as_array().map_or(0, Vec::len);
                     let lines = done["lines"].as_u64().unwrap_or(0);
                     app.status(crate::i18n::fmt(tw!("Rows changed: {r} · lines: {n}"), &[("r", &rows.to_string()), ("n", &lines.to_string())]));
+                    // Done: a second press can't change the weights again unseen.
+                    open = false;
                 }
                 Err(e) => app.status(e),
             },
@@ -114,6 +116,26 @@ pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context, place: card::P
         ctx.data_mut(|d| d.remove::<Rule>(rule_id()));
     }
     open
+}
+
+/// `rule` with what is being typed in its fields, where it reads: what Change would use.
+fn typing(ctx: &egui::Context, rule: &Rule) -> Rule {
+    let typed = |id: &str| card::draft(ctx, wid(id, ()));
+    let mut rule = *rule;
+    match rule.how {
+        How::Ratio => rule.ratio = typed("weights-ratio").as_deref().and_then(ratio).unwrap_or(rule.ratio),
+        How::Value => {
+            rule.from = typed("weights-from").as_deref().and_then(card::points).unwrap_or(rule.from);
+            rule.to = typed("weights-to").as_deref().and_then(card::points).unwrap_or(rule.to);
+        }
+        How::Step => {}
+    }
+    rule
+}
+
+/// A ratio typed in the card ("0.5", "×0.5"), from 0.1 to 10.
+fn ratio(s: &str) -> Option<f64> {
+    s.trim().trim_start_matches(['×', 'x', '*']).trim().parse::<f64>().ok().filter(|v| (0.1..=10.0).contains(v))
 }
 
 /// What `params` would change in the drawing, planned again when the drawing or the params change.
@@ -160,8 +182,7 @@ fn body(ui: &mut Ui, rule: &mut Rule, plan: &WeightPlan, t: &Tokens) -> Vec<Ask>
             let r = card::row(ui, tw!("Ratio"), ROW_H, t);
             let field = Rect::from_min_size(r.min, vec2(70.0, r.height()));
             if let Some(typed) = card::text_field(ui, wid("weights-ratio", ()), field, &pt(rule.ratio), mono(11.0), ("×", ""), t) {
-                let typed = typed.trim_start_matches(['×', 'x', '*']).trim();
-                match typed.parse::<f64>().ok().filter(|v| (0.1..=10.0).contains(v)) {
+                match ratio(&typed) {
                     Some(v) => rule.ratio = v,
                     None => asks.push(Ask::Refused(tw!("The ratio is between 0.1 and 10"))),
                 }
@@ -204,10 +225,21 @@ fn body(ui: &mut Ui, rule: &mut Rule, plan: &WeightPlan, t: &Tokens) -> Vec<Ask>
     ui.add_space(4.0);
     table(ui, plan, t);
     let undo = crate::menus::pretty_shortcut("Cmd+Z");
-    let n = plan.lines.len().to_string();
+    let (lines, rows) = (plan.lines.len().to_string(), plan.rows.len().to_string());
     let changes = !plan.rows.is_empty() || !plan.lines.is_empty();
-    if changes {
-        card::note(ui, &crate::i18n::fmt(tw!("Lines that change: {n}. One {undo} puts them all back."), &[("n", &n), ("undo", &undo)]), t.text_dim);
+    if !plan.lines.is_empty() {
+        card::note(
+            ui,
+            &crate::i18n::fmt(tw!("Lines that change: {n}. One {undo} puts them all back."), &[("n", &lines), ("undo", &undo)]),
+            t.text_dim,
+        );
+    } else if changes {
+        // Rows with no line following them.
+        card::note(
+            ui,
+            &crate::i18n::fmt(tw!("Rows that change: {r}. No line follows them. One {undo} puts them back."), &[("r", &rows), ("undo", &undo)]),
+            t.text_dim,
+        );
     } else {
         card::note(ui, tw!("Nothing changes"), t.text_dim);
     }

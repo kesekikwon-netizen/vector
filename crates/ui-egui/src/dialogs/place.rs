@@ -5,7 +5,7 @@
 //! Fields: `files` (`[{path} | {name}]`), `link`, `template`, `replace`, and `__replace` (one file
 //! and one selected object: Replace applies), `__documents` and `__others` (VectorCraft documents
 //! from files are picked, other files are: what Link's tooltip explains), `__info` (a line per
-//! file).
+//! file), `__underlay` (Trowel's Underlay tile: Template places under every line).
 
 use serde_json::{Value, json};
 
@@ -74,7 +74,14 @@ fn body(_: &mut VectorcraftApp, ui: &mut egui::Ui, d: &mut Dialog) -> bool {
         for (key, label, tip) in OPTIONS {
             let on = d.bool(key);
             let enabled = key != "replace" || d.bool("__replace");
-            let tip = if key == "link" { link_tip(d) } else { tl!(tip).to_string() };
+            let tip = match key {
+                "link" => link_tip(d),
+                // Trowel's Underlay tile: its words.
+                "template" if d.fields.get("__underlay").is_some_and(Value::is_string) => {
+                    tw!("Place under every line, on a locked template layer at the bottom").to_string()
+                }
+                _ => tl!(tip).to_string(),
+            };
             if widgets::check_tip(ui, tl!(label), on && enabled, enabled, &tip) {
                 d.fields.insert(key.into(), json!(!on));
             }

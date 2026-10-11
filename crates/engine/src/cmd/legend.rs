@@ -642,6 +642,7 @@ fn add(s: &mut Session, p: &Value) -> Result<Value> {
     let st = s.doc()?;
     let d = &st.doc;
     let roots: Vec<NodeId> = roots.into_iter().filter(|r| d.is_editable(*r)).collect();
+    let moving: HashSet<NodeId> = roots.iter().copied().collect();
     // The look of the first selected line (in the order selected, as the palette shows it), else
     // the pen's.
     let first = st
@@ -649,7 +650,7 @@ fn add(s: &mut Session, p: &Value) -> Result<Value> {
         .objects
         .iter()
         .filter_map(|id| super::edit::roots_of(d, vec![*id]).first().copied())
-        .filter(|r| roots.contains(r))
+        .filter(|r| moving.contains(r))
         .filter_map(|r| d.node(r))
         .find_map(|n| lines_in(n).first().copied());
     let (weight, line, sample) = match first.and_then(|l| legend::stroke_of(l).map(|st| (l, st))) {
@@ -665,7 +666,9 @@ fn add(s: &mut Session, p: &Value) -> Result<Value> {
             (pen.width, LineType::of(&pen), LegendSample::Line)
         }
     };
-    let row = Legend { weight: Some(weight.clamp(0.0, MAX_WEIGHT)), line, sample, ..Legend::default() };
+    // As a file keeps it: a line's dashes past the legend's most become a solid row (the line set
+    // apart keeps its own), so the row opens again as it was made.
+    let row = Legend { weight: Some(weight), line, sample, ..Legend::default() }.tidied();
     let at = st.current_layer().and_then(|l| d.layer_of(l)).and_then(|l| d.position(l)).map_or(usize::MAX, |(_, i, _)| i + 1);
     let id = s.edit("Add to Legend", |d, _| {
         let mut n = make_layer(d, name.as_deref());

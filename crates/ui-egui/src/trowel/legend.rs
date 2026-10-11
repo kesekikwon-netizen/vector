@@ -14,7 +14,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use serde_json::json;
+use serde_json::{Value, json};
 use vectorcraft_doc::legend::{MM, lines, stroke_of};
 use vectorcraft_doc::{Document, Legend, LegendGroup, LegendSample, Node, NodeId};
 
@@ -98,6 +98,8 @@ enum Act {
     Pick(NodeId),
     /// Open a row's editor level with its row's top.
     Edit(NodeId, f32),
+    /// List a row's objects under it, or stop.
+    Open(NodeId, bool),
     Show(NodeId, bool),
     Lock(NodeId, bool),
     Select(NodeId),
@@ -188,8 +190,15 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         Some(Act::Pick(id)) => pick(app, ui.ctx(), id),
         Some(Act::Edit(id, top)) => {
             let undone = unmove(app, ui.ctx(), id);
-            open_card(app, ui.ctx(), Card::Row(id), Some(top));
-            undone
+            // Lines going back change the open rows' heights: the card finds its row where it is
+            // laid out next.
+            let top = if matches!(undone, Ok(true)) { None } else { Some(top) };
+            open_card(app, ui.ctx(), Card::Row(id), top);
+            undone.map(drop)
+        }
+        Some(Act::Open(id, on)) => {
+            ui.data_mut(|d| d.insert_temp(opened(id), on));
+            Ok(())
         }
         Some(Act::Show(id, on)) => app.run("layer.setProps", json!({ "ids": [id.0], "visible": on })).map(drop),
         Some(Act::Lock(id, on)) => app.run("layer.setProps", json!({ "ids": [id.0], "locked": on })).map(drop),
@@ -251,16 +260,16 @@ fn pick(app: &mut VectorcraftApp, ctx: &egui::Context, id: NodeId) -> Result<(),
 
 /// A double click's first click on row `id` moved the selection into it: take that move back, the
 /// row staying the one drawn with, so a double click only opens the row's editor. Nothing is taken
-/// back when the drawing changed in between.
-fn unmove(app: &mut VectorcraftApp, ctx: &egui::Context, id: NodeId) -> Result<(), String> {
-    let Some((row, doc, revision)) = ctx.data_mut(|d| d.remove_temp::<(NodeId, u64, u64)>(moved_id())) else { return Ok(()) };
+/// back when the drawing changed in between. Returns whether lines went back.
+fn unmove(app: &mut VectorcraftApp, ctx: &egui::Context, id: NodeId) -> Result<bool, String> {
+    let Some((row, doc, revision)) = ctx.data_mut(|d| d.remove_temp::<(NodeId, u64, u64)>(moved_id())) else { return Ok(false) };
     if row != id || !app.session.active().is_some_and(|st| st.uid == doc && st.revision == revision) {
-        return Ok(());
+        return Ok(false);
     }
     app.run("edit.undo", json!({}))?;
     app.run("legend.pick", json!({ "id": id.0 }))?;
     app.status(tw!("The selected lines stay where they were"));
-    Ok(())
+    Ok(true)
 }
 
 /// Put lines set apart back to their row's look (`legend.revert` with `params`) and say how many.
@@ -273,9 +282,17 @@ pub(super) fn revert(app: &mut VectorcraftApp, params: serde_json::Value) -> Res
     Ok(())
 }
 
+/// Add legend group `g`'s rows and draw on with its first ★ row (a plan's 굴광선): the next line
+/// goes into the legend, not into a layer outside it.
 fn add_group(app: &mut VectorcraftApp, g: LegendGroup) -> Result<(), String> {
     let done = app.run("legend.addGroup", json!({ "group": g.key() }))?;
-    let n = done["added"].as_array().map_or(0, Vec::len);
+    let added: Vec<NodeId> = done["added"].as_array().into_iter().flatten().filter_map(Value::as_u64).map(NodeId).collect();
+    let first =
+        app.session.active().and_then(|st| added.iter().copied().find(|id| st.doc.node(*id).and_then(|l| l.legend()).is_some_and(|l| l.favourite)));
+    if let Some(id) = first {
+        app.run("legend.pick", json!({ "id": id.0 }))?;
+    }
+    let n = added.len();
     let note =
         if n > 0 { crate::i18n::fmt(tw!("Legend rows added: {n}"), &[("n", &n.to_string())]) } else { tw!("No legend rows to add").to_string() };
     app.status(note);
@@ -385,6 +402,7 @@ fn list(app: &VectorcraftApp, ui: &mut Ui, area: Rect, apart: &Apart, t: &Tokens
         _ => HashSet::new(),
     };
     let lang = crate::i18n::current();
+    let click = clicked(ui, area);
     let mut act = None;
     let mut list = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::top_down(egui::Align::Min)));
     // No fading edges: a faded row reads as a hidden layer.
@@ -426,8 +444,62 @@ fn list(app: &VectorcraftApp, ui: &mut Ui, area: Rect, apart: &Apart, t: &Tokens
                 }
             }
         }
+        // A second click opens the row first clicked, whatever is under it now.
+        if let Some(id) = click.and_then(|c| c.second)
+            && let Some(top) = items.iter().zip(&tops).find_map(|(item, top)| matches!(item, Item::Layer(row) if row.id == id).then_some(*top))
+        {
+            act = Some(Act::Edit(id, origin.y + top));
+        }
     });
+    if let Some(c) = click {
+        // The click a second one may follow: one picking a row.
+        let first = match &act {
+            Some(Act::Pick(id)) if c.second.is_none() => Some((*id, c.time, c.at)),
+            _ => None,
+        };
+        ui.data_mut(|d| match first {
+            Some(first) => {
+                d.insert_temp(last_click(), first);
+            }
+            None => d.remove::<(NodeId, f64, Pos2)>(last_click()),
+        });
+    }
     act
+}
+
+/// A click that ended in this pass: when and where, and the row it opens ([`Act::Edit`]) when it
+/// is a second click on the list soon after one picking that row, as near to it as egui's own
+/// clicks go. That row, whatever is under the pointer now: the first click's pick may have moved
+/// lines out of an open row above, the rows going up under it. Counted here, not by egui, which
+/// takes the second click for a third one when another click (✕ on the card) came just before.
+#[derive(Clone, Copy)]
+struct Click {
+    time: f64,
+    at: Pos2,
+    second: Option<NodeId>,
+}
+
+/// Where the click a second one may follow is kept: the row it picked, when and where.
+fn last_click() -> egui::Id {
+    wid("legend-last-click", ())
+}
+
+/// This pass's click, if one ended in it ([`Click`]); `area` is the list's.
+fn clicked(ui: &Ui, area: Rect) -> Option<Click> {
+    // Where the button came up: a touch or a pen leaves no pointer behind it.
+    let (time, at) = ui.input(|i| {
+        let up = |e: &egui::Event| match e {
+            egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: false, .. } => Some(*pos),
+            _ => None,
+        };
+        (i.time, if i.pointer.primary_clicked() { i.events.iter().rev().find_map(up) } else { None })
+    });
+    let at = at?;
+    let near = ui.ctx().options(|o| o.input_options.max_click_dist);
+    let on_list = ui.clip_rect().intersect(area).contains(at) && ui.ctx().layer_id_at(at) == Some(ui.layer_id());
+    let before: Option<(NodeId, f64, Pos2)> = ui.data(|d| d.get_temp(last_click()));
+    let second = before.filter(|(_, when, was)| on_list && time - when <= DOUBLE_CLICK && at.distance(*was) <= near).map(|(id, _, _)| id);
+    Some(Click { time, at, second })
 }
 
 /// The drawing's layers in the legend's sections, top first: those matching Strata's layers, then
@@ -556,25 +628,14 @@ fn layer_row(ui: &Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
     };
     let resp = resp.on_hover_text(tip);
     if open.clicked() {
-        ui.data_mut(|d| d.insert_temp(opened(row.id), !row.open));
-        None
+        Some(Act::Open(row.id, !row.open))
     } else if eye.clicked() {
         Some(Act::Show(row.id, !row.visible))
     } else if lock.clicked() {
         Some(Act::Lock(row.id, !row.locked))
     } else if resp.clicked() {
-        // A second click on this row soon after the first opens its editor. Counted here: egui
-        // takes that click for a third one when another click (✕ on the card) came just before.
-        let now = ui.input(|i| i.time);
-        let last = wid("legend-last-click", ());
-        let before: Option<(NodeId, f64)> = ui.data(|d| d.get_temp(last));
-        if before.is_some_and(|(id, at)| id == row.id && now - at <= DOUBLE_CLICK) {
-            ui.data_mut(|d| d.remove::<(NodeId, f64)>(last));
-            Some(Act::Edit(row.id, rr.top()))
-        } else {
-            ui.data_mut(|d| d.insert_temp(last, (row.id, now)));
-            Some(Act::Pick(row.id))
-        }
+        // A second click soon after opens the row's editor instead ([`Click`]).
+        Some(Act::Pick(row.id))
     } else {
         None
     }
@@ -631,7 +692,7 @@ fn footer(ui: &Ui, r: Rect, apart: usize, open: bool, t: &Tokens) -> (bool, bool
     let weights = small_button(ui, wid("legend-weights", ()), pos2(x, cy), 24.0, &label, open, t);
     let label = crate::i18n::fmt(tw!("Apart {n} → Legend"), &[("n", &apart.to_string())]);
     let revert = small_button(ui, wid("legend-overrides", ()), pos2(weights.rect.right() + 4.0, cy), 24.0, &label, apart > 0, t);
-    let weights = weights.on_hover_text(tw!("Change every line's weight at once"));
+    let weights = weights.on_hover_text(if open { tw!("Change every line's weight at once") } else { tw!("Open a drawing to change its weights") });
     let revert = revert.on_hover_text(if apart > 0 { tw!("Put every line set apart back to its row's look") } else { tw!("No line is set apart") });
     (weights.clicked(), revert.clicked())
 }

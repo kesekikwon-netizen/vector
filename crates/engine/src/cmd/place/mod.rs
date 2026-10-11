@@ -42,6 +42,8 @@ use super::*;
 use crate::{EngineError, MAX_COORD};
 
 const PLACE: &str = "file.place";
+/// The longest word `underlay` names an underlay's layer with.
+const MAX_UNDERLAY: usize = 64;
 const QUEUE: &str = "file.place.queue";
 /// The most files one `file.place.queue` loads.
 const MAX_QUEUE: usize = 100;
@@ -57,7 +59,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Place…",
             ["File"],
             Some("Cmd+Shift+P"),
-            "{path | name+dataBase64, link?: true (a raster image keeps its file's path; a VectorCraft document at path becomes one locked placed document showing artboard `page`, linked to the file and read again when it changes (links.update; saving it in this app updates it at once), drawn as vectors in every output; false: an editable copy of its art, as from dataBase64; other files are embedded), text?: {characterSet?: \"unicode\" (UTF-8, or UTF-16 with a byte-order mark; other bytes as the platform's 8-bit set) | \"ansi\" (the platform's 8-bit set), platform?: \"windows\" (Windows-1252) | \"mac\" (Mac Roman), removeLineReturns?: false (each block of lines becomes one paragraph; blank lines end paragraphs), removeParagraphReturns?: false (drop blank lines), replaceSpaces?: n (runs of n ≥ 2 spaces become a tab)} (a .txt file, placed as area type filling rect, the replaced object's bounds, or else the artboard less a 36 pt margin), template?: false (onto a new locked template layer below the current layer), replace?: false (swap the one selected object, keeping its stacking place and transform; no at/rect), at?: [x, y] centre (default: the first artboard's centre), rect?: [x, y, width, height] fit inside, aspect kept (wins over at), page?: 1 (PDF/.ai page, or a native document's artboard), crop?: \"crop\" (clipped to that page or artboard, default) | \"bounding\" (the art's bounds) | \"art\" | \"trim\" | \"bleed\" | \"media\" (a PDF page's boxes), password? (an encrypted PDF), dxf?: {…the DXF options of document.open} (a .dxf drawing: fit fills the artboard under at, else the first; fitted or uncentred art lands with its drawing's artboard on that artboard, else it is centred on at)} → {ids, name, format, linked, width, height, warnings}. Raster images come in at 100% of their physical size (the file's ppi, else 72); SVG, DXF, PDF/.ai, EMF/WMF (clipped to the picture's frame), EPS (clipped to its bounding box; as document.open reads it) and native documents as one group, with the images, symbols, patterns and swatches they use. One undo step; selects what it placed (unless on a template layer); never touches the clipboard",
+            "{path | name+dataBase64, link?: true (a raster image keeps its file's path; a VectorCraft document at path becomes one locked placed document showing artboard `page`, linked to the file and read again when it changes (links.update; saving it in this app updates it at once), drawn as vectors in every output; false: an editable copy of its art, as from dataBase64; other files are embedded), text?: {characterSet?: \"unicode\" (UTF-8, or UTF-16 with a byte-order mark; other bytes as the platform's 8-bit set) | \"ansi\" (the platform's 8-bit set), platform?: \"windows\" (Windows-1252) | \"mac\" (Mac Roman), removeLineReturns?: false (each block of lines becomes one paragraph; blank lines end paragraphs), removeParagraphReturns?: false (drop blank lines), replaceSpaces?: n (runs of n ≥ 2 spaces become a tab)} (a .txt file, placed as area type filling rect, the replaced object's bounds, or else the artboard less a 36 pt margin), template?: false (onto a new locked template layer below the current layer), underlay?: name (Trowel's Underlay tile: a template under every line, its layer at the bottom of the stack named \"{underlay} · {file name}\"), replace?: false (swap the one selected object, keeping its stacking place and transform; no at/rect), at?: [x, y] centre (default: the first artboard's centre), rect?: [x, y, width, height] fit inside, aspect kept (wins over at), page?: 1 (PDF/.ai page, or a native document's artboard), crop?: \"crop\" (clipped to that page or artboard, default) | \"bounding\" (the art's bounds) | \"art\" | \"trim\" | \"bleed\" | \"media\" (a PDF page's boxes), password? (an encrypted PDF), dxf?: {…the DXF options of document.open} (a .dxf drawing: fit fills the artboard under at, else the first; fitted or uncentred art lands with its drawing's artboard on that artboard, else it is centred on at)} → {ids, name, format, linked, width, height, warnings}. Raster images come in at 100% of their physical size (the file's ppi, else 72); SVG, DXF, PDF/.ai, EMF/WMF (clipped to the picture's frame), EPS (clipped to its bounding box; as document.open reads it) and native documents as one group, with the images, symbols, patterns and swatches they use. One undo step; selects what it placed (unless on a template layer); never touches the clipboard",
             has_doc,
             place
         ),
@@ -84,7 +86,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Load Place Cursor",
             [],
             None,
-            "{paths?: [path…], files?: [{name, dataBase64}…], link?, template?, page?, crop?, text?, dxf?, thumbnail?: px} load the place cursor (the `place` tool) with up to 100 files (as file.place reads them): a click places the current file at 100% with its top-left corner there, a drag places it at the dragged size (aspect kept), ←/→ and ↑/↓ cycle the files, Esc discards the current one; each placement is a file.place, and the previous tool returns after the last → {count, files: [{name, format, width, height, thumbnailBase64?}], skipped: [{name, error}]}",
+            "{paths?: [path…], files?: [{name, dataBase64}…], link?, template?, underlay?, page?, crop?, text?, dxf?, thumbnail?: px} load the place cursor (the `place` tool) with up to 100 files (as file.place reads them): a click places the current file at 100% with its top-left corner there, a drag places it at the dragged size (aspect kept), ←/→ and ↑/↓ cycle the files, Esc discards the current one; each placement is a file.place, and the previous tool returns after the last → {count, files: [{name, format, width, height, thumbnailBase64?}], skipped: [{name, error}]}",
             has_doc,
             queue
         ),
@@ -350,7 +352,8 @@ fn fit(natural: Rect, r: Rect) -> Affine {
 
 fn place(s: &mut Session, p: &Value) -> Result<Value> {
     let replace = bool_or(p, "replace", false);
-    let template = bool_or(p, "template", false);
+    let underlay = str_param(p, "underlay").map(|u| vectorcraft_doc::legend::clip(u, MAX_UNDERLAY)).filter(|u| !u.is_empty());
+    let template = bool_or(p, "template", false) || underlay.is_some();
     let at = at_param(p)?;
     let rect = rect_param(p)?;
     if replace && (template || at.is_some() || rect.is_some()) {
@@ -404,7 +407,11 @@ fn place(s: &mut Session, p: &Value) -> Result<Value> {
                 d.remove(old)?;
                 (par, idx)
             }
-            None if template => (Some(template_layer(d, below, &name)?), usize::MAX),
+            // An underlay goes under every line.
+            None if template => match &underlay {
+                Some(word) => (Some(template_layer(d, None, &format!("{word} · {name}"))?), usize::MAX),
+                None => (Some(template_layer(d, below, &format!("Template {name}"))?), usize::MAX),
+            },
             None => (parent, usize::MAX),
         };
         let id = d.insert(into, index, node)?;
@@ -433,10 +440,9 @@ fn text_frame(d: &Document, at: Option<Point>) -> Rect {
     Rect::from_center_size(board.center(), ((board.width() - 72.0).max(72.0), (board.height() - 72.0).max(72.0)))
 }
 
-/// A new locked template layer named after the file, right below the layer `below` (else at the
-/// bottom).
+/// A new locked template layer named `name`, right below the layer `below` (else at the bottom).
 fn template_layer(d: &mut Document, below: Option<NodeId>, name: &str) -> Result<NodeId> {
-    let id = d.add_layer(Some(&format!("Template {name}")));
+    let id = d.add_layer(Some(name));
     let at = below.and_then(|b| d.layers.iter().position(|l| l.id == b)).unwrap_or(0);
     d.move_node(id, None, at)?;
     if let Some(n) = d.node_mut(id) {
@@ -475,7 +481,7 @@ fn queue(s: &mut Session, p: &Value) -> Result<Value> {
     let thumbnail = p.get("thumbnail").and_then(Value::as_f64);
     let (mut entries, mut files, mut skipped) = (vec![], vec![], vec![]);
     for mut q in queued_files(p)? {
-        for k in ["link", "template", "page", "crop", "text", "dxf"] {
+        for k in ["link", "template", "underlay", "page", "crop", "text", "dxf"] {
             if let Some(v) = p.get(k) {
                 q[k] = v.clone();
             }

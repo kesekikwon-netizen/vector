@@ -29,6 +29,12 @@ pub fn node_summary(n: &Node) -> Value {
 
 /// The same summary with [`SummaryOpts`] applied.
 pub fn node_summary_opts(n: &Node, opts: SummaryOpts) -> Value {
+    summary(n, opts, true)
+}
+
+/// [`node_summary_opts`] of `n`, a top-level layer when `top`: only those report their legend
+/// row, as only they are rows (`Document::legend`).
+pub(crate) fn summary(n: &Node, opts: SummaryOpts, top: bool) -> Value {
     let mut v = json!({
         "id": n.id.0,
         "name": n.display_name(),
@@ -76,7 +82,7 @@ pub fn node_summary_opts(n: &Node, opts: SummaryOpts) -> Value {
             v["dimImages"] = json!(dim_images);
             v["clip"] = json!(clip);
             // Trowel: the layer's legend row (J005).
-            if let Some(legend) = legend {
+            if let Some(legend) = legend.as_ref().filter(|_| top) {
                 v["legend"] = json!(legend);
             }
         }
@@ -104,7 +110,7 @@ pub fn node_summary_opts(n: &Node, opts: SummaryOpts) -> Value {
         let take_n = opts.child_limit.map_or(total, |l| l.min(total as u64) as usize);
         if opts.depth.is_none_or(|d| d > 0) {
             let next = SummaryOpts { depth: opts.depth.map(|d| d.saturating_sub(1)), child_limit: opts.child_limit };
-            v["children"] = Value::Array(ch.iter().rev().take(take_n).map(|c| node_summary_opts(c, next)).collect());
+            v["children"] = Value::Array(ch.iter().rev().take(take_n).map(|c| summary(c, next, false)).collect());
         }
         if take_n < total || v.get("children").is_none() {
             v["childCount"] = json!(total);

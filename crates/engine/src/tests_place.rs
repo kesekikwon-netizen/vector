@@ -196,6 +196,41 @@ fn template_puts_the_art_on_a_locked_template_layer_below_the_current_one() {
     assert_eq!(st.history.undo.len(), 2, "layer.new, then Place as one step");
 }
 
+/// Trowel's Underlay tile: the scan goes under every line, on a template layer at the bottom named
+/// in the UI's words (J005 UI review U24).
+#[test]
+fn an_underlay_goes_on_a_template_layer_at_the_bottom() {
+    let mut s = session();
+    s.execute("layer.new", &json!({})).unwrap();
+    s.execute("layer.new", &json!({})).unwrap();
+    let current = s.doc().unwrap().current_layer().unwrap();
+    let r = place(&mut s, "scan.png", &png(10, 10, [0, 0, 0, 255], None), json!({"underlay": "밑그림"}));
+    let st = s.doc().unwrap();
+    let bottom = st.doc.layers.first().unwrap();
+    assert_eq!(bottom.name.as_deref(), Some("밑그림 · scan.png"));
+    assert!(bottom.locked && bottom.is_template(), "a locked template layer");
+    assert_eq!(st.doc.layer_of(NodeId(r["ids"][0].as_u64().unwrap())), Some(bottom.id));
+    assert_eq!(st.current_layer(), Some(current), "the current layer stays");
+    assert_eq!(st.doc.layers.len(), 4);
+    assert_eq!(st.history.undo.len(), 3, "two layer.new, then Place as one step");
+}
+
+/// Files loaded in the place cursor for the Underlay tile go to the bottom too, one layer each.
+#[test]
+fn queued_underlays_go_to_the_bottom_too() {
+    let mut s = session();
+    s.execute("layer.new", &json!({})).unwrap();
+    let files: Vec<Value> = ["a.png", "b.png"].iter().map(|n| file(n, &png(40, 20, [9, 9, 9, 255], None))).collect();
+    s.execute("file.place.queue", &json!({"files": files, "underlay": "밑그림"})).unwrap();
+    let view = ViewInfo::default();
+    for x in [10.0, 100.0] {
+        s.pointer(&PointerEvent::new(PointerKind::Down, x, 10.0), view).unwrap();
+        s.pointer(&PointerEvent::new(PointerKind::Up, x, 10.0), view).unwrap();
+    }
+    let names: Vec<String> = s.doc().unwrap().doc.layers.iter().map(|l| l.display_name()).collect();
+    assert_eq!(names[..2], ["밑그림 · b.png", "밑그림 · a.png"], "{names:?}");
+}
+
 #[test]
 fn pdf_pages_and_native_artboards_place_as_clipped_groups() {
     let mut src = Session::new();

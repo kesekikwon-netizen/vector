@@ -234,6 +234,24 @@ fn inspect_reports_the_legend() {
     assert_eq!(crate::inspect::node_summary(&node(&s, plain))["legend"], Value::Null);
 }
 
+/// A layer moved into another keeps its legend, but a sublayer is no row: the summaries leave it
+/// out (code review 2).
+#[test]
+fn inspect_leaves_out_a_sublayers_legend() {
+    let mut s = session();
+    let row = layer(&mut s, "바닥선");
+    run(&mut s, "legend.set", json!({"id": row.0, "weight": 0.5}));
+    let top = layer(&mut s, "위");
+    run(&mut s, "node.move", json!({"id": row.0, "parent": top.0, "index": 0}));
+    assert_eq!(parent(&s, row), Some(top));
+    assert!(legend_of(&s, row).is_some(), "the layer keeps it");
+    let doc = crate::inspect::document(&s);
+    let sub = &doc["layers"][0]["children"][0];
+    assert_eq!((&sub["id"], &sub["legend"]), (&json!(row.0), &Value::Null), "{sub}");
+    let one = run(&mut s, "document.node", json!({"id": row.0, "summary": true}));
+    assert_eq!(one["legend"], Value::Null, "{one}");
+}
+
 // ---------- legend.pick ----------
 
 #[test]
@@ -738,6 +756,25 @@ fn adding_a_row_takes_the_first_selected_lines_look() {
     let l = legend_of(&s, row).unwrap();
     assert_eq!((l.weight, l.line), (Some(0.5), LineType::Solid));
     assert_eq!(overrides(&s, row), vec![low]);
+}
+
+/// A row's line type is kept as a file keeps it: a line with more dashes than a row holds
+/// ([`legend::MAX_DASHES`]) makes a solid row, which a save and an open give back as it was (code
+/// review 2 C15).
+#[test]
+fn a_row_from_a_line_with_many_dashes_opens_again_as_it_was() {
+    let mut s = session();
+    let a = open_line(&mut s, 0.0);
+    let dash: Vec<f64> = (0..=legend::MAX_DASHES).map(|i| 1.0 + i as f64).collect();
+    run(&mut s, "stroke.set", json!({"dash": dash, "ids": [a.0]}));
+    assert_eq!(line_type(&s, a), LineType::Custom(dash.clone()), "the line keeps its {} dashes", dash.len());
+    run(&mut s, "select.set", json!({"ids": [a.0]}));
+    let row = id(&run(&mut s, "legend.add", json!({})));
+    let here = legend_of(&s, row).unwrap();
+    let back = vectorcraft_format::load(&vectorcraft_format::save(&s.doc().unwrap().doc, false)).unwrap();
+    assert_eq!(back.legend(row), Some(&here), "the row after a save and an open");
+    assert_eq!(here.line, LineType::Solid);
+    assert_eq!(overrides(&s, row), vec![a], "its line is set apart");
 }
 
 /// Each undo step is named after its command, which the Edit menu shows translated.

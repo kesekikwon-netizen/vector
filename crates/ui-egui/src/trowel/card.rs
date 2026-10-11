@@ -238,6 +238,11 @@ pub(super) fn text_field(ui: &mut Ui, id: egui::Id, r: Rect, value: &str, f: Fon
     (draft.is_some() && !esc && typed != value.trim()).then(|| typed.to_string())
 }
 
+/// What is being typed in the [`text_field`] `id`, while it has the keyboard.
+pub(super) fn draft(ctx: &egui::Context, id: egui::Id) -> Option<String> {
+    ctx.data(|d| d.get_temp(id.with("draft")))
+}
+
 /// A number of points typed in a field ("0.5", "0.5 pt"), from 0 to 1000.
 pub(super) fn points(s: &str) -> Option<f64> {
     let s = s.trim();

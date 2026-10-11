@@ -4100,6 +4100,7 @@ lighting	Light	조명
 # Trowel's own window (design 2.1, `tw!`): context `trowel`, its archaeology-drawing wording, ahead of
 # the plain rows above (굵기, 실선, 허용치, 선종, 맞추기 where the plain rows say 두께, 단색, 허용 오차, 선, 정렬).
 trowel	= {mm} mm	= {mm} mm
+trowel	A row without a weight has no line type: give it a weight first	굵기가 없는 줄은 선종이 없습니다: 먼저 굵기를 주세요
 trowel	Add a Legend	범례 넣기
 trowel	Add a Weight	굵기 추가
 trowel	Add a legend group's rows	범례 묶음의 줄을 넣습니다
@@ -4169,7 +4170,7 @@ trowel	Line	선종
 trowel	Lines back to the legend: {n}	선 {n}개를 범례대로 되돌렸습니다
 trowel	Lines back to the legend: {n} · locked ones left as they were: {m}	선 {n}개를 범례대로 되돌렸습니다 · 잠긴 선 {m}개는 그대로 둡니다
 trowel	Lines changed: {n}	선 {n}개를 바꿨습니다
-trowel	Lines of this row with a weight or line type of their own: {n}	굵기나 선 종류를 따로 바꾼 이 줄의 선: {n}개
+trowel	Lines of this row with a weight or line type of their own: {n}	굵기나 선종을 따로 바꾼 이 줄의 선: {n}개
 trowel	Lines set apart take the change on their own weight	따로 바꾼 선도 각자의 굵기를 기준으로 함께 바뀝니다
 trowel	Lines set apart too	따로 바꾼 선도 함께
 trowel	Lines that change: {n}. One {undo} puts them all back.	선 {n}개가 바뀝니다. {undo} 한 번이면 모두 돌아옵니다.
@@ -4197,11 +4198,13 @@ trowel	Often Used	자주 씀
 trowel	One Step	한 단계
 trowel	One Step Thicker	한 단계 굵게
 trowel	One Step Thinner	한 단계 가늘게
+trowel	Open a drawing to change its weights	도면을 열면 굵기를 바꿀 수 있습니다
 trowel	Open Drawings	열린 도면
 trowel	Pen	펜
 trowel	Pen Pressure	펜 필압
 trowel	Period	시대
 trowel	Place a scan under the drawing	스캔한 실측도를 도면 밑에 놓기
+trowel	Place under every line, on a locked template layer at the bottom	모든 선 아래, 맨 아래의 잠긴 밑그림 레이어에 놓습니다
 trowel	Plan	평면
 trowel	Plan Legend	평면용 범례
 trowel	Plate	도판
@@ -4213,6 +4216,7 @@ trowel	Put this row's lines set apart back to its look	이 줄에서 따로 바�
 trowel	Ratio	비율
 trowel	Revert to the Legend	범례대로 되돌리기
 trowel	Rows changed: {r} · lines: {n}	범례 줄 {r}개 · 선 {n}개를 바꿨습니다
+trowel	Rows that change: {r}. No line follows them. One {undo} puts them back.	범례 줄 {r}개가 바뀝니다. 따르는 선은 없습니다. {undo} 한 번이면 돌아옵니다.
 trowel	Same Weight	굵기 그대로
 trowel	Same weight, dashed	같은 굵기 파선
 trowel	Saved in	저장

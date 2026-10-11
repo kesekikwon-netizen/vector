@@ -121,8 +121,11 @@ fn doc_node(s: &mut Session, p: &Value) -> Result<Value> {
         // otherwise silently return the whole subtree.
         return Err(bad("document.node", "`depth` and `childLimit` slice the summary: pass `summary: true`"));
     }
-    let n = s.doc()?.doc.node(id).ok_or(EngineError::NoNode(id))?;
-    if summary { Ok(inspect::node_summary_opts(n, opts)) } else { Ok(serde_json::to_value(n).unwrap_or(Value::Null)) }
+    let d = &s.doc()?.doc;
+    let n = d.node(id).ok_or(EngineError::NoNode(id))?;
+    // Only a top-level layer is a legend row.
+    let top = d.layers.iter().any(|l| l.id == id);
+    if summary { Ok(inspect::summary(n, opts, top)) } else { Ok(serde_json::to_value(n).unwrap_or(Value::Null)) }
 }
 
 /// `depth` / `childLimit` for a summary read: absent (or null) means no limit.

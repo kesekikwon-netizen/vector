@@ -204,7 +204,8 @@ fn templates(app: &VectorcraftApp) -> (Vec<u64>, bool) {
 fn underlay(app: &mut VectorcraftApp) {
     let (ids, shown) = templates(app);
     if ids.is_empty() {
-        crate::menus::invoke(app, "file.place", json!({ "template": true }));
+        // Under every line, its layer named in the user's words (`file.place`'s `underlay`).
+        crate::menus::invoke(app, "file.place", json!({ "template": true, "underlay": tw!("Underlay") }));
     } else if let Err(e) = app.run("layer.setProps", json!({ "ids": ids, "visible": !shown })) {
         app.status(e);
     }

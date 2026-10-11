@@ -204,6 +204,13 @@ fn look(ui: &mut Ui, row: &Row, t: &Tokens, asks: &mut Vec<Ask>) {
         types.disable();
     }
     let (pressed, end) = segments(&types, "card-line", r.left_center(), &seg, &parts, t);
+    if legend.weight.is_none() {
+        // Dimmed: why, on hover.
+        let all = Rect::from_min_max(r.min, pos2(end, r.bottom()));
+        types
+            .interact(all, wid("card-line-why", ()), Sense::hover())
+            .on_disabled_hover_text(tw!("A row without a weight has no line type: give it a weight first"));
+    }
     if let Some(key) = pressed
         && parts.iter().any(|p| p.key == key && !p.on)
     {
