@@ -377,7 +377,7 @@
 	Click an anchor point	앵커 포인트를 클릭하세요
 	Click or drag	클릭하거나 드래그하세요
 	Click the art with the Gradient tool to add or select points.	그라데이션 도구로 작업물을 클릭하여 점을 추가하거나 선택하세요.
-	Click the first point	첫 번째 점 클릭
+	Click the first point	시작점 클릭
 	Click the ramp or a type button to apply a gradient.	그라데이션 램프 또는 유형 버튼을 클릭하여 그라데이션을 적용하세요.
 	Click to add a tab stop, drag to move it, drag it off the ruler to delete it	클릭하면 탭 정지점을 추가하고, 드래그하면 이동하며, 눈금자 밖으로 드래그하면 삭제합니다.
 	Click to choose a swatch, Shift-click to mix a colour	클릭하면 견본을 선택하고, Shift+클릭하면 색상을 혼합합니다.
@@ -738,8 +738,8 @@
 	Download:	다운로드:
 	Downloaded {what}	{what}을(를) 다운로드했습니다
 	Downloaded {} file(s)	파일 {}개를 다운로드했습니다
-	Drag	끌기
-	Drag a handle	핸들 끌기
+	Drag	드래그
+	Drag a handle	핸들 드래그
 	Drag art here, or select it and click +. Hold Alt for one asset of several objects.	여기에 그림을 끌어 놓거나, 그림을 선택하고 +를 누르세요. 여러 객체 가운데 하나만 에셋으로 등록하려면 Alt를 누르세요.
 	Drag onto art to apply this appearance	이 모양을 적용하려면 그림 위로 끌어 놓으세요
 	Drag the art to move it on the paper	그림을 끌어 종이 위에서 이동하세요
@@ -3192,12 +3192,12 @@
 @plural	{n} star|{n} stars	별 {n}개|별 {n}개
 @plural	{n} step|{n} steps	단계 {n}개|단계 {n}개
 @plural	{n} stroke|{n} strokes	획 {n}개|획 {n}개
-	 the object to select  |  	 객체를 선택  |  
+	 the object to select  |  	 객체 선택  |  
 	 to select multiple objects  |  	 여러 객체를 선택  |  
 	 the object to duplicate	 객체 복제
 	 an anchor or path segment to select it  |  	 앵커 또는 패스 세그먼트 선택  |  
 	 to move  |  	 이동  |  
-	 to add	 추가
+	 to add	 선택에 추가
 	 to add a corner point  |  	 코너 점 추가  |  
 	 to add a smooth point  |  	 부드러운 점 추가  |  
 	 to close  |  	 닫기  |  
@@ -4092,6 +4092,7 @@ lighting	Light	조명
 	Pins go on the artwork	핀은 아트워크 위에만 놓을 수 있습니다
 # Trowel's own window (design 2.1, `tw!`): context `trowel`, its archaeology-drawing wording, ahead of
 # the plain rows above (굵기, 실선, 허용치, 선종, 맞추기 where the plain rows say 두께, 단색, 허용 오차, 선, 정렬).
+trowel	Add a Weight	굵기 추가
 trowel	Add to Legend	범례에 더하기
 trowel	Align	맞추기
 trowel	Align Underlay…	밑그림 맞추기…
@@ -4104,7 +4105,6 @@ trowel	Bucket	칠통
 trowel	Change All Weights…	모든 굵기 바꾸기…
 trowel	Change Weights at Once…	굵기 한 번에 바꾸기…
 trowel	Choose	고르세요
-trowel	Coming soon · {job}	준비 중 · {job}
 trowel	Coordinate system not set	좌표계 정하지 않음
 trowel	Cut Face	잘린 면
 trowel	Dash-dot	일점쇄선
@@ -4121,12 +4121,14 @@ trowel	Finds	유물
 trowel	Fold the properties	속성 접기
 trowel	Follow Pressure	필압 따라
 trowel	Hatch	빗금
-trowel	Hide the objects	개체 목록 접기
+trowel	Hide the objects	객체 목록 접기
+trowel	How near the pointer snaps to a point	포인터가 점에 붙는 거리
 trowel	Import	가져오기
 trowel	Insert Legend Table	범례표 넣기
 trowel	Insert Title Block	표제란 넣기
 trowel	Layers panel	레이어 패널
 trowel	Layers: {n}	레이어 {n}개
+trowel	Layout before Trowel	Trowel 이전 배치
 trowel	Legend	범례
 trowel	Legend Table	범례표
 trowel	Legend · Layers	범례 · 레이어
@@ -4136,7 +4138,8 @@ trowel	New Drawing	새 도면
 trowel	New drawing	새 도면
 trowel	New layer	새 레이어
 trowel	Next line · pt	다음에 그릴 선 · pt
-trowel	No dashes	끊지 않은 선
+trowel	No dashes	끊김 없이 이어진 선
+trowel	No layer to draw on	그릴 수 있는 레이어가 없습니다
 trowel	No.	번호
 trowel	North Arrow	방위
 trowel	Not saved	저장 안 됨
@@ -4145,21 +4148,25 @@ trowel	Overrides to Legend	따로 → 범례대로
 trowel	Pen	펜
 trowel	Pen Pressure	펜 필압
 trowel	Period	시대
+trowel	Place a scan under the drawing	스캔한 실측도를 도면 밑에 놓기
 trowel	Plan	평면
 trowel	Plate	도판
 trowel	Posthole Depth	주혈 깊이
+trowel	Press and hold for more tools	길게 누르면 다른 도구가 나옵니다
 trowel	Properties panel	속성 패널
-trowel	Required	필요
+trowel	Revert to the Legend	범례대로 되돌리기
 trowel	Same Weight	굵기 그대로
 trowel	Scale Bar	축척
 trowel	Scale and Coordinate System…	축척과 좌표계…
+trowel	Scale and coordinate system	축척·좌표계
 trowel	Scale and coordinate system not set	축척·좌표계 정하지 않음
 trowel	Scale not set	축척 정하지 않음
 trowel	Section	단면
 trowel	Section Line	단면선
 trowel	Selected lines · pt	고른 선 · pt
 trowel	Send to Strata…	Strata로 보내기…
-trowel	Show the objects	개체 목록 펼치기
+trowel	Show or hide the underlay	밑그림 보이기·숨기기
+trowel	Show the objects	객체 목록 펼치기
 trowel	Show the properties	속성 펼치기
 trowel	Slope Hachure	경사 표시
 trowel	Snap	자석
@@ -4179,5 +4186,11 @@ trowel	Weight	굵기
 trowel	Weight, hatch and line type: in the Drawing Palette at the right	굵기 · 빗금 · 선종은 오른쪽 「그리기 팔레트」에서
 trowel	Weights at once	굵기 한 번에
 trowel	When Closed	닫으면
+trowel	{layer} is hidden: drawing on {target}	{layer} 숨김: {target}에 그립니다
+trowel	{layer} is hidden: no layer to draw on	{layer} 숨김: 그릴 수 있는 레이어가 없습니다
+trowel	{layer} is locked: drawing on {target}	{layer} 잠김: {target}에 그립니다
+trowel	{layer} is locked: no layer to draw on	{layer} 잠김: 그릴 수 있는 레이어가 없습니다
 trowel	{n} not saved	저장 안 됨 {n}건
 trowel	{n} objects	객체 {n}개
+trowel	{what} · Coming soon · {job}	{what} · 준비 중 · {job}
+trowel	{what}: coming soon ({job})	{what}: 준비 중 ({job})

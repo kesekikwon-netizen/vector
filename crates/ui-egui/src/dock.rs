@@ -18,15 +18,26 @@ const DOCK_WIDTH: f32 = 300.0;
 /// Top of a popped-out panel.
 const FLYOUT_TOP: f32 = 110.0;
 
-/// Where the icon column's left edge was drawn last (egui temp memory, one frame old).
-fn column_left_id() -> egui::Id {
-    egui::Id::new("dock-icon-column-left")
+/// Where a popped-out panel goes, set by whatever drew the panel column last (egui temp memory,
+/// one frame old): the icon column, or Trowel's right column, which stands in for it.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Flyout {
+    /// The column's left edge: the panel's right edge goes 6 points left of it.
+    pub left: f32,
+    /// The panel's top.
+    pub top: f32,
+    /// Where a press doesn't put an auto-collapsing panel away: what pops panels out or puts them
+    /// away itself (the icon column; Trowel's ⋯ buttons), else the press would put the panel away
+    /// and the click bring it straight back.
+    pub keep: Vec<Rect>,
 }
 
-/// Where a popped-out panel's right edge goes (6 points left of `x`): Trowel's right column, which
-/// stands in for the icon column.
-pub(crate) fn set_column_left(ctx: &egui::Context, x: f32) {
-    ctx.data_mut(|d| d.insert_temp(column_left_id(), x));
+fn flyout_id() -> egui::Id {
+    egui::Id::new("dock-flyout")
+}
+
+pub(crate) fn set_flyout(ctx: &egui::Context, flyout: Flyout) {
+    ctx.data_mut(|d| d.insert_temp(flyout_id(), flyout));
 }
 
 /// Collapse the tabbed group to icons or expand it again (`window.collapseDock`). Expanding while
@@ -155,7 +166,9 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     let column = column.response.rect;
     let dock = group.map_or(column, |g| g.union(column));
     ui.ctx().data_mut(|d| {
-        d.insert_temp(column_left_id(), column.left());
+        // The column's whole height: its icons, and the arrow above them.
+        let keep = Rect::from_x_y_ranges(column.x_range(), f32::NEG_INFINITY..=f32::INFINITY);
+        d.insert_temp(flyout_id(), Flyout { left: column.left(), top: FLYOUT_TOP, keep: vec![keep] });
         d.insert_temp(floating::dock_rect_id(), dock);
         d.insert_temp(floating::icons_rect_id(), column);
     });
@@ -217,7 +230,8 @@ pub fn floating_panel(app: &mut VectorcraftApp, ctx: &egui::Context) {
     let Some((id, label)) = app.ui.open_panel.as_deref().and_then(|p| crate::state::all_panels().find(|(q, _)| *q == p)) else { return };
     let tab = DockTab::from_id(id);
     // Expanded, the group shows its panels in the dock itself; a floating panel shows in its group.
-    if tab.is_some() && !app.ui.dock_collapsed || floating::group_of(&app.ui, id).is_some() {
+    // Trowel has no tabbed group: its panels pop out too.
+    if tab.is_some() && !app.ui.dock_collapsed && !app.ui.trowel || floating::group_of(&app.ui, id).is_some() {
         return;
     }
     let t = Tokens::get(ctx);
@@ -225,22 +239,24 @@ pub fn floating_panel(app: &mut VectorcraftApp, ctx: &egui::Context) {
     // Pinned by its right edge, 6 points left of the icon column wherever the dock's width (or its
     // collapsed state) put it: content wider than the flyout grows it towards the canvas rather
     // than over the panel icons. Without a dock on screen it keeps to the window's right edge.
-    let column = if app.ui.dock && app.ui.screen_mode < 3 {
-        ctx.data(|d| d.get_temp::<f32>(column_left_id()))
-            .filter(|x| x.is_finite() && *x > screen.left() && *x <= screen.right())
-            .unwrap_or_else(|| screen.right() - ICON_COL - if app.ui.dock_collapsed { 0.0 } else { DOCK_WIDTH })
+    let fallback =
+        |left: f32| Flyout { left, top: FLYOUT_TOP, keep: vec![Rect::from_x_y_ranges(left..=left + ICON_COL, f32::NEG_INFINITY..=f32::INFINITY)] };
+    let place = if app.ui.dock && app.ui.screen_mode < 3 {
+        ctx.data(|d| d.get_temp::<Flyout>(flyout_id()))
+            .filter(|f| f.left.is_finite() && f.left > screen.left() && f.left <= screen.right() && f.top.is_finite())
+            .unwrap_or_else(|| fallback(screen.right() - ICON_COL - if app.ui.dock_collapsed { 0.0 } else { DOCK_WIDTH }))
     } else {
-        screen.right()
+        fallback(screen.right())
     };
-    let right = column - 6.0;
+    let right = place.left - 6.0;
     // The tabbed group's panels fill their height (Layers) or scroll (Properties): give them one
     // that keeps the flyout on screen.
     let width = panel_width(id);
-    let tall = (screen.height() - FLYOUT_TOP - 26.0 - 20.0 - 40.0).clamp(160.0, 560.0);
+    let tall = (screen.bottom() - place.top - 26.0 - 20.0 - 40.0).clamp(160.0, 560.0);
     let mut open = true;
     let mut torn = None;
     let area = egui::Area::new(egui::Id::new("icon-panel")).order(egui::Order::Foreground).pivot(egui::Align2::RIGHT_TOP);
-    area.fixed_pos(egui::pos2(right, FLYOUT_TOP)).show(ctx, |ui| {
+    area.fixed_pos(egui::pos2(right, place.top)).show(ctx, |ui| {
         egui::Frame::popup(ui.style()).fill(t.panel).corner_radius(CornerRadius::same(4)).inner_margin(egui::Margin::ZERO).show(ui, |ui| {
             ui.set_width(width);
             let (strip, _) = ui.allocate_exact_size(vec2(width, 26.0), Sense::hover());
@@ -271,12 +287,13 @@ pub fn floating_panel(app: &mut VectorcraftApp, ctx: &egui::Context) {
         });
     });
     // User Interface › Auto-Collapse Iconic Panels (#394): a press away from the flyout puts it
-    // away, on the canvas or a docked panel. Not one on the icon column (its icons swap or close the
-    // flyout themselves, on release), nor one on a foreground layer (the flyout itself, a dialog, a palette) or a modal dialog's
-    // backdrop, nor one that closes a popup (a panel menu, a dropdown the flyout opened).
+    // away, on the canvas or a docked panel. Not one on the icon column or Trowel's ⋯ buttons
+    // (they swap or close the flyout themselves, on release), nor one on a foreground layer (the
+    // flyout itself, a dialog, a palette) or a modal dialog's backdrop, nor one that closes a popup
+    // (a panel menu, a dropdown the flyout opened).
     if open && app.session.prefs.auto_collapse_icon_panels && !egui::Popup::is_any_open(ctx) {
         let away = |p: egui::Pos2| {
-            !(column..=column + ICON_COL).contains(&p.x)
+            !place.keep.iter().any(|k| k.contains(p))
                 && ctx.layer_id_at(p).is_none_or(|l| l.order != egui::Order::Foreground && l != crate::dialogs::modal::backdrop())
         };
         if ctx.input(|i| i.pointer.any_pressed().then(|| i.pointer.interact_pos()).flatten()).is_some_and(away) {
@@ -432,7 +449,7 @@ mod tests {
 
         /// The icon column's left edge as last drawn.
         fn column_left(&self) -> f32 {
-            self.ctx.data(|d| d.get_temp::<f32>(column_left_id())).unwrap()
+            self.ctx.data(|d| d.get_temp::<Flyout>(flyout_id())).unwrap().left
         }
 
         /// The panel icons of the column, top to bottom.

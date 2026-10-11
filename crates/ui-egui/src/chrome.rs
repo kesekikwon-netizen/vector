@@ -574,19 +574,27 @@ pub fn status_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
                         );
                     }
                     // Background saves and exports in progress, else the last message.
-                    if let Some(job) = app.background.jobs.first() {
-                        let more = app.background.jobs.len() - 1;
-                        let label = crate::i18n::msg(&job.label);
-                        let text = if more > 0 { format!("{label}… (+{more})") } else { format!("{label}…") };
+                    if let Some((text, running)) = status_message(app) {
                         ui.label(egui::RichText::new(text).size(11.0).color(t.text));
-                        ui.add(egui::Spinner::new().size(12.0).color(t.accent));
-                    } else if !app.ui.status.is_empty() {
-                        // The message stays English in `ui.status` (agents and tests read it).
-                        ui.label(egui::RichText::new(crate::i18n::msg(&app.ui.status)).size(11.0).color(t.text));
+                        if running {
+                            ui.add(egui::Spinner::new().size(12.0).color(t.accent));
+                        }
                     }
                 });
             });
         });
+}
+
+/// What the status bar says is going on: a save or export running ("Saving…", with how many more),
+/// with `true`; else the last message. The message stays English in `ui.status` (agents and tests
+/// read it) and shows translated.
+pub(crate) fn status_message(app: &VectorcraftApp) -> Option<(String, bool)> {
+    if let Some(job) = app.background.jobs.first() {
+        let more = app.background.jobs.len() - 1;
+        let label = crate::i18n::msg(&job.label);
+        return Some((if more > 0 { format!("{label}… (+{more})") } else { format!("{label}…") }, true));
+    }
+    (!app.ui.status.is_empty()).then(|| (crate::i18n::msg(&app.ui.status), false))
 }
 
 /// Contextual hint for the active tool: segments of (text, bold). Keys in bold segments are

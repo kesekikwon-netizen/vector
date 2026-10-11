@@ -129,16 +129,23 @@ fn shield(ui: &Ui, id: egui::Id, r: Rect) -> egui::Response {
     ui.interact(r, id, Sense::click_and_drag())
 }
 
-/// The band at the top left: the tool in hand, the layer it draws on and how to use it.
+/// The band at the top left: the tool in hand, the layer it draws on (and why, when that is not the
+/// current layer) and how to use it.
 fn band(app: &VectorcraftApp, ui: &Ui, canvas: Rect, t: &Tokens) {
     let tool = app.session.tool_id();
-    let layer = app.session.active().and_then(|st| st.current_layer().and_then(|id| st.doc.node(id))).map(|n| n.display_name());
+    let (layer, note) = match app.session.active() {
+        Some(st) => {
+            let target = draw_target(st);
+            (target.into.and_then(|id| st.doc.node(id)).map(|n| n.display_name()), target.note)
+        }
+        None => (None, None),
+    };
     let what = match layer {
         Some(l) => format!("{} · {l}", tool_name(tool)),
         None => tool_name(tool),
     };
-    let hint = ui.painter().layout_job(hint_job(app, true, 12.0, t.text, t.text_dim));
-    let what_w = width_of(ui, &what, font(12.0));
+    let hint = ui.painter().layout_job(hint_job(app, true, 12.0, t.text_dim));
+    let what_w = width_of(ui, &what, font(12.0)) + note.as_ref().map_or(0.0, |n| 8.0 + width_of(ui, n, font(12.0)));
     let at = canvas.min + vec2(14.0, 14.0);
     let most = (canvas.width() - 28.0 - 36.0 - 16.0).max(0.0);
     let hint_w = hint.size().x.min((most - (10.0 + 16.0 + 8.0 + what_w + 8.0 + 1.0 + 8.0 + 10.0)).max(0.0));
@@ -156,7 +163,10 @@ fn band(app: &VectorcraftApp, ui: &Ui, canvas: Rect, t: &Tokens) {
         );
     }
     let p = ui.painter().with_clip_rect(r.shrink2(vec2(10.0, 0.0)));
-    let x = p.text(pos2(r.left() + 34.0, cy), Align2::LEFT_CENTER, what, font(12.0), t.text).right() + 8.0;
+    let mut x = p.text(pos2(r.left() + 34.0, cy), Align2::LEFT_CENTER, what, font(12.0), t.text).right() + 8.0;
+    if let Some(note) = note {
+        x = p.text(pos2(x, cy), Align2::LEFT_CENTER, note, font(12.0), t.clay_text).right() + 8.0;
+    }
     if !hint.is_empty() {
         p.vline(x + 0.5, (cy - 8.0)..=(cy + 8.0), Stroke::new(1.0, t.border));
         p.galley(pos2(x + 9.0, cy - hint.size().y / 2.0), hint, t.text_dim);
@@ -190,8 +200,8 @@ fn zoom_buttons(app: &mut VectorcraftApp, ui: &Ui, canvas: Rect, t: &Tokens) {
             ui.painter().hline(cell.x_range().shrink(1.0), cell.top() + 0.5, Stroke::new(1.0, t.border));
         }
         match key {
-            "in" => crate::icons::paint(ui, "plus", Rect::from_center_size(cell.center(), vec2(14.0, 14.0)), t.text),
-            "out" => crate::icons::paint(ui, "minus", Rect::from_center_size(cell.center(), vec2(14.0, 14.0)), t.text),
+            "in" => crate::icons::paint(ui, "plus", sharp_square(ui, cell, 15.0), t.text),
+            "out" => crate::icons::paint(ui, "minus", sharp_square(ui, cell, 15.0), t.text),
             _ => {
                 text(ui, cell.center(), Align2::CENTER_CENTER, tw!("Fit"), font(10.0), t.text);
             }
@@ -209,9 +219,22 @@ fn zoom_buttons(app: &mut VectorcraftApp, ui: &Ui, canvas: Rect, t: &Tokens) {
     }
 }
 
+/// A `size` square in the middle of `cell`, on whole pixels so a thin icon stays sharp.
+fn sharp_square(ui: &Ui, cell: Rect, size: f32) -> Rect {
+    let ppp = ui.ctx().pixels_per_point();
+    let snap = |v: f32| (v * ppp).round() / ppp;
+    Rect::from_min_size(pos2(snap(cell.center().x - size / 2.0), snap(cell.center().y - size / 2.0)), vec2(size, size))
+}
+
+/// The zoom as the screen readout shows it: a whole percentage, with a decimal below 10 %.
+fn percent(zoom: f64) -> String {
+    let p = zoom * 100.0;
+    if p < 9.95 { format!("{p:.1} %") } else { format!("{p:.0} %") }
+}
+
 /// The screen readout at the bottom right: the zoom as a percentage.
 fn readout(app: &VectorcraftApp, ui: &Ui, canvas: Rect, t: &Tokens) {
-    let zoom = crate::state::zoom_label(app.view().map_or(1.0, |v| v.zoom)).replace('%', " %");
+    let zoom = percent(app.view().map_or(1.0, |v| v.zoom));
     let label = tw!("Screen");
     let w = 10.0 + width_of(ui, label, font(12.0)) + 4.0 + width_of(ui, &zoom, mono(12.0)) + 10.0;
     let r = Rect::from_min_max(pos2(canvas.right() - 16.0 - w, canvas.bottom() - 16.0 - 30.0), pos2(canvas.right() - 16.0, canvas.bottom() - 16.0));

@@ -573,6 +573,25 @@ fn family_display_name_follows_show_font_names_in_english() {
 /// Hangul the loaded fonts lack comes from a Korean UI family when one is installed (Noto Sans KR,
 /// Nanum Gothic…), not from whichever font file covering it sorts first (a bitmap-style font such
 /// as Unifont on Linux): Korean menus and labels read like the rest of the interface.
+/// The Korean families are tried for Hangul only, right after the CJK ones: Hanja, kana and the
+/// rest keep the fallbacks they had, so text in other scripts doesn't change font.
+#[test]
+fn korean_fallback_families_are_for_hangul_only() {
+    use crate::fontdb::fallback_families;
+    let korean = ["Noto Sans CJK KR", "Noto Sans KR", "NanumGothic"];
+    // A syllable, compatibility jamo, jamo, halfwidth Hangul.
+    for c in ['한', 'ㄱ', 'ᄀ', 'ﾡ'] {
+        let f = fallback_families(c);
+        assert!(korean.iter().all(|k| f.contains(k)), "{c}: {f:?}");
+        let at = |name: &str| f.iter().position(|x| *x == name).unwrap();
+        assert!(at("Noto Sans CJK JP") < at("Noto Sans CJK KR") && at("NanumGothic") < at("Arial Unicode MS"), "{c}: {f:?}");
+    }
+    for c in ['漢', 'か', 'A', '→'] {
+        let f = fallback_families(c);
+        assert!(!korean.iter().any(|k| f.contains(k)), "{c}: {f:?}");
+    }
+}
+
 #[test]
 fn hangul_falls_back_to_a_korean_ui_family_when_one_is_installed() {
     let korean = ["Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK SC", "Noto Sans CJK JP", "Noto Sans CJK KR", "Noto Sans KR", "NanumGothic"];

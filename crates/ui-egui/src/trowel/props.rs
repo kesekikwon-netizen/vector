@@ -33,7 +33,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     if head_button(ui, wid("props-fold", ()), head, 0, icon, tip, &t).clicked() {
         ui.data_mut(|d| d.insert_temp(folded_id(), !folded));
     }
-    if head_button(ui, wid("props-more", ()), head, 1, "ellipsis", tw!("Properties panel"), &t).clicked() {
+    if more_button(ui, wid("props-more", ()), head, 1, tw!("Properties panel"), &t).clicked() {
         crate::menus::invoke(app, "window.panel", json!({ "panel": "properties" }));
     }
     if folded {
@@ -44,13 +44,12 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     // Kind and period (J009).
     let cy = head.bottom() + 2.0 + FIELD_H / 2.0;
     text(ui, pos2(left, cy), Align2::LEFT_CENTER, tw!("Kind"), font(11.0), t.text_dim);
-    let x = field_soon(ui, wid("props-kind", ()), pos2(fields, cy), 112.0, tw!("Choose"), true, &t);
-    field_soon(ui, wid("props-number", ()), pos2(x + 6.0, cy), 44.0, tw!("No."), false, &t);
+    let x = field_soon(ui, wid("props-kind", ()), pos2(fields, cy), 112.0, tw!("Kind"), tw!("Choose"), true, &t);
+    field_soon(ui, wid("props-number", ()), pos2(x + 6.0, cy), 44.0, tw!("No."), tw!("No."), false, &t);
     let cy = cy + FIELD_H + 3.0;
     text(ui, pos2(left, cy), Align2::LEFT_CENTER, tw!("Period"), font(11.0), t.text_dim);
-    let x = field_soon(ui, wid("props-period", ()), pos2(fields, cy), 112.0, tw!("Choose"), true, &t);
-    ui.painter().circle_filled(pos2(x + 6.0 + 3.0, cy), 3.0, t.clay);
-    text(ui, pos2(x + 6.0 + 11.0, cy), Align2::LEFT_CENTER, tw!("Required"), font(12.0), t.text_disabled);
+    field_soon(ui, wid("props-period", ()), pos2(fields, cy), 112.0, tw!("Period"), tw!("Choose"), true, &t);
+    // "Required" (what Strata's submission check asks for) shows with J009, which checks it.
     // How big the selection is.
     if let Some((w, h)) = size {
         let cy = cy + FIELD_H / 2.0 + 5.0 + 8.0;
@@ -70,15 +69,16 @@ fn summary(app: &VectorcraftApp) -> String {
     }
 }
 
-/// A field a later job (J009) brings, `w` wide at `at` (its left centre), showing `placeholder`.
-/// Returns where it ends.
-fn field_soon(ui: &Ui, id: egui::Id, at: Pos2, w: f32, placeholder: &str, chevron: bool, t: &Tokens) -> f32 {
+/// A field a later job (J009) brings for `what`, `w` wide at `at` (its left centre), showing
+/// `placeholder`. Returns where it ends.
+#[allow(clippy::too_many_arguments)]
+fn field_soon(ui: &Ui, id: egui::Id, at: Pos2, w: f32, what: &str, placeholder: &str, chevron: bool, t: &Tokens) -> f32 {
     let r = Rect::from_min_size(pos2(at.x, at.y - FIELD_H / 2.0), vec2(w, FIELD_H));
-    ui.painter().rect(r, CornerRadius::same(6), t.input, Stroke::new(1.0, t.input_border), StrokeKind::Inside);
+    ui.painter().rect(r, CornerRadius::same(6), t.panel_darker, Stroke::new(1.0, t.input_border), StrokeKind::Inside);
     text(ui, pos2(r.left() + 8.0, at.y), Align2::LEFT_CENTER, placeholder, font(11.0), t.text_disabled);
     if chevron {
-        crate::icons::paint(ui, "chevron-down", Rect::from_center_size(pos2(r.right() - 11.0, at.y), vec2(9.0, 9.0)), t.text_disabled);
+        triangle(ui, pos2(r.right() - 8.0 - 3.5, at.y), 7.0, true, t.text_disabled);
     }
-    soon_widget(ui, id, r, "J009");
+    soon_widget(ui, id, r, what, "J009");
     r.right()
 }

@@ -1,6 +1,6 @@
 # J003 — 메인 창을 디자인 2.1 3절과 같게
 
-상태: verify · 기준 커밋 `9ab182e865427a30a617a165527bc40ba011753a` · 커밋 1개 (`J003: …`) · 화면만(좌표·단위·파일 형식·의존성 변경 없음)
+상태: review · 재작업 1차 끝, 검토 2차 대기 · 기준 커밋 `9ab182e865427a30a617a165527bc40ba011753a` · 커밋 2개(`fc810fb`, 재작업 1차 `J003: 검토 반영…`) · 화면 + 한글 대체 글꼴(`crates/text`) + `file.place` 새 인자(좌표·단위·파일 형식·의존성 변경 없음)
 
 ## 목표
 
@@ -167,3 +167,151 @@ cargo xtask ci
 | 15 | 세로 눈금자 | 숫자를 돌려 씀 | 숫자를 한 자씩 세로로(기존 눈금자) | 바꾸지 않음 |
 
 「준비 중」(흐림, 올리면 작업 번호): 리본 단면·유물·도판(J004), 맞추기(J008), 단면선·표고(J009), 방위·축척·범례표·표제란(J012), Strata로(J019) / 메뉴 「도면」 9항목 / 컨트롤 바 추정(파선)(J014)·닫으면(J009)·필압 따라(J016) / 도구 기둥 고고학 5개(J009) / 팔레트 굵기 ＋(J018), 빗금 45°·135°·번갈아·선종 파선·점선·일점쇄선·잘린 면(J014), 범례에 더하기·범례대로(J005) / 범례 바닥 모든 굵기 바꾸기·따로→범례대로(J005) / 속성 종류·시대·번호(J009) / 상태줄 축척·좌표계(J006).
+
+
+## 검증 (verify)
+
+2026-10-11. 변경 커밋 `fc810fbed1b0a2d04d27ba23ae318c0135c92bc6`(`J003: 메인 창을 디자인 2.1 평면 화면처럼 만듦`, 기준 `9ab182e` 위 1개). 로그는 `/tmp/claude-0/-home-claude/79152f61-3d49-5a1c-acde-dc6cabf2d3d7/scratchpad/factory/J003/`. 모든 명령은 `/home/claude/vector`에서.
+
+시험 먼저(빨강) → 구현 뒤(초록):
+
+| 명령 | 종료 코드 | 결과 | 로그 |
+|---|---|---|---|
+| `cargo test -p vectorcraft-ui-egui --lib -- workspaces::tests::trowel theme::tests::plate_has chrome::tests::window_title chrome::tests::sync_window_title i18n::tests::every_tw` | 101 | 1 통과 · 5 실패(기대한 빨강: 작업 영역·토큰·창 제목 형식·번역 행이 아직 없음) | `red1.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel:: workspaces:: theme:: chrome::tests::window_title chrome::tests::sync_window_title i18n::` | 101 | 50 통과 · 15 실패(기대한 빨강: Trowel 화면 함수가 빈 껍데기) | `red2.log` |
+| 같은 명령(구현 뒤) | 0 | 65 통과 | `green1.log` |
+| `cargo test -p vectorcraft-text --lib -- tests_sysfonts::hangul` · `cargo test -p vectorcraft-ui-egui --lib -- ui_fonts::` | 101 · 101 | 한글 대체가 Unifont로 나와 실패 · `bold_face`가 없어 컴파일 실패(기대한 빨강) | `red3.log` |
+| `cargo test -p vectorcraft-text --lib -- tests_sysfonts::` · `cargo test -p vectorcraft-ui-egui --lib -- ui_fonts:: trowel::` | 0 · 0 | 20 통과 · 21 통과 | `green2.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel::tests::hints` | 101 | 1 실패(기대한 빨강: 키가 굵지 않고 「|」가 보임) | `red4.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel::` | 0 | 16 통과 | `green3.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- i18n::tests::canvas_labels` | 101 | 1 실패(기대한 빨강: 「path」 등이 영어) | `red5.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- i18n:: trowel:: ui_fonts::` | 0 | 59 통과 | `green4.log` |
+| `cargo build -p vectorcraft` (화면용 두 번) | 0 · 0 | | `build-dev.log` · `build-dev2.log` |
+| `python3 scratchpad/j003/drive.py target/debug/vectorcraft <out> 7991`(Xvfb 1600 × 988, 한국어, 제어 채널로 문서·레이어 12개·도형·펜 도구) | 0 | `J003-plan.png`, 시안과 나란히 `J003-side-by-side.png`, 차이 15가지는 빌드 절 | `/mnt/project-files/design/trowel-run/app.log` |
+
+전체 관문:
+
+| 명령 | 종료 코드 | 결과 | 로그 |
+|---|---|---|---|
+| `cargo xtask ci` 1회차 | 1 | clippy `type_complexity` 1건(새 코드 `ui_fonts.rs`의 대체 글꼴 수신 채널 타입) → `type Fallback`으로 고침 | `ci-1.log` |
+| `cargo xtask ci` 2회차 | 1 | fmt·clippy 통과, test 단계에서 링커가 `Bus error`로 죽음: **디스크가 가득 참(환경 부족, 코드 실패 아님)**. 묵은 빌드 파일(`target/debug/{deps,build,.fingerprint}` 23 GB)을 지우고 처음부터 다시 | `ci-2.log` |
+| `cargo xtask ci` 3회차(`fc810fb`, 미커밋 변경 없음) | 없음(멈춤) | fmt·clippy 통과, test 단계 컴파일 중 12:16:02Z에 멈춤: 같은 커밋의 GitHub 실행(아래 행)이 통과해 디스크를 아끼려고. **로컬 3회차는 통과로 세지 않는다** | `ci-3.log` |
+| GitHub Actions 「Trowel CI」 [실행 38137425667](https://github.com/kesekikwon-netizen/vector/actions/runs/38137425667)(push `fc810fb`) | success | 「cargo xtask ci (Linux)」 success(11:56:58Z–12:11:32Z), 「Windows x64 release build」 success(–12:15:05Z) | GitHub 실행 기록 |
+
+판정: 첫 커밋 `fc810fb`는 전체 관문을 GitHub에서 통과했다. 이어서 독립 검토로 넘김.
+
+## 검토 (review) 1차
+
+2026-10-11, 대상 커밋 `fc810fb`(기준 `9ab182e`). 검토자 둘은 구현자와 다른 에이전트이고 읽기만 했다(저장소를 고치지 않음). 보고서 전문은 스크래치패드 `review1-ui.md`, `review1-code.md`.
+
+- UI 검토(ui-reviewer, 12:14Z): 시안 `win-plan.png`와 앱 `J003-plan.png`를 픽셀로 견줌. 영역 경계·리본 묶음·범례 줄 위치는 1 px 안에서 같음, 테마 pass. **판정 rework**(1번 하나로).
+- 정확성·보안 검토(code-reviewer + correctness-reviewer + security-reviewer 한 번에, 12:21Z): 코드만 읽고 빌드·시험은 돌리지 않음. 패닉 경로·명령 id·고전 화면 불변·wasm·보안(새 외부 입력은 prefs의 bool 3개뿐)은 문제없음. **판정 rework**(1·2번).
+
+UI 검토 지적(줄 번호는 `fc810fb`):
+
+| # | 심각도 | 곳 | 내용 | 조치 |
+|---|---|---|---|---|
+| U1 | major | `trowel/legend.rs:173`, `control.rs:136-158`, `center.rs:135` | 잠기거나 숨긴 레이어를 「그릴 레이어」로 보여 주지만 엔진(`insertion_parent`)은 다른 레이어에 넣는다. 알림이 없어 범례가 조용히 틀어진다 | 고침 R1 |
+| U2 | major(조건부) | `ribbon.rs:148`, `tools.rs:39-86` | 1600 × 988보다 작은 창에서 리본 끝·명령 찾기·도구 기둥 아래가 잘림 | 고침 R2 |
+| U3 | minor | `caption.rs:13-26` | 캡션과 메뉴 사이 선 없음 | 고침 R6 |
+| U4 | minor | `mod.rs:152`, `drawings.rs:45`, `control.rs:71` | 판 제목·도면집 지금 줄·켜진 「자석」이 굵음(시안은 보통) | 고침 R6 |
+| U5 | minor | `control.rs:55` | 허용치 칸만 모양이 다름 | 고침 R7 |
+| U6 | minor | `props.rs:52-53` | 고른 것이 없어도 흙색 「● 필요」 | 고침 R6(J009까지 숨김) |
+| U7 | minor | `mod.rs:171-196` 외 | 「준비 중」을 눌러도 반응 없음, 상자형은 살아 있는 칸과 비슷, 툴팁에 작업 번호만 | 고침 R8 |
+| U8 | minor | `menu.rs:27` | 메뉴의 「범례대로」가 끝나지 않은 말 | 고침 R6 |
+| U9 | minor | `ko.tsv:4124, 4162` | 「개체」와 「객체」가 섞임 | 고침 R12 |
+| U10·U11·U13–U16 | nit | `ribbon.rs:142`, `menu.rs:18`, `center.rs:193-194`, `control.rs:120-133`, `legend.rs:147-149`, `drawings.rs:79` | 리본 끝 세로선, 「도면」 밑줄 자리, 확대 ＋/－ 흐림, 범례 칸(굵기 색·▼·너비 196), 범례 ▸·자물쇠 색, 도면집 바닥 크기 글꼴 | 고침 R6 |
+| U12 | nit | `brand.rs:39-42` | 캡션의 흙손 표시(16 px)에서 흙색 기준선이 거의 검게 보임 | **남김**: 16 px 전용 그림이 필요(J001 아이콘 일). 아래 「남긴 것」 |
+| U17 | nit | `ko.tsv` | 안내 글 다듬기(「선택에 추가」, 「시작점」, 객체 선택/복제, 드래그/끌기, 실선 툴팁) | 고침 R12 |
+| U18 | nit | `tools.rs` | 숨은 도구가 있다는 표시 없음 | 고침 R11 |
+| U19 | nit | 스크린샷 | 포인터가 패스 위라 스마트 가이드 표지 「패스」가 찍힘 | 다시 찍을 때 포인터를 빈 곳에 |
+| U-a | 기록 이견 | 차이 표 #8 | 허용치 시안 12 px, 앱 범위 1–8 px라 넣을 수 없음 | **사용자 결정**으로 넘김(백로그 J016 메모) |
+| U-b | 기록 이견 | 차이 표 #12 | 배율 칸만 정수로 하면 시안과 같음 | 고침 R6 |
+| U-c | 기록 이견 | 벗어난 점 8 | 안내가 굵은 먹색 키, 시안은 조용한 muted 한 문장 | 고침 R9 |
+| U-d | 기록 이견 | 기준 5 | 밑그림 타일이 가져오기와 같은 창을 엶 | 고침 R10(아래 사용자 확인 항목) |
+| U-e | 범위 밖 | `theme.rs:181` | 「Measured from Illustrator 2026」 주석(J003 이전 커밋 `9449c92`), 클린룸 규칙과 부딪힐 수 있음 | **사람 확인**(이 작업에서 안 고침) |
+
+정확성·보안 검토 지적(줄 번호는 `fc810fb`):
+
+| # | 심각도 | 곳 | 내용 | 조치 |
+|---|---|---|---|---|
+| C1 | major | `tools.rs:31-98`, `ribbon.rs:128-162` | 고정 배치라 흔한 화면(1080p 125 %, 1440 × 900, 웹, 최소 창 800 × 500)에서 칠·선 상자·도구·리본 끝이 잘리고 눌리지 않음 | 고침 R2 |
+| C2 | major | `legend.rs:98-109, 56-75` | 큰 레이어를 펼치면 프레임마다 모든 줄을 배치하고 선택 `Vec`을 O(n·m)으로 찾아 앱이 멈춤 | 고침 R3 |
+| C3 | minor | `status.rs:38-46, 51-59` | 첫 메시지 뒤로 상태줄에 도구 안내가 다시 나오지 않음(`ui.status`는 비워지지 않음) | 고침 R4 |
+| C4 | minor | `fontdb.rs:413-416` | 새 한국어 대체 글꼴 셋이 한글만이 아니라 한자·가나에도 쓰임. 새 시험은 그 줄을 지키지 못함 | 고침 R5 |
+| C5 | minor | `control.rs:79-102` | 「준비 중」 상자가 잘리지 않아 좁은 창에서 자석·허용치 위에 겹치고 클릭을 가져감 | 고침 R7 |
+| C6 | minor | `control.rs:10-27` | 그리기 도구 목록이 명세보다 넓어 기준점 도구에서 고전의 변환 단추가 사라짐 | 고침 R7. 펜·곡률 도구의 변환 단추가 빠지는 것은 명세의 선택이라 사람에게 알림 |
+| C7 | minor | `dock.rs:19, 220, 243, 279`, `menus.rs:1136-1145` | 튀어나오는 패널이 리본·컨트롤 바를 덮음, 자동 접기 예외 띠가 범례 ▸·눈 위, 패널 펼침을 끄면 범례·속성 ⋯가 아무 일도 안 함 | 고침 R13 |
+| C8 | minor | `workspaces.rs:53-61` | 첫 실행의 `start_trowel`이 기존 배치를 되돌릴 길 없이 덮음 | 고침 R14 |
+| C9 | minor | `tests.rs:445-466, 553-556` | 깨져도 통과하는 시험 2개 | 고침 R15 |
+| C10 | nit | `ui_fonts.rs:135-160`, `ko.tsv`, `drawings.rs:82`, `tools.rs:47-55`, `status.rs:51-59` | 가변 글꼴의 Bold 인스턴스, 면 단위 중복 막기, 「개체」, 도면집 바닥 툴팁이 바닥 전체, 도구 칸 기억이 temp, 상태 문구 복사 | 고침 R5·R12·R16 |
+
+## 재작업 (rework) 1차
+
+2026-10-11, 기준 `fc810fb`(J003 첫 커밋, 이미 push됨). 같은 작업 브랜치 제자리. 커밋은 `J003: …` 두 번째 하나로 더한다: 첫 커밋이 push돼 있어 고쳐 쓰면(amend) 강제 push가 필요하므로, 「작업당 커밋 1개」를 「빌드·재작업 단계마다 1개」로 읽는다.
+
+시험 먼저: 고친 동작마다 실패하는 시험을 먼저 쓰고 빨강을 본 뒤 고쳤다. `red6.log`(잠김 레이어), `red7.log`(작은 창 1536: 「명령 찾기」가 사라짐), `red8.log`(화면 시험 9개 실패 + 글꼴 크레이트는 `fallback_families`가 없어 컴파일 실패), `red9.log`(좁은 창에서 「준비 중」 글자가 자석 위에) → `green5.log`·`green6.log`·`green7.log`. 지키지 못한 곳 두 가지를 그대로 적는다.
+
+- 리본 맞춤 코드를 시험보다 먼저 썼다. 알아차린 뒤 그 코드를 스크래치패드(`j003/ribbon-draft.rs`)로 옮기고 `ribbon.rs`의 내 미커밋 변경만 되돌린 다음, 시험을 써서 빨강(`red7.log`)을 보고 다시 넣었다.
+- 허용치 칸(R7)의 시험 `snap_tolerance_is_picked_from_a_list`는 코드 뒤에 썼다. 그래서 고르는 줄을 일부러 끈 판으로 돌려 이 시험이 실패하는 것(4 px를 골라도 2 px 그대로)을 확인하고 되돌렸다(`green7-mutation.log`, 종료 101). 그 실행은 시험 두 개의 문제도 드러냈다. 새 시험 `control_bar_keeps_snap_in_reach_in_a_small_window`의 허용 목록이 「2 px」 한 덩어리였는데 새 허용치 칸은 「2」와 「px」를 따로 그린다(목록을 고침, 이번 회차에 새로 쓴 시험이라 시험 변경 아님). 기존 시험 `the_semibold_family_draws_with_the_fallback_familys_bold_face`는 R5의 새 규칙과 부딪혔다(아래 「바꾼 시험」 넷째).
+
+| # | 지적 | 바꾼 것 | 시험 |
+|---|---|---|---|
+| R1 | U1 | 새 `trowel::draw_target`: 새 선이 실제로 들어갈 레이어(`insertion_parent`)와, 지금 레이어가 잠기거나 숨었을 때의 까닭(「{layer} 잠김: {target}에 그립니다」 등 4가지, 그릴 곳이 없으면 「그릴 수 있는 레이어가 없습니다」). 캔버스 띠는 실제 레이어 이름 + 흙색 까닭, 컨트롤 바 범례 칸은 흙색 테두리 + 실제 이름 + 툴팁, 범례의 지금 줄은 흙색 이름 + 툴팁. 범례 칸 목록에서 잠기거나 숨긴 레이어는 흐리게, 오른쪽에 자물쇠·눈 표시 | `a_locked_or_hidden_current_layer_shows_where_lines_go`(잠그고 숨긴 뒤 띠·범례 칸·범례 줄 글자와 펜으로 그린 선의 부모) |
+| R2 | U2, C1 | 리본: 창이 좁아지면 ① 52 px 칸 + 「명령 찾기」 150 → ② 명령 찾기를 32 px 돋보기 단추로 → ③ 44 px 칸, 그래도 넘치면 리본을 가로로 스크롤(휠로도). 묶음 끝마다 세로선. 도구 기둥: 단추 높이 27 → 23, 그래도 모자라면 도구 칸을 세로로 스크롤하고 칠·선 상자는 바닥에 고정 | `small_windows_keep_every_tile_and_tool_in_reach`(1536 × 816, 1366 × 728, 800 × 500에서 23칸·14슬롯·고고학 5개·칠·선 상자가 패널 안에 있거나 스크롤로 닿음) |
+| R3 | C2 | 범례 목록을 `ScrollArea::show_viewport`로: 보이는 줄만 배치·`interact`, 객체 이름도 보이는 줄만 만든다. 선택은 프레임마다 한 번 `HashSet`. 줄 위치는 레이어마다 누적 높이로 계산 | `a_big_open_layer_lays_out_only_the_rows_in_view`(객체 1,500개를 펼쳐도 배치되는 줄 5–59개, 휠로 맨 아래까지 가서 그 줄을 눌러 선택) |
+| R4 | C3 | 상태줄 왼쪽 메시지는 바뀐 뒤 6초만 보이고 다시 도구 안내로. 진행 중인 작업 표시(스피너 문구)는 계속. 고전 상태줄과 문구를 `chrome::status_message` 하나로 합침 | `status_bar_shows_messages_for_a_while` |
+| R5 | C4, C10 | `fontdb.rs`: 한국어 가족 셋(Noto Sans CJK KR, Noto Sans KR, NanumGothic)을 `SYSTEM_FALLBACKS`에서 빼서 `HANGUL_FALLBACKS`로, **한글 글자에만** Noto Sans CJK JP 바로 뒤에서 시도(`fallback_families`). 한자·가나·나머지는 이 작업 전과 같은 목록. `ui_fonts.rs`: 중복 막기를 (글꼴, 가족) 단위로, 굵은 면은 semibold 가족에서는 보통 면 앞·다른 가족에서는 보통 면 뒤에도 넣음(egui는 글꼴이 처음 들어올 때만 가족을 받으므로, 나중에 그 굵은 면이 대체 글꼴로 다시 와도 이미 모든 가족에 있음). 가변 글꼴의 이름 있는 인스턴스는 굵은 면으로 고르지 않음 | `tests_sysfonts::korean_fallback_families_are_for_hangul_only`(설치된 글꼴 없이 도는 순수 함수 시험), `ui_fonts::tests::a_bold_face_that_is_a_fallback_too_joins_every_family`. 가변 글꼴 건너뛰기는 이 기계에 가변 글꼴이 없어 시험 없음 |
+| R6 | U3, U4, U6, U8, U10·U11·U13–U16, U-b | 캡션 아래 선, 판 제목·도면집 지금 줄·켜진 자석 보통 굵기, 「● 필요」는 J009까지 숨김, 메뉴 항목 「범례대로 되돌리기」(팔레트 단추는 시안대로 「범례대로」), 리본 내보내기 뒤 세로선, 「도면」 밑줄을 글자 바로 밑(글자 폭 + 양쪽 10 px), 확대 ＋/－를 기기 픽셀에 맞춤, 범례 칸 너비 196·굵기 faint·▼, 범례 ▸(muted 삼각형)·눈(켬 hand, 끔 ring)·자물쇠(잠김 ink, 풀림 ring)·숨긴 줄 faint·객체 줄 ink2에 가까운 `icon`, 도면집 바닥 크기는 mono 먹색, 배율 칸은 정수 「77 %」(10 % 아래는 소수 한 자리) | `canvas_overlays_zoom_and_name_the_tool`(배율 형식), 나머지는 새 화면으로 확인 |
+| R7 | U5, C5, C6 | 허용치 칸을 시안 `.field`처럼(둥글기 8, 숫자 mono 먹색, 「px」 faint), 누르면 1–8 px 목록. 컨트롤 바의 두 배치를 `room`으로 자른 자식 `Ui`에서 그림. 그리기 배치 도구를 명세 목록으로 줄임(기준점 추가·삭제·변환, 매끄럽게, 원호는 고전 컨트롤 바) | `snap_tolerance_is_picked_from_a_list`, `control_bar_keeps_snap_in_reach_in_a_small_window`, `control_bar_shows_the_layer_and_next_weight` |
+| R8 | U7 | 「준비 중」을 누르면 상태줄에 「{기능}: 준비 중 (J0xx)」 4초. 상자형 준비 중 칸은 wash 바탕(리본처럼), 툴팁은 「{기능} · 준비 중 · J0xx」 | `status_bar_shows_messages_for_a_while`(리본 단면 칸, 범례 「모든 굵기 바꾸기…」) |
+| R9 | U-c | 띠와 상태줄의 도구 안내를 시안처럼 한 가지 글꼴·muted 색으로(키를 굵게 하지 않음), 부분 사이는 「·」 | `hints_read_plainly_as_in_the_mockup` |
+| R10 | U-d | 밑그림 타일: 템플릿 레이어가 없으면 「가져오기」 창을 **템플릿을 미리 고른 채** 연다(`file.place {template: true}`, 새 인자). 템플릿 레이어가 있으면 보이기/숨기기(`layer.setProps`)이고, 보일 때 격자·자석처럼 「보임」 모양 | `underlay_tile_places_a_template_then_shows_and_hides_it` |
+| R11 | U18 | 다른 도구가 숨은 도구 칸의 툴팁 끝에 「길게 누르면 다른 도구가 나옵니다」 | 화면 확인(툴팁) |
+| R12 | U9, U17, C10 | `ko.tsv`: 「개체 목록 접기/펼치기」 → 「객체 …」, 안내 「Shift+클릭 추가」 → 「Shift+클릭 선택에 추가」, 「첫 번째 점 클릭」 → 「시작점 클릭」, 「객체를 선택」 → 「객체 선택」, 안내의 「끌기」 → 「드래그」(「핸들 드래그」도), 실선 툴팁 「끊지 않은 선」 → 「끊김 없이 이어진 선」. 새 원문 10줄의 한국어, 안 쓰게 된 2줄(「Coming soon · {job}」, 「Required」) 삭제. 일반 행(고전 화면 안내 줄에도 보임)은 번역만 바뀌고 원문은 그대로 | `i18n::tests::every_tw_literal_is_translated_in_korean` 외 i18n 시험 전부 |
+| R13 | C7 | `dock.rs`: 튀어나오는 패널 자리를 `Flyout {left, top, keep}`로. 고전 도크는 지금처럼(위 110, 아이콘 기둥 38 px 띠), Trowel은 오른쪽 기둥 왼쪽·기둥 위 + 6, 자동 접기 예외는 ⋯ 단추 셋뿐. Trowel에서는 레이어·속성·라이브러리 패널도 늘 튀어나옴(`window.panel`과 그 체크 표시도) | `panels_pop_out_beside_the_right_column` |
+| R14 | C8 | `start_trowel`: 지금 배치가 그 작업 영역과 다르면 덮기 전에 「Trowel 이전 배치」라는 사용자 작업 영역으로 남김(이미 그 이름이 있으면 건너뜀). 기본 배치 그대로면 남기지 않음 | `workspaces::tests::trowel_keeps_a_changed_layout_to_go_back_to` |
+| R15 | C9 | 확대 단추·띠·배율 칸을 펜으로 눌러도 문서 객체 수가 그대로인지, 두 번째 잠금 클릭 뒤 잠금이 풀렸는지 확인을 더함 | 그 두 시험 |
+| R16 | C10 | 도면집 바닥의 「준비 중 · J006」 툴팁을 축척·좌표계 두 줄에만, 도구 칸이 마지막에 쓴 도구를 저장되는 `app.ui.slot_tool`(키 `trowel/<칸>`)에 기억 | 화면·기존 시험 |
+
+**바꾼 시험(시험 변경).** 기존 시험의 기댓값을 바꾼 것은 넷이고, 모두 위 지적을 따른 동작 변경 때문이다.
+
+- `trowel::tests::hints_show_their_keys_in_bold`(첫 커밋) → 지우고 `hints_read_plainly_as_in_the_mockup`로 바꿈. 키를 굵게 한 것은 첫 빌드가 명세에서 벗어난 점 8이었고, UI 검토(U-c)가 시안과 다르다고 짚었다.
+- `trowel::tests::canvas_overlays_zoom_and_name_the_tool`: 배율 글자 기댓값 「77.44 %」(앱 `zoom_label`) → 정수 「77 %」(U-b). 객체 수 확인을 더함(C9).
+- `trowel::tests::control_bar_shows_the_layer_and_next_weight`: 기준점 변환·추가, 매끄럽게 도구는 그리기 배치가 아니라 고전 컨트롤 바를 기대(C6).
+- `ui_fonts::tests::the_semibold_family_draws_with_the_fallback_familys_bold_face`: 다른 가족에 굵은 면이 「없다」 → 「보통 면 뒤에만 있다」(R5). 시험 설명의 뜻(다른 가족은 보통 면으로 그림)은 그대로다.
+
+나머지 기존 시험은 기댓값을 바꾸지 않았다(`legend_rows_show_hide_lock_and_pick_the_layer`는 확인만 더함; 리본·도구 목록은 같은 값의 상수 `TILES`·`SLOTS`·`ARCH`로 옮김).
+
+**명세에서 벗어난 점(이번 회차).**
+
+- 허용치 칸은 고전 `range_field` 대신 목록에서 고른다. 직접 쳐 넣기와 휠로 한 단계씩은 없어졌다(값은 전처럼 1–8 정수).
+- `file.place`에 인자 `template`(참·거짓, 「템플릿」 칸을 미리 체크)을 더했다. 기존 인자·동작은 그대로다.
+- 고친 파일: `crates/text/src/{fontdb,tests_sysfonts}.rs`, `crates/ui-egui/src/{chrome,dock,menus,place,ui_fonts,workspaces}.rs`, `crates/ui-egui/src/i18n/ko.tsv`, `crates/ui-egui/src/trowel/{caption,center,control,drawings,legend,menu,mod,palette,props,ribbon,status,tests,tools}.rs`, `factory/backlog.md`, 이 파일.
+
+**남긴 것.**
+
+- U12 캡션 흙손 표시: 16 px에서 흙색 줄이 검게 보인다. 16 px용 그림을 따로 그려야 하는 아이콘 일(J001 쪽)이라 이 작업에서 고치지 않는다.
+- U-a 허용치: 시안 12 px는 앱 범위(1–8 px) 밖이다. 범위를 바꾸면 환경설정 값의 뜻이 바뀌므로 사용자에게 묻는다(백로그 J016 메모).
+- U-e `theme.rs:181`의 「Measured from Illustrator 2026」 주석: J003 이전 코드다. 클린룸 규칙에 비추어 사람이 확인한다.
+- C6: 명세대로 펜·곡률 도구에서는 고전 컨트롤 바의 「변환: 모퉁이/매끄럽게」 단추가 보이지 않는다(기준점 변환 도구에서는 보임).
+
+### 재검증 (재작업 1차)
+
+2026-10-11. 대상은 `fc810fb` 위의 미커밋 변경(이 절과 함께 커밋). 로그는 `/tmp/claude-0/-home-claude/79152f61-3d49-5a1c-acde-dc6cabf2d3d7/scratchpad/factory/J003/`, 명령은 `/home/claude/vector`에서.
+
+| 명령 | 종료 코드 | 결과 | 로그 |
+|---|---|---|---|
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel::tests::a_locked_or_hidden` | 101 | 1 실패(기대한 빨강: 잠긴 지금 레이어에 그린다고 보임) | `red6.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel::tests::small_windows` | 101 | 1 실패(기대한 빨강: 1536 폭에서 「명령 찾기」가 창 밖) | `red7.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel:: i18n::tests::every_tw` | 0 | 18 통과 | `green5.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel::` | 0 | 18 통과 | `green6.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel:: workspaces::tests::trowel ui_fonts::tests::a_bold_face` · `cargo test -p vectorcraft-text --lib -- tests_sysfonts::korean_fallback` | 101 · 101 | 17 통과 · 9 실패(기대한 빨강: 새 시험 6개와 기댓값을 바꾼 시험 3개) · `fallback_families`가 없어 컴파일 실패(기대한 빨강) | `red8.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel::tests::control_bar_keeps` | 101 | 1 실패(기대한 빨강: 좁은 창에서 「굵기 그대로」·「필압 따라」가 자석 위에) | `red9.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel:: workspaces:: ui_fonts:: i18n:: dock::`(허용치 고르기를 일부러 끈 판) | 101 | 78 통과 · 3 실패: 의도한 실패(4 px를 골라도 2 px) + 위 「시험 먼저」에 적은 시험 문제 둘 | `green7-mutation.log` |
+| `cargo test -p vectorcraft-ui-egui --lib -- trowel:: workspaces:: ui_fonts:: i18n:: dock:: menus:: place::` | 0 | 119 통과 | `green7.log` |
+| `cargo test -p vectorcraft-text --lib -- tests_sysfonts::` | 0 | 21 통과(한국어 글꼴이 있는 이 기계에서 건너뛴 시험 없음) | `green7-text.log` |
+| `cargo clippy --workspace --all-targets -- -D warnings` | 0 | 경고 없음 | `rework-clippy.log` |
+| `CARGO_PROFILE_DEV_DEBUG=0 cargo xtask ci`(디스크를 아끼려고 디버그 정보만 끔, 13:37:17Z–14:00:06Z) | 0 | 7단계 모두 통과(fmt, clippy, test, assets, brands, layers, wasm). 시험 묶음 117개에서 5,116 통과 · 0 실패 · 4 무시(이 작업 전부터 `#[ignore]`) | `rework-ci.log` |
+
+CI 시작 뒤 코드 파일은 바뀌지 않았다(`find crates apps xtask -newermt 13:37:00` 결과 없음). 화면 확인과 GitHub CI는 이 커밋 뒤에 이어 적는다.

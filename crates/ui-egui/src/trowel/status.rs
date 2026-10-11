@@ -1,7 +1,7 @@
-//! The status bar (design 2.1 §3): at the left what is going on (a save running, the last message,
-//! else how to use the tool in hand, its keys in bold); at the right the tool, Snap, how many drawings have changes
-//! not saved, where the pointer is in the drawing, and the drawing's scale and coordinate system
-//! (J006).
+//! The status bar (design 2.1 §3): at the left what is going on (a save running, a note, the last
+//! message for a while, else how to use the tool in hand); at the right the tool, Snap, how many
+//! drawings have changes not saved, where the pointer is in the drawing, and the drawing's scale
+//! and coordinate system (J006).
 
 use super::*;
 
@@ -12,7 +12,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         line_above(ui, r, t.border);
         // The cells, right to left.
         let scale = cell(ui, r, r.right(), false, &[(tw!("Scale and coordinate system not set").into(), font(12.0), t.text_dim)], &t);
-        soon_widget(ui, wid("status-scale", ()), scale, "J006");
+        soon_widget(ui, wid("status-scale", ()), scale, tw!("Scale and coordinate system"), "J006");
         let u = app.session.general_unit();
         let (x, y) = app.hover_doc.map_or(("–".to_string(), "–".to_string()), |p| (u.readout(p.x), u.readout(p.y)));
         let at = cell(
@@ -35,27 +35,44 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         // What is going on, in the room left: a message, else how to use the tool in hand.
         let room = Rect::from_min_max(pos2(r.left() + 16.0, r.top()), pos2(tool.left() - 12.0, r.bottom()));
         let p = ui.painter().with_clip_rect(room);
-        match message(app) {
+        match message(app, ui.ctx()) {
             Some(m) => {
-                p.text(pos2(room.left(), r.center().y), Align2::LEFT_CENTER, m, font(12.0), t.text_dim);
+                p.text(pos2(room.left(), r.center().y), Align2::LEFT_CENTER, m, font(12.0), t.text);
             }
             None => {
-                let hint = p.layout_job(hint_job(app, false, 12.0, t.text, t.text_dim));
+                let hint = p.layout_job(hint_job(app, false, 12.0, t.text_dim));
                 p.galley(pos2(room.left(), r.center().y - hint.size().y / 2.0), hint, t.text_dim);
             }
         }
     });
 }
 
-/// A save or export running, else the last message.
-fn message(app: &VectorcraftApp) -> Option<String> {
-    if let Some(job) = app.background.jobs.first() {
-        let more = app.background.jobs.len() - 1;
-        let label = crate::i18n::msg(&job.label);
-        return Some(if more > 0 { format!("{label}… (+{more})") } else { format!("{label}…") });
+/// A save or export running; else a note from something a later job brings ([`soon_note`]); else
+/// the last message, for [`MESSAGE_SECS`] after it changes, so the hint comes back.
+fn message(app: &VectorcraftApp, ctx: &egui::Context) -> Option<String> {
+    let status = crate::chrome::status_message(app);
+    if let Some((running, true)) = status {
+        return Some(running);
     }
-    // The message stays English in `ui.status` (agents and tests read it).
-    (!app.ui.status.is_empty()).then(|| crate::i18n::msg(&app.ui.status))
+    if let Some(note) = soon_note(ctx) {
+        return Some(note);
+    }
+    let (message, _) = status?;
+    let now = ctx.input(|i| i.time);
+    let seen = wid("status-seen", ());
+    let since = match ctx.data(|d| d.get_temp::<(String, f64)>(seen)) {
+        Some((s, at)) if s == app.ui.status => at,
+        _ => {
+            ctx.data_mut(|d| d.insert_temp(seen, (app.ui.status.clone(), now)));
+            now
+        }
+    };
+    let left = MESSAGE_SECS - (now - since);
+    // Drawn again when it is due to go.
+    (left > 0.0).then(|| {
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+        message
+    })
 }
 
 /// A cell of the status bar `r` ending at `right`: its parts left to right (text, font, colour),

@@ -1,5 +1,6 @@
 //! Trowel's window drawn and clicked in headless egui frames: 1600 × 988 like the mockup
-//! (`win-plan`, design 2.1 §3), with the app's own title bar and one document open.
+//! (`win-plan`, design 2.1 §3) unless a test says otherwise, with the app's own title bar and one
+//! document open.
 
 use egui::{Event, PointerButton, Pos2, Rect, pos2, vec2};
 use serde_json::json;
@@ -10,30 +11,83 @@ use super::*;
 use crate::VectorcraftApp;
 use crate::theme::Tokens;
 
-const SCREEN: egui::Vec2 = vec2(1600.0, 988.0);
+/// The ribbon's tiles, left to right.
+const TILES: [&str; 23] = [
+    "open",
+    "save",
+    "import",
+    "plan",
+    "section",
+    "finds",
+    "sheet",
+    "align",
+    "underlay",
+    "pen",
+    "pencil",
+    "section-line",
+    "spot-height",
+    "bucket",
+    "north",
+    "scale-bar",
+    "legend",
+    "title-block",
+    "grid",
+    "magnet",
+    "pdf",
+    "dxf",
+    "strata",
+];
 
-/// Text painted in the last frame: what it says and where.
+/// The tool column's slots, top to bottom, by their first tool.
+const SLOTS: [&str; 14] = [
+    "selection",
+    "directSelection",
+    "pen",
+    "pencil",
+    "lineSegment",
+    "rectangle",
+    "type",
+    "rotate",
+    "scale",
+    "scissors",
+    "livePaintBucket",
+    "eyedropper",
+    "hand",
+    "zoom",
+];
+
+/// The archaeology tools under them.
+const ARCH: [&str; 5] = ["section-line", "spot-height", "find-number", "posthole", "hachure"];
+
+/// Text painted in the last frame: what it says, where and in what colour.
 struct Painted {
     text: String,
     rect: Rect,
+    color: egui::Color32,
 }
 
 struct Harness {
     app: VectorcraftApp,
     ctx: egui::Context,
+    screen: egui::Vec2,
     time: f64,
     texts: Vec<Painted>,
     shapes: Vec<egui::epaint::ClippedShape>,
 }
 
 impl Harness {
-    /// The first start (Trowel's window) with a document named "Site 1" open.
+    /// The first start (Trowel's window) with a document named "Site 1" open, 1600 × 988.
     fn new() -> Self {
+        Self::sized(1600.0, 988.0)
+    }
+
+    /// The same in a `w` × `h` window.
+    fn sized(w: f32, h: f32) -> Self {
         let mut app = VectorcraftApp::new(Session::new(), crate::Services::default());
         app.custom_titlebar = true;
         crate::workspaces::start_trowel(&mut app.ui);
         app.run("file.new", json!({"name": "Site 1", "width": 400, "height": 300})).unwrap();
-        let mut h = Harness { app, ctx: egui::Context::default(), time: 0.0, texts: vec![], shapes: vec![] };
+        let mut h = Harness { app, ctx: egui::Context::default(), screen: vec2(w, h), time: 0.0, texts: vec![], shapes: vec![] };
         // The first frame installs the fonts, the second lays the window out, the third sees it.
         for _ in 0..3 {
             h.frame(vec![]);
@@ -43,7 +97,8 @@ impl Harness {
 
     fn frame(&mut self, events: Vec<Event>) {
         self.time += 0.05;
-        let raw = egui::RawInput { time: Some(self.time), screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SCREEN)), events, ..Default::default() };
+        let raw =
+            egui::RawInput { time: Some(self.time), screen_rect: Some(Rect::from_min_size(Pos2::ZERO, self.screen)), events, ..Default::default() };
         let app = &mut self.app;
         let mut out = self.ctx.run_ui(raw, |ui| {
             app.logic(ui.ctx());
@@ -54,7 +109,10 @@ impl Harness {
             .shapes
             .iter()
             .filter_map(|c| match &c.shape {
-                egui::Shape::Text(t) => Some(Painted { text: t.galley.text().to_string(), rect: t.visual_bounding_rect() }),
+                egui::Shape::Text(t) => {
+                    let color = t.galley.job.sections.first().map(|s| s.format.color).filter(|c| *c != egui::Color32::PLACEHOLDER);
+                    Some(Painted { text: t.galley.text().to_string(), rect: t.visual_bounding_rect(), color: color.unwrap_or(t.fallback_color) })
+                }
                 _ => None,
             })
             .collect();
@@ -93,6 +151,23 @@ impl Harness {
         self.click_at(r.center());
     }
 
+    /// Let `secs` seconds pass, then draw a frame.
+    fn later(&mut self, secs: f64) {
+        self.time += secs;
+        self.settle();
+    }
+
+    /// Turn the mouse wheel over `at` by `delta` (the way the content moves), and let the smooth
+    /// scrolling run its course.
+    fn wheel(&mut self, at: Pos2, delta: egui::Vec2) {
+        self.frame(vec![Event::PointerMoved(at)]);
+        let modifiers = Default::default();
+        self.frame(vec![Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta, phase: egui::TouchPhase::Move, modifiers }]);
+        for _ in 0..40 {
+            self.frame(vec![]);
+        }
+    }
+
     fn hover(&mut self, id: egui::Id) {
         let at = self.rect(id).unwrap_or_else(|| panic!("no widget {id:?}")).center();
         self.frame(vec![Event::PointerMoved(at)]);
@@ -104,6 +179,11 @@ impl Harness {
         let mut v: Vec<&Painted> = self.texts.iter().filter(|p| area.expand(0.5).contains_rect(p.rect)).collect();
         v.sort_by(|a, b| a.rect.left().total_cmp(&b.rect.left()));
         v.into_iter().map(|p| p.text.clone()).collect()
+    }
+
+    /// The colour `text` was painted in inside `area`.
+    fn color_of(&self, text: &str, area: Rect) -> Option<egui::Color32> {
+        self.texts.iter().find(|p| p.text == text && area.expand(0.5).contains_rect(p.rect)).map(|p| p.color)
     }
 
     /// Everything painted inside `area` as one string, left to right.
@@ -241,31 +321,7 @@ fn drawing_menu_sits_before_view_and_waits_for_its_jobs() {
 #[test]
 fn ribbon_follows_the_mockup_and_runs_commands() {
     let mut h = Harness::new();
-    let keys = [
-        "open",
-        "save",
-        "import",
-        "plan",
-        "section",
-        "finds",
-        "sheet",
-        "align",
-        "underlay",
-        "pen",
-        "pencil",
-        "section-line",
-        "spot-height",
-        "bucket",
-        "north",
-        "scale-bar",
-        "legend",
-        "title-block",
-        "grid",
-        "magnet",
-        "pdf",
-        "dxf",
-        "strata",
-    ];
+    let keys = TILES;
     let ribbon = h.panel(RIBBON);
     let tiles: Vec<Rect> = keys.iter().map(|k| h.rect(wid("tile", k)).unwrap_or_else(|| panic!("no tile {k}"))).collect();
     for (k, t) in keys.iter().zip(&tiles) {
@@ -328,32 +384,66 @@ fn control_bar_shows_the_layer_and_next_weight() {
     let snap = h.app.ui.view.snap_to_point;
     h.click(wid("ctl-snap", ()));
     assert_eq!(h.app.ui.view.snap_to_point, !snap);
-    // Other tools keep the classic Control bar: with nothing selected, Document Setup.
-    h.app.select_tool("selection");
-    h.settle();
-    let line = h.line_in(bar);
-    assert!(line.contains("Document Setup") && line.contains("Snap"), "{line}");
+    // Other tools keep the classic Control bar: with nothing selected, Document Setup. So do the
+    // anchor tools, whose options are there.
+    for tool in ["selection", "anchorPoint", "addAnchor", "smooth"] {
+        h.app.select_tool(tool);
+        h.settle();
+        let line = h.line_in(bar);
+        assert!(line.contains("Document Setup") && line.contains("Snap") && !line.contains("Legend"), "{tool}: {line}");
+    }
+}
+
+/// Smaller windows keep every tile and tool and the fill and stroke in reach: a 1920 × 1080 screen
+/// at 125 % less the task bar, a 1366 × 768 laptop's, the smallest window. The ribbon folds Find a
+/// Command to its magnifier, then narrows its tiles, then scrolls (the mouse wheel too); the tool
+/// column tightens, then scrolls above the fill and stroke, which stay at its foot.
+#[test]
+fn small_windows_keep_every_tile_and_tool_in_reach() {
+    for (w, height) in [(1536.0, 816.0), (1366.0, 728.0), (800.0, 500.0)] {
+        let mut h = Harness::sized(w, height);
+        let (ribbon, column) = (h.panel(RIBBON), h.panel(TOOLS));
+        let find = h.rect(wid("find", ())).unwrap_or_else(|| panic!("{w}: Find a Command"));
+        assert!(ribbon.contains_rect(find), "{w}: {find:?} in {ribbon:?}");
+        let tile_shown = |h: &Harness, k: &str| {
+            let r = h.rect(wid("tile", k)).unwrap_or_else(|| panic!("{w}: no tile {k}"));
+            ribbon.contains_rect(r) && r.right() <= find.left()
+        };
+        if w >= 1366.0 {
+            let hidden: Vec<_> = TILES.iter().filter(|k| !tile_shown(&h, k)).collect();
+            assert!(hidden.is_empty(), "{w}: tiles cut off {hidden:?}");
+        } else {
+            assert!(tile_shown(&h, "open") && !tile_shown(&h, "strata"), "{w}: the ribbon scrolls");
+            h.wheel(ribbon.center(), vec2(0.0, -4000.0));
+            assert!(tile_shown(&h, "strata"), "{w}: the wheel brings the last tile in");
+        }
+        // The fill and stroke stay at the foot of the column, the tools above them.
+        let fill = h.rect(wid("proxy", ()).with("fill-proxy")).unwrap_or_else(|| panic!("{w}: the fill and stroke"));
+        assert!(column.contains_rect(fill), "{w}: {fill:?} in {column:?}");
+        let tool_shown = |h: &Harness, id: egui::Id| {
+            let r = h.rect(id).unwrap_or_else(|| panic!("{w}: no {id:?}"));
+            column.contains_rect(r) && r.bottom() <= fill.top()
+        };
+        let all: Vec<egui::Id> = SLOTS.iter().map(|k| wid("tool", k)).chain(ARCH.iter().map(|k| wid("arch", k))).collect();
+        if height >= 816.0 {
+            let hidden: Vec<_> = all.iter().filter(|id| !tool_shown(&h, **id)).collect();
+            assert!(hidden.is_empty(), "{w}: tools cut off {hidden:?}");
+        } else {
+            let last = wid("arch", "hachure");
+            assert!(tool_shown(&h, wid("tool", "selection")) && !tool_shown(&h, last), "{w}: the column scrolls");
+            h.wheel(h.rect(wid("tool", "selection")).unwrap().center(), vec2(0.0, -4000.0));
+            assert!(tool_shown(&h, last) && tool_shown(&h, wid("tool", "zoom")), "{w}: the wheel brings the last tools in");
+        }
+        // Find a Command still opens the command palette.
+        h.click(wid("find", ()));
+        assert!(h.app.ui.palette_open, "{w}");
+    }
 }
 
 #[test]
 fn tool_column_has_the_mockup_groups() {
     let mut h = Harness::new();
-    let primaries = [
-        "selection",
-        "directSelection",
-        "pen",
-        "pencil",
-        "lineSegment",
-        "rectangle",
-        "type",
-        "rotate",
-        "scale",
-        "scissors",
-        "livePaintBucket",
-        "eyedropper",
-        "hand",
-        "zoom",
-    ];
+    let primaries = SLOTS;
     let column = h.panel(TOOLS);
     let rects: Vec<Rect> = primaries.iter().map(|p| h.rect(wid("tool", p)).unwrap_or_else(|| panic!("no tool {p}"))).collect();
     for (p, rect) in primaries.iter().zip(&rects) {
@@ -381,8 +471,7 @@ fn tool_column_has_the_mockup_groups() {
     h.press(at, PointerButton::Secondary);
     assert!(h.app.ui.flyout.is_some(), "the Pen slot's flyout");
     // The archaeology tools wait for J009.
-    let arch = ["section-line", "spot-height", "find-number", "posthole", "hachure"];
-    for a in arch {
+    for a in ARCH {
         let rect = h.rect(wid("arch", a)).unwrap_or_else(|| panic!("no {a}"));
         assert!(column.contains_rect(rect) && rect.top() > rects[13].bottom(), "{a} under the tools");
     }
@@ -452,10 +541,14 @@ fn canvas_overlays_zoom_and_name_the_tool() {
     assert!(line.contains("to add a corner point"), "the Pen's hint: {line}");
     let zoom = |h: &Harness| h.app.view().unwrap().zoom;
     let z0 = zoom(&h);
-    assert!(line.contains(&crate::state::zoom_label(z0).replace('%', " %")), "{line}");
+    // The screen readout: a whole percentage.
+    assert!(line.contains(&format!("{:.0} %", z0 * 100.0)) && !line.contains(&format!("{:.2}", z0 * 100.0)), "{line}");
     for k in ["in", "out", "fit"] {
         assert!(canvas.contains_rect(h.rect(wid("zoom", k)).unwrap()), "{k}");
     }
+    // Presses on what floats over the canvas don't reach the Pen under it.
+    let nodes = |h: &Harness| h.app.session.active().unwrap().doc.node_count();
+    let n = nodes(&h);
     h.click(wid("zoom", "in"));
     assert!(zoom(&h) > z0);
     h.click(wid("zoom", "out"));
@@ -463,42 +556,38 @@ fn canvas_overlays_zoom_and_name_the_tool() {
     assert!(zoom(&h) < z0);
     h.click(wid("zoom", "fit"));
     assert!((zoom(&h) - z0).abs() < 1e-6, "back to the fitted view");
+    h.click(wid("band", ()));
+    h.click(wid("readout", ()));
+    assert_eq!(nodes(&h), n, "no point drawn under the zoom buttons, the band or the readout");
 }
 
-/// The tool's hint shows its keys in bold, as the classic hint bar does, its parts apart by "·":
-/// on the canvas the first part, in the status bar all of them.
+/// The tool's hint reads plainly, as in the mockup: no bold keys, its parts apart by "·"; on the
+/// canvas the first part, in the status bar all of them.
 #[test]
-fn hints_show_their_keys_in_bold() {
+fn hints_read_plainly_as_in_the_mockup() {
     let mut h = Harness::new();
     h.app.select_tool("pen");
     h.settle();
     let semibold = egui::FontFamily::Name(crate::theme::FONT_UI_SEMIBOLD.into());
-    // The hint painted in `within`: its text and its bold parts.
-    let hint = |h: &Harness, within: Rect| -> Vec<(String, Vec<String>)> {
+    // The hint painted in `within`: its text and whether any of it is bold.
+    let hint = |h: &Harness, within: Rect| -> Vec<(String, bool)> {
         h.shapes
             .iter()
             .filter_map(|c| match &c.shape {
                 egui::Shape::Text(t) if within.contains_rect(t.visual_bounding_rect()) && t.galley.text().contains("to add a corner point") => {
                     let job = &t.galley.job;
-                    let bold = job
-                        .sections
-                        .iter()
-                        .filter(|s| s.format.font_id.family == semibold)
-                        .map(|s| job.text[s.byte_range.start.0..s.byte_range.end.0].to_string());
-                    Some((job.text.clone(), bold.collect()))
+                    Some((job.text.clone(), job.sections.iter().any(|s| s.format.font_id.family == semibold)))
                 }
                 _ => None,
             })
             .collect()
     };
     let band = hint(&h, h.app.canvas_rect.unwrap());
-    assert_eq!(band.len(), 1, "{band:?}");
-    assert_eq!(band[0].1, ["Click"], "{band:?}");
-    assert!(!band[0].0.contains('|') && !band[0].0.contains("Drag"), "the first part only: {band:?}");
+    assert_eq!(band, [("Click to add a corner point".to_string(), false)], "the first part only");
     let status = hint(&h, h.panel(STATUS));
     assert_eq!(status.len(), 1, "{status:?}");
-    assert_eq!(status[0].1, ["Click", "Drag", "Click the first point", "Enter"], "{status:?}");
-    assert!(!status[0].0.contains('|') && status[0].0.contains('·'), "{status:?}");
+    let (text, bold) = &status[0];
+    assert!(!bold && !text.contains('|') && text.contains("Click to add a corner point · Drag to add a smooth point"), "{status:?}");
 }
 
 #[test]
@@ -553,6 +642,7 @@ fn legend_rows_show_hide_lock_and_pick_the_layer() {
     h.click(wid("legend-lock", first.0));
     assert!(layer(&h, first).locked);
     h.click(wid("legend-lock", first.0));
+    assert!(!layer(&h, first).locked);
     assert_eq!(h.current_layer(), Some(pits));
     h.click(wid("legend-row", first.0));
     assert_eq!(h.current_layer(), Some(first));
@@ -567,6 +657,188 @@ fn legend_rows_show_hide_lock_and_pick_the_layer() {
     assert_eq!(h.layer_ids().len(), n + 1);
     let line = h.line_in(right);
     assert!(line.contains("Legend · Layers") && line.contains("Pits"), "{line}");
+}
+
+/// A locked or hidden layer takes no new lines (the engine draws on the topmost layer that is shown
+/// and unlocked instead), so when the current one is, the band, the Control bar and the legend say
+/// where lines go rather than naming a layer they won't land in.
+#[test]
+fn a_locked_or_hidden_current_layer_shows_where_lines_go() {
+    let mut h = Harness::new();
+    let first = h.layer_ids()[0];
+    let pits = NodeId(h.app.run("layer.new", json!({"name": "Pits"})).unwrap()["id"].as_u64().unwrap());
+    h.app.select_tool("pen");
+    h.settle();
+    let (canvas, bar, right) = (h.app.canvas_rect.unwrap(), h.panel(CONTROL), h.panel(RIGHT));
+    let t = h.tokens();
+    assert!(h.line_in(canvas).contains("Pen · Pits"), "{}", h.line_in(canvas));
+    assert_eq!(h.color_of("Pits", right), Some(t.text));
+    h.click(wid("legend-lock", pits.0));
+    assert_eq!(h.current_layer(), Some(pits), "still the current layer");
+    let line = h.line_in(canvas);
+    assert!(line.contains("Pen · Layer 1") && line.contains("Pits is locked: drawing on Layer 1"), "{line}");
+    assert!(h.line_in(bar).contains("Layer 1") && !h.line_in(bar).contains("Pits"), "{}", h.line_in(bar));
+    assert_eq!(h.color_of("Pits", right), Some(t.clay_text), "the legend marks the current row");
+    let id = h.app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 50, "height": 40})).unwrap()["id"].as_u64().unwrap();
+    assert_eq!(h.app.session.active().unwrap().doc.layer_containing(NodeId(id)), Some(first), "where the band said");
+    // Hidden likewise.
+    h.app.run("layer.setCurrent", json!({ "id": pits.0 })).unwrap();
+    h.click(wid("legend-lock", pits.0));
+    h.click(wid("legend-eye", pits.0));
+    assert_eq!(h.current_layer(), Some(pits));
+    assert!(h.line_in(canvas).contains("Pits is hidden: drawing on Layer 1"), "{}", h.line_in(canvas));
+    // With every layer locked or hidden nothing is drawn, and the band says so.
+    h.click(wid("legend-lock", first.0));
+    let line = h.line_in(canvas);
+    assert!(line.contains("Pits is hidden: no layer to draw on") && !line.contains("Pen · Layer 1"), "{line}");
+    assert!(h.app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 50, "height": 40})).is_err());
+}
+
+/// A layer of thousands of objects opened in the legend lays out only the rows in view (the rest
+/// scroll in), so it doesn't slow every frame down.
+#[test]
+fn a_big_open_layer_lays_out_only_the_rows_in_view() {
+    let mut h = Harness::new();
+    let first = h.layer_ids()[0];
+    let ids: Vec<u64> = (0..1500)
+        .map(|i| h.app.run("shape.rectangle", json!({"x": i % 300, "y": 10, "width": 5, "height": 5})).unwrap()["id"].as_u64().unwrap())
+        .collect();
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.settle();
+    h.click(wid("legend-open", first.0));
+    let rows = |h: &Harness| ids.iter().filter(|id| h.rect(wid("legend-obj", **id)).is_some()).count();
+    let laid_out = rows(&h);
+    assert!((5..60).contains(&laid_out), "{laid_out} of {} rows laid out", ids.len());
+    // The top one (the last drawn) shows; the wheel brings the bottom one (the first drawn).
+    let right = h.panel(RIGHT);
+    let (top, bottom) = (*ids.last().unwrap(), ids[0]);
+    assert!(right.contains_rect(h.rect(wid("legend-obj", top)).unwrap()));
+    assert!(h.rect(wid("legend-obj", bottom)).is_none());
+    let list = h.rect(wid("legend-obj", top)).unwrap().center();
+    h.wheel(list, vec2(0.0, -1.0e6));
+    let row = h.rect(wid("legend-obj", bottom)).expect("the bottom row, scrolled in");
+    assert!(right.contains_rect(row), "{row:?}");
+    // A click on it selects it.
+    h.click(wid("legend-obj", bottom));
+    assert_eq!(h.app.session.active().unwrap().selection.objects, [NodeId(bottom)]);
+}
+
+/// A message shows in the status bar for a while, then the hint again; a press on something a
+/// later job brings says so there.
+#[test]
+fn status_bar_shows_messages_for_a_while() {
+    let mut h = Harness::new();
+    h.app.select_tool("pen");
+    h.settle();
+    let bar = h.panel(STATUS);
+    assert!(h.line_in(bar).contains("to add a corner point"), "{}", h.line_in(bar));
+    h.app.status("Saved Site 1");
+    h.settle();
+    let line = h.line_in(bar);
+    assert!(line.contains("Saved Site 1") && !line.contains("to add a corner point"), "{line}");
+    h.later(7.0);
+    let line = h.line_in(bar);
+    assert!(!line.contains("Saved Site 1") && line.contains("to add a corner point"), "{line}");
+    // Section (J004) and Change All Weights (J005): what they are and when.
+    h.click(wid("tile", "section"));
+    assert!(h.line_in(bar).contains("Section: coming soon (J004)"), "{}", h.line_in(bar));
+    h.click(wid("legend-weights", ()));
+    assert!(h.line_in(bar).contains("Change All Weights…: coming soon (J005)"), "{}", h.line_in(bar));
+    h.later(5.0);
+    assert!(!h.line_in(bar).contains("coming soon"), "{}", h.line_in(bar));
+}
+
+/// The Underlay tile places a scan as a template (a locked, dimmed layer under the drawing); with
+/// one placed it shows and hides the template layers.
+#[test]
+fn underlay_tile_places_a_template_then_shows_and_hides_it() {
+    let mut h = Harness::new();
+    let dir = std::env::temp_dir().join(format!("trowel-underlay-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let scan = dir.join("scan.svg");
+    std::fs::write(&scan, r#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="30"><rect width="40" height="30"/></svg>"#).unwrap();
+    let path = scan.to_string_lossy().to_string();
+    h.app.services.pick_open = Some(Box::new(move |_| Some(path.clone())));
+    h.click(wid("tile", "underlay"));
+    let d = h.app.ui.dialog.as_ref().expect("the Place dialog");
+    assert_eq!(d.kind, crate::dialogs::place::KIND);
+    assert_eq!(d.fields.get("template"), Some(&json!(true)), "Template ticked");
+    h.app.ui.dialog = None;
+    // With a template layer: the tile shows it on and hides it, then shows it again.
+    let id = h.app.run("layer.new", json!({"name": "Scan"})).unwrap()["id"].as_u64().unwrap();
+    h.app.run("layer.setProps", json!({"ids": [id], "template": true})).unwrap();
+    h.settle();
+    let t = h.tokens();
+    let tile = h.rect(wid("tile", "underlay")).unwrap();
+    let well = Rect::from_min_size(pos2(tile.center().x - 22.0, tile.top()), vec2(44.0, 44.0));
+    assert_eq!(h.fill_at(well), Some(t.row_selected), "shown");
+    let visible = |h: &Harness| h.app.session.active().unwrap().doc.node(NodeId(id)).unwrap().visible;
+    h.click(wid("tile", "underlay"));
+    assert!(!visible(&h) && h.app.ui.dialog.is_none());
+    h.click(wid("tile", "underlay"));
+    assert!(visible(&h));
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// The panels ⋯ opens pop out beside the right column, just under its top, however the classic
+/// dock was left; with Auto-Collapse Iconic Panels on, a press on the right column puts them away.
+#[test]
+fn panels_pop_out_beside_the_right_column() {
+    let mut h = Harness::new();
+    h.app.ui.dock_collapsed = false;
+    h.app.session.prefs.auto_collapse_icon_panels = true;
+    h.click(wid("props-more", ()));
+    assert_eq!(h.app.ui.open_panel.as_deref(), Some("properties"));
+    let right = h.panel(RIGHT);
+    let flyout = h.ctx.memory(|m| m.area_rect(egui::Id::new("icon-panel"))).expect("the panel popped out");
+    assert!((flyout.right() - (right.left() - 6.0)).abs() < 1.0 && (flyout.top() - (right.top() + 6.0)).abs() < 1.0, "{flyout:?} by {right:?}");
+    h.click_at(pos2(right.left() + 12.0, right.top() + 8.0));
+    assert!(h.app.ui.open_panel.is_none(), "put away");
+}
+
+/// The snapping tolerance is a field like the mockup's: a click lists 1 to 8 px, and a pick sets it.
+#[test]
+fn snap_tolerance_is_picked_from_a_list() {
+    let mut h = Harness::new();
+    h.app.select_tool("pen");
+    h.settle();
+    let field = h.rect(wid("ctl-tolerance", ())).unwrap();
+    assert_eq!(h.texts_in(field), ["2", "px"]);
+    h.click(wid("ctl-tolerance", ()));
+    let items = h.popup_buttons();
+    assert_eq!(items.len(), 8, "{items:?}");
+    h.click_at(items[3].0.center());
+    assert_eq!(h.app.session.prefs.snap_to_point_tolerance, 4.0);
+    let field = h.rect(wid("ctl-tolerance", ())).unwrap();
+    assert_eq!(h.texts_in(field), ["4", "px"]);
+}
+
+/// In a small window the drawing tools' Control bar is cut at Snap rather than running under it.
+#[test]
+fn control_bar_keeps_snap_in_reach_in_a_small_window() {
+    let mut h = Harness::sized(800.0, 500.0);
+    h.app.select_tool("pen");
+    h.settle();
+    // Nothing else shows over Snap and its tolerance…
+    let toggle = h.rect(wid("ctl-snap", ())).unwrap();
+    let bar = h.panel(CONTROL);
+    let snap_area = Rect::from_min_max(pos2(toggle.left(), bar.top()), bar.max);
+    let under: Vec<String> = h
+        .shapes
+        .iter()
+        .filter_map(|c| match &c.shape {
+            egui::Shape::Text(t) if !["Snap", "Tolerance", "2", "px"].contains(&t.galley.text()) => {
+                let shown = c.clip_rect.intersect(t.visual_bounding_rect());
+                (shown.is_positive() && shown.intersects(snap_area)).then(|| t.galley.text().to_string())
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(under.is_empty(), "over Snap: {under:?}");
+    // …and a click on it reaches it.
+    let snap = h.app.ui.view.snap_to_point;
+    h.click(wid("ctl-snap", ()));
+    assert_eq!(h.app.ui.view.snap_to_point, !snap);
 }
 
 #[test]

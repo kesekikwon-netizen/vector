@@ -55,6 +55,14 @@ pub fn start_trowel(ui: &mut UiState) {
         return;
     }
     ui.trowel_started = true;
+    // A layout the user changed from its workspace is kept as a workspace of its own, to come back
+    // to from Window › Workspace; one as it comes needs no copy.
+    let name = tw!("Layout before Trowel");
+    let changed = find(ui, &ui.workspace).is_none_or(|w| Workspace { name: String::new(), ..w } != capture(ui, ""));
+    if changed && find(ui, name).is_none() {
+        let kept = capture(ui, name);
+        ui.custom_workspaces.push(kept);
+    }
     if let Some(w) = find(ui, TROWEL) {
         apply(ui, &w);
     }
@@ -497,6 +505,25 @@ mod tests {
     /// Trowel's own window (design 2.1 §3) is the last built-in workspace. The first start of
     /// this version switches to it once; another workspace brings the classic chrome back, and a
     /// later start leaves the user's choice alone.
+    #[test]
+    fn trowel_keeps_a_changed_layout_to_go_back_to() {
+        // Essentials as it comes needs no copy: Window › Workspace brings it back.
+        let mut ui = UiState::default();
+        start_trowel(&mut ui);
+        assert!(ui.trowel && ui.custom_workspaces.is_empty());
+        // A layout changed from its workspace is kept as a workspace of its own.
+        let mut ui = UiState::default();
+        ui.control_bar = !ui.control_bar;
+        ui.open_panel = Some("swatches".into());
+        let before = capture(&ui, "");
+        start_trowel(&mut ui);
+        assert!(ui.trowel);
+        let kept = find(&ui, "Layout before Trowel").expect("the layout kept");
+        assert_eq!(Workspace { name: String::new(), ..kept.clone() }, before);
+        apply(&mut ui, &kept);
+        assert!(!ui.trowel && ui.open_panel.as_deref() == Some("swatches"));
+    }
+
     #[test]
     fn trowel_starts_once_and_the_classic_layout_comes_back() {
         assert_eq!(builtins().last().map(|w| w.name.clone()), Some(TROWEL.to_string()));

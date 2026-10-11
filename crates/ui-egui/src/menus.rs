@@ -74,7 +74,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "file.place",
         "Place…",
         "Cmd+Shift+P",
-        "{path? | paths?} no file: pick files, then the Place dialog (Link, Template, Replace); paths: that dialog for them; path (or name+dataBase64, …file.place params): file.place, centred in the view (a PDF with several pages or a password and no page opens the Place PDF dialog first)",
+        "{path? | paths?, template?: bool} no file: pick files, then the Place dialog (Link, Template, Replace; `template` ticks Template); paths: that dialog for them; path (or name+dataBase64, …file.place params): file.place, centred in the view (a PDF with several pages or a password and no page opens the Place PDF dialog first)",
     ),
     ("file.openRecent1", "Open Recent File 1", "", "{}"),
     ("file.openRecent2", "Open Recent File 2", "", "{}"),
@@ -1132,8 +1132,9 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
             }
             let tab = canonical.and_then(DockTab::from_id);
             match (canonical, tab) {
-                // A collapsed dock pops the panel out of its icon, like the icon panels.
-                (Some(p), Some(tab)) if app.ui.dock_collapsed => {
+                // A collapsed dock pops the panel out of its icon, like the icon panels; Trowel, which
+                // has no tabbed group, pops it out beside its right column.
+                (Some(p), Some(tab)) if app.ui.dock_collapsed || app.ui.trowel => {
                     app.ui.dock_tab = tab;
                     app.ui.open_panel = if app.ui.open_panel.as_deref() == Some(p) { None } else { Some(p.to_string()) };
                     app.ui.dock = true;
@@ -1449,7 +1450,7 @@ pub fn checked(app: &VectorcraftApp, id: &str, p: &Value) -> Option<bool> {
             let canonical = normalize_panel(panel);
             match canonical.and_then(DockTab::from_id) {
                 _ if canonical.is_some_and(|id| crate::floating::group_of(&app.ui, id).is_some()) => true,
-                Some(tab) if !app.ui.dock_collapsed => crate::floating::shown_tab(&app.ui) == Some(tab),
+                Some(tab) if !app.ui.dock_collapsed && !app.ui.trowel => crate::floating::shown_tab(&app.ui) == Some(tab),
                 _ => canonical.is_some_and(|id| app.ui.open_panel.as_deref() == Some(id)),
             }
         }

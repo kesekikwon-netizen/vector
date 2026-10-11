@@ -12,6 +12,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         .frame(egui::Frame::NONE.fill(t.panel))
         .show(ui, |ui| {
             let r = ui.max_rect();
+            line_below(ui, r, t.border);
             if custom {
                 crate::titlebar::drag_area(ui, r);
             }

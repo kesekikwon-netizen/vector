@@ -6,25 +6,10 @@ use serde_json::json;
 
 use super::*;
 
-/// The tools the Control bar shows the drawing layout for.
-const DRAWING_TOOLS: &[&str] = &[
-    "pen",
-    "curvature",
-    "addAnchor",
-    "deleteAnchor",
-    "anchorPoint",
-    "pencil",
-    "smooth",
-    "lineSegment",
-    "arc",
-    "rectangle",
-    "roundedRectangle",
-    "ellipse",
-    "polygon",
-    "star",
-    "paintbrush",
-    "blobBrush",
-];
+/// The tools the Control bar shows the drawing layout for: those that draw lines and shapes. The
+/// anchor tools, Smooth and Arc keep the classic Control bar, where their options are.
+const DRAWING_TOOLS: &[&str] =
+    &["pen", "curvature", "pencil", "lineSegment", "rectangle", "roundedRectangle", "ellipse", "polygon", "star", "paintbrush", "blobBrush"];
 
 const H: f32 = 28.0;
 const GAP: f32 = 10.0;
@@ -36,11 +21,12 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         line_below(ui, r, t.border);
         let left = snap_controls(app, ui, r, &t);
         let room = Rect::from_min_max(pos2(r.left() + 12.0, r.top()), pos2(left - GAP, r.bottom()));
+        // Either layout is cut at Snap when the window is too narrow for it.
+        let mut row = ui.new_child(egui::UiBuilder::new().max_rect(room).layout(egui::Layout::left_to_right(egui::Align::Center)));
+        row.set_clip_rect(room);
         if DRAWING_TOOLS.contains(&app.session.tool_id()) && app.session.active().is_some() {
-            drawing(app, ui, room, &t);
+            drawing(app, &mut row, room, &t);
         } else {
-            let mut row = ui.new_child(egui::UiBuilder::new().max_rect(room).layout(egui::Layout::left_to_right(egui::Align::Center)));
-            row.set_clip_rect(room);
             crate::chrome::control_bar_contents(app, &mut row);
         }
     });
@@ -49,11 +35,12 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
 /// Snap to Point and its tolerance, at the right end of `r`. Returns where they begin.
 fn snap_controls(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect, t: &Tokens) -> f32 {
     let cy = r.center().y;
-    let field = Rect::from_min_size(pos2(r.right() - 12.0 - 56.0, cy - H / 2.0), vec2(56.0, H));
-    let mut tol = ui.new_child(egui::UiBuilder::new().max_rect(field).layout(egui::Layout::left_to_right(egui::Align::Center)));
-    let v = app.session.prefs.snap_to_point_tolerance;
-    if let Some(nv) = crate::widgets::range_field(&mut tol, wid("ctl-tolerance", ()), v, 1.0..=8.0, " px", 0, field.width()) {
-        app.run("prefs.set", json!({"key": "snapToPointTolerance", "value": nv})).ok();
+    let value = app.session.prefs.snap_to_point_tolerance.round().clamp(1.0, 8.0);
+    let digits = format!("{value:.0}");
+    let field_w = (8.0 + width_of(ui, &digits, mono(12.0)) + 6.0 + width_of(ui, "px", font(12.0)) + 8.0).max(56.0);
+    let field = Rect::from_min_size(pos2(r.right() - 12.0 - field_w, cy - H / 2.0), vec2(field_w, H));
+    if let Some(v) = tolerance_field(ui, field, value, &digits, t) {
+        app.run("prefs.set", json!({"key": "snapToPointTolerance", "value": v})).ok();
     }
     let label = text(ui, pos2(field.left() - GAP, cy), Align2::RIGHT_CENTER, tw!("Tolerance"), font(12.0), t.text_dim);
     let on = app.ui.view.snap_to_point;
@@ -68,11 +55,31 @@ fn snap_controls(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect, t: &Tokens) -> 
         t.input
     };
     field_box(ui, toggle, fill, if on { t.ring } else { t.input_border });
-    text(ui, toggle.center(), Align2::CENTER_CENTER, tw!("Snap"), if on { bold(12.0) } else { font(12.0) }, t.text);
+    text(ui, toggle.center(), Align2::CENTER_CENTER, tw!("Snap"), font(12.0), t.text);
     if resp.on_hover_text(tl!("Snap to Point")).clicked() {
         crate::menus::invoke(app, "view.snapToPoint", json!({}));
     }
     toggle.left()
+}
+
+/// The snapping tolerance in whole pixels (1 to 8) in `r`: its digits, then "px". A click lists the
+/// values. Returns the one picked.
+fn tolerance_field(ui: &Ui, r: Rect, value: f64, digits: &str, t: &Tokens) -> Option<f64> {
+    let resp = ui.interact(r, wid("ctl-tolerance", ()), Sense::click());
+    field_box(ui, r, if resp.hovered() { t.panel } else { t.input }, t.input_border);
+    let x = text(ui, pos2(r.left() + 8.0, r.center().y), Align2::LEFT_CENTER, digits, mono(12.0), t.text).right() + 6.0;
+    text(ui, pos2(x, r.center().y), Align2::LEFT_CENTER, "px", font(12.0), t.text_disabled);
+    let mut set = None;
+    let resp = resp.on_hover_text(tw!("How near the pointer snaps to a point"));
+    egui::Popup::menu(&resp).show(|ui| {
+        for v in 1..=8 {
+            let v = f64::from(v);
+            if ui.selectable_label(v == value, format!("{v:.0} px")).clicked() {
+                set = Some(v);
+            }
+        }
+    });
+    set
 }
 
 /// The drawing tools' layout in `room`.
@@ -92,11 +99,11 @@ fn drawing(app: &mut VectorcraftApp, ui: &mut Ui, room: Rect, t: &Tokens) {
     x = divider(ui, x, cy, t);
     let mut x2 = x;
     label(tw!("When Closed"), t.text_dim, &mut x2);
-    x = dropdown_soon(ui, wid("ctl-closed", ()), pos2(x2, cy), tw!("Area and Perimeter"), "J009", t) + GAP;
+    x = dropdown_soon(ui, wid("ctl-closed", ()), pos2(x2, cy), tw!("When Closed"), tw!("Area and Perimeter"), "J009", t) + GAP;
     x = divider(ui, x, cy, t);
     let mut x2 = x;
     label(tw!("Pen Pressure"), t.text_dim, &mut x2);
-    x = segments_soon(ui, pos2(x2, cy), &[tw!("Same Weight"), tw!("Follow Pressure")], "J016", t) + GAP;
+    x = segments_soon(ui, pos2(x2, cy), tw!("Pen Pressure"), &[tw!("Same Weight"), tw!("Follow Pressure")], "J016", t) + GAP;
     x = divider(ui, x, cy, t);
     p.text(pos2(x, cy), Align2::LEFT_CENTER, tw!("Weight, hatch and line type: in the Drawing Palette at the right"), font(12.0), t.text_disabled);
 }
@@ -107,31 +114,36 @@ fn divider(ui: &Ui, x: f32, cy: f32, t: &Tokens) -> f32 {
     x + 1.0 + GAP
 }
 
-/// The legend field: the current layer's colour, its name and the next line's weight; a click
-/// lists the layers to draw on. Returns where it ends.
+/// The legend field: the colour and name of the layer the next line goes to and its weight; a click
+/// lists the layers to draw on. When the current layer is locked or hidden it shows the layer that
+/// takes the line instead, edged in clay, and says why on hover. Returns where it ends.
 fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f32 {
     let Some(st) = app.session.active() else { return at.x };
     let current = st.current_layer();
-    let name = current.and_then(|id| st.doc.node(id)).map(|n| n.display_name()).unwrap_or_default();
-    let colour = current.map(|id| crate::panels::layers::layer_colour(&st.doc, id));
+    let target = draw_target(st);
+    let name = match target.into.and_then(|id| st.doc.node(id)) {
+        Some(n) => n.display_name(),
+        None => tw!("No layer to draw on").to_string(),
+    };
+    let colour = target.into.map(|id| crate::panels::layers::layer_colour(&st.doc, id));
     let stroke = crate::panels::current_stroke(app);
     let mixed = crate::panels::stroke_mixed(app, ui.ctx());
     let weight = crate::panels::stroke::shown_weight(app, stroke.as_ref(), &mixed).map(|w| app.session.stroke_unit().format(w)).unwrap_or_default();
     let name_w = width_of(ui, &name, font(12.0)).min(220.0);
     let weight_w = width_of(ui, &weight, mono(12.0));
-    let w = 8.0 + 20.0 + 6.0 + name_w + 8.0 + weight_w + 8.0 + 10.0 + 8.0;
+    let w = (8.0 + 20.0 + 6.0 + name_w + 6.0 + weight_w + 8.0 + 8.0 + 8.0).max(196.0);
     let r = Rect::from_min_size(pos2(at.x, at.y - H / 2.0), vec2(w, H));
     let resp = ui.interact(r, wid("ctl-layer", ()), Sense::click());
-    field_box(ui, r, if resp.hovered() { t.panel } else { t.input }, t.input_border);
+    field_box(ui, r, if resp.hovered() { t.panel } else { t.input }, if target.note.is_some() { t.clay } else { t.input_border });
     let patch = Rect::from_min_size(pos2(r.left() + 8.0, at.y - 6.0), vec2(20.0, 12.0));
     if let Some(c) = colour {
-        ui.painter().rect(patch, 0.0, c.gamma_multiply(0.25), Stroke::new(1.5, c), StrokeKind::Inside);
+        ui.painter().rect(patch, 0.0, c.gamma_multiply(0.25), Stroke::new(2.0, c), StrokeKind::Inside);
     }
     let p = ui.painter().with_clip_rect(r);
     let n = p.text(pos2(patch.right() + 6.0, at.y), Align2::LEFT_CENTER, &name, font(12.0), t.text);
-    p.text(pos2(n.right().min(patch.right() + 6.0 + name_w) + 8.0, at.y), Align2::LEFT_CENTER, &weight, mono(12.0), t.text_dim);
-    crate::icons::paint(ui, "chevron-down", Rect::from_center_size(pos2(r.right() - 13.0, at.y), vec2(10.0, 10.0)), t.text_dim);
-    let resp = resp.on_hover_text(tw!("The layer and weight the next line is drawn with"));
+    p.text(pos2(n.right().min(patch.right() + 6.0 + name_w) + 6.0, at.y), Align2::LEFT_CENTER, &weight, mono(12.0), t.text_disabled);
+    triangle(ui, pos2(r.right() - 8.0 - 4.0, at.y), 8.0, true, t.text_dim);
+    let resp = resp.on_hover_text(target.note.as_deref().unwrap_or(tw!("The layer and weight the next line is drawn with")));
     let mut pick = None;
     egui::Popup::menu(&resp).show(|ui| {
         ui.set_min_width(220.0);
@@ -146,7 +158,25 @@ fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f
                 let patch = Rect::from_min_size(pos2(row.left() + 6.0, row.center().y - 6.0), vec2(20.0, 12.0));
                 ui.painter().rect(patch, 0.0, c.gamma_multiply(0.25), Stroke::new(1.5, c), StrokeKind::Inside);
                 let f = if Some(layer.id) == current { bold(12.0) } else { font(12.0) };
-                ui.painter().text(pos2(patch.right() + 8.0, row.center().y), Align2::LEFT_CENTER, layer.display_name(), f, t.text);
+                // A locked or hidden layer takes no lines: dimmed, with why at the right.
+                let editable = st.doc.is_editable(layer.id);
+                ui.painter().text(
+                    pos2(patch.right() + 8.0, row.center().y),
+                    Align2::LEFT_CENTER,
+                    layer.display_name(),
+                    f,
+                    if editable { t.text } else { t.text_dim },
+                );
+                let why = if !layer.visible {
+                    Some("eye-off")
+                } else if layer.locked {
+                    Some("lock")
+                } else {
+                    None
+                };
+                if let Some(icon) = why {
+                    crate::icons::paint(ui, icon, Rect::from_center_size(pos2(row.right() - 14.0, row.center().y), vec2(13.0, 13.0)), t.text_dim);
+                }
                 if rr.clicked() {
                     pick = Some(layer.id);
                     ui.close();
@@ -166,28 +196,29 @@ fn layer_field(app: &mut VectorcraftApp, ui: &mut Ui, at: Pos2, t: &Tokens) -> f
 fn toggle_soon(ui: &Ui, id: egui::Id, at: Pos2, label: &str, job: &str, t: &Tokens) -> f32 {
     let w = width_of(ui, label, font(12.0)) + 20.0;
     let r = Rect::from_min_size(pos2(at.x, at.y - H / 2.0), vec2(w, H));
-    field_box(ui, r, t.input, t.input_border);
+    field_box(ui, r, t.panel_darker, t.input_border);
     text(ui, r.center(), Align2::CENTER_CENTER, label, font(12.0), t.text_disabled);
-    soon_widget(ui, id, r, job);
+    soon_widget(ui, id, r, label, job);
     r.right()
 }
 
-/// A drop-down a later job brings, showing `value`. Returns where it ends.
-fn dropdown_soon(ui: &Ui, id: egui::Id, at: Pos2, value: &str, job: &str, t: &Tokens) -> f32 {
-    let w = width_of(ui, value, font(12.0)) + 8.0 + 6.0 + 10.0 + 8.0;
+/// A drop-down a later job brings, `what` it sets showing `value`. Returns where it ends.
+fn dropdown_soon(ui: &Ui, id: egui::Id, at: Pos2, what: &str, value: &str, job: &str, t: &Tokens) -> f32 {
+    let w = width_of(ui, value, font(12.0)) + 8.0 + 8.0 + 8.0 + 8.0;
     let r = Rect::from_min_size(pos2(at.x, at.y - H / 2.0), vec2(w, H));
-    field_box(ui, r, t.input, t.input_border);
+    field_box(ui, r, t.panel_darker, t.input_border);
     text(ui, pos2(r.left() + 8.0, at.y), Align2::LEFT_CENTER, value, font(12.0), t.text_disabled);
-    crate::icons::paint(ui, "chevron-down", Rect::from_center_size(pos2(r.right() - 13.0, at.y), vec2(10.0, 10.0)), t.text_disabled);
-    soon_widget(ui, id, r, job);
+    triangle(ui, pos2(r.right() - 8.0 - 4.0, at.y), 8.0, true, t.text_disabled);
+    soon_widget(ui, id, r, what, job);
     r.right()
 }
 
-/// A segmented choice a later job brings, its first segment on. Returns where it ends.
-fn segments_soon(ui: &Ui, at: Pos2, labels: &[&str], job: &str, t: &Tokens) -> f32 {
+/// A segmented choice a later job brings, `what` it sets, its first segment on. Returns where it
+/// ends.
+fn segments_soon(ui: &Ui, at: Pos2, what: &str, labels: &[&str], job: &str, t: &Tokens) -> f32 {
     let widths: Vec<f32> = labels.iter().map(|l| width_of(ui, l, font(12.0)) + 18.0).collect();
     let r = Rect::from_min_size(pos2(at.x, at.y - H / 2.0), vec2(widths.iter().sum(), H));
-    field_box(ui, r, t.input, t.input_border);
+    field_box(ui, r, t.panel_darker, t.input_border);
     let mut x = r.left();
     for (i, (label, w)) in labels.iter().zip(&widths).enumerate() {
         let seg = Rect::from_min_size(pos2(x, r.top()), vec2(*w, H));
@@ -197,7 +228,7 @@ fn segments_soon(ui: &Ui, at: Pos2, labels: &[&str], job: &str, t: &Tokens) -> f
             ui.painter().vline(seg.left() + 0.5, seg.y_range(), Stroke::new(1.0, t.border));
         }
         text(ui, seg.center(), Align2::CENTER_CENTER, *label, font(12.0), t.text_disabled);
-        soon_widget(ui, wid("ctl-pressure", i), seg, job);
+        soon_widget(ui, wid("ctl-pressure", i), seg, what, job);
         x += w;
     }
     r.right()

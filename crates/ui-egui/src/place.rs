@@ -62,6 +62,8 @@ pub struct PlaceState {
     thumbs: Vec<(String, Thumb)>,
     /// The Control bar's `image.info`, for (document uid, revision, image id).
     info: Option<((u64, u64, u64), Value)>,
+    /// The next Place dialog opens with Template ticked (`file.place` with `template`).
+    template: bool,
 }
 
 /// A place cursor thumbnail: decoded when the cursor is loaded, uploaded when first drawn (and
@@ -102,6 +104,7 @@ pub fn run(app: &mut VectorcraftApp, p: &Value) -> Result<Value, String> {
         return Ok(crate::dialogs::text_import::open(app, p));
     }
     if p.get("path").is_none() && p.get("dataBase64").is_none() {
+        app.place.template = p.get("template").and_then(Value::as_bool).unwrap_or(false);
         let files: Vec<Value> = match p.get("paths").and_then(Value::as_array) {
             Some(a) => a.iter().filter_map(Value::as_str).map(|path| json!({ "path": path })).collect(),
             None => return pick(app).map(|_| Value::Null),
@@ -157,7 +160,7 @@ fn open_dialog(app: &mut VectorcraftApp, files: Vec<Value>) {
         json!({
             "files": files,
             "link": app.ui.place_link,
-            "template": false,
+            "template": std::mem::take(&mut app.place.template),
             "replace": false,
             "__replace": files.len() == 1 && one_object,
             "__documents": files.iter().any(is_vectorcraft_file),

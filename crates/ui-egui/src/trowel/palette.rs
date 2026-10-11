@@ -25,7 +25,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let selected = app.session.active().is_some_and(|d| !d.selection.objects.is_empty());
     let head = Rect::from_min_size(r.min, vec2(r.width(), 32.0));
     panel_head(ui, head, tw!("Drawing Palette"), if selected { tw!("Selected lines · pt") } else { tw!("Next line · pt") }, 1, &t);
-    if head_button(ui, wid("palette-more", ()), head, 0, "ellipsis", tw!("Stroke options"), &t).clicked() {
+    if more_button(ui, wid("palette-more", ()), head, 0, tw!("Stroke options"), &t).clicked() {
         crate::menus::invoke(app, "window.panel", json!({ "panel": "stroke" }));
     }
     let stroke = crate::panels::current_stroke(app);
@@ -53,7 +53,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let add = Rect::from_min_size(pos2(x, cy - CHIP_H / 2.0), vec2(24.0, CHIP_H));
     chip(ui, add, false, false, &t);
     crate::icons::paint(ui, "plus", Rect::from_center_size(add.center(), vec2(12.0, 12.0)), t.text_disabled);
-    soon_widget(ui, wid("weight-add", ()), add, "J018");
+    soon_widget(ui, wid("weight-add", ()), add, tw!("Add a Weight"), "J018");
     // Hatch: none until J014 brings them.
     let cy = row(1);
     text(ui, pos2(r.left() + 14.0, cy), Align2::LEFT_CENTER, tw!("Hatch"), font(11.0), t.text_dim);
@@ -74,7 +74,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         if on {
             ui.interact(chip_r, wid("hatch", key), Sense::hover());
         } else {
-            soon_widget(ui, wid("hatch", key), chip_r, "J014");
+            soon_widget(ui, wid("hatch", key), chip_r, &format!("{} {label}", tw!("Hatch")), "J014");
         }
         x = chip_r.right() + 4.0;
     }
@@ -103,7 +103,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
                 set = Some(json!({ "dash": null }));
             }
         } else {
-            soon_widget(ui, wid("dash", key), part, "J014");
+            soon_widget(ui, wid("dash", key), part, label, "J014");
         }
         x += w;
     }

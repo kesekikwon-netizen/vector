@@ -42,8 +42,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
                     ui.painter().rect_filled(row, CornerRadius::same(4), t.hover);
                 }
                 crate::icons::paint(ui, "tw-plan", Rect::from_center_size(pos2(row.left() + 6.0 + 7.0, row.center().y), vec2(14.0, 14.0)), t.icon);
-                let f = if on { bold(12.0) } else { font(12.0) };
-                ui.painter().with_clip_rect(row).text(pos2(row.left() + 26.0, row.center().y), Align2::LEFT_CENTER, name, f, t.text);
+                ui.painter().with_clip_rect(row).text(pos2(row.left() + 26.0, row.center().y), Align2::LEFT_CENTER, name, font(12.0), t.text);
                 if resp.on_hover_text(name).clicked() {
                     open = Some(i);
                 }
@@ -69,16 +68,19 @@ fn footer(app: &mut VectorcraftApp, ui: &Ui, r: Rect, t: &Tokens) -> Rect {
         let u = app.session.general_unit();
         Some(format!("{} × {}", u.format(ab.rect.width()), u.format(ab.rect.height())))
     });
-    let lines = [
-        size.map(|s| format!("{} · {s}", tw!("This drawing"))).unwrap_or_default(),
-        tw!("Scale not set").to_string(),
-        tw!("Coordinate system not set").to_string(),
-    ];
+    // "This drawing · 400 × 300 mm", the size in ink; the scale and coordinate system with J006.
     let mut y = foot.top() + 8.0 + line / 2.0;
-    for l in lines {
+    if let Some(size) = size {
+        let x = text(ui, pos2(foot.left() + 12.0, y), Align2::LEFT_CENTER, format!("{} · ", tw!("This drawing")), font(11.0), t.text_dim).right();
+        text(ui, pos2(x, y), Align2::LEFT_CENTER, size, mono(11.0), t.text);
+    }
+    y += line;
+    let soon_top = y - line / 2.0;
+    for l in [tw!("Scale not set"), tw!("Coordinate system not set")] {
         text(ui, pos2(foot.left() + 12.0, y), Align2::LEFT_CENTER, l, font(11.0), t.text_dim);
         y += line;
     }
-    soon_widget(ui, wid("set-foot", ()), foot.shrink2(vec2(0.0, 1.0)), "J006");
+    let lines = Rect::from_min_max(pos2(foot.left(), soon_top), pos2(foot.right() - 1.0, y - line / 2.0));
+    soon_widget(ui, wid("set-foot", ()), lines, tw!("Scale and coordinate system"), "J006");
     foot
 }

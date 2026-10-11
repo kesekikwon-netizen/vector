@@ -92,12 +92,15 @@ fn right_column(app: &mut VectorcraftApp, ui: &mut Ui) {
     egui::Panel::right(RIGHT).resizable(false).exact_size(RIGHT_W).show_separator_line(false).frame(egui::Frame::NONE.fill(t.panel)).show(ui, |ui| {
         let r = ui.max_rect();
         line_left(ui, r, t.border);
-        crate::dock::set_column_left(ui.ctx(), r.left());
+        ui.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id()));
         let top = Rect::from_min_size(r.min, vec2(r.width(), palette::HEIGHT));
         let bottom = Rect::from_min_max(pos2(r.left(), (r.bottom() - props::height(ui.ctx())).max(top.bottom())), r.max);
         palette::show(app, ui, top);
         legend::show(app, ui, Rect::from_min_max(top.left_bottom(), bottom.right_top()));
         props::show(app, ui, bottom);
+        // Its panels pop out to its left, level with its top.
+        let keep = ui.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id())).unwrap_or_default();
+        crate::dock::set_flyout(ui.ctx(), crate::dock::Flyout { left: r.left(), top: r.top() + 6.0, keep });
     });
 }
 
@@ -149,7 +152,7 @@ fn field_box(ui: &Ui, r: Rect, fill: Color32, edge: Color32) {
 /// left at the right for `buttons` [`head_button`]s.
 fn panel_head(ui: &Ui, r: Rect, title: &str, sub: &str, buttons: usize, t: &Tokens) {
     line_below(ui, r, t.border);
-    let x = text(ui, pos2(r.left() + 12.0, r.center().y), Align2::LEFT_CENTER, title, bold(13.0), t.text).right() + 6.0;
+    let x = text(ui, pos2(r.left() + 12.0, r.center().y), Align2::LEFT_CENTER, title, font(13.0), t.text).right() + 6.0;
     let room = Rect::from_min_max(r.min, pos2(r.right() - 12.0 - 24.0 * buttons as f32 - 4.0, r.bottom()));
     ui.painter().with_clip_rect(room).text(pos2(x, r.center().y), Align2::LEFT_CENTER, sub, font(11.0), t.text_dim);
 }
@@ -166,15 +169,40 @@ fn head_button(ui: &Ui, id: egui::Id, head: Rect, slot: usize, icon: &str, tip: 
     resp.on_hover_text(tip)
 }
 
+/// The ⋯ button of a head that pops a panel out beside the right column, or puts it away
+/// ([`head_button`]). A press on it doesn't count as one away from the popped-out panel.
+fn more_button(ui: &Ui, id: egui::Id, head: Rect, slot: usize, tip: &str, t: &Tokens) -> egui::Response {
+    let resp = head_button(ui, id, head, slot, "ellipsis", tip, t);
+    ui.data_mut(|d| d.get_temp_mut_or_default::<Vec<Rect>>(keep_id()).push(resp.rect));
+    resp
+}
+
+/// Where the ⋯ buttons of the right column are kept while it is drawn.
+fn keep_id() -> egui::Id {
+    wid("flyout-keep", ())
+}
+
 /// A small button a later job brings, labelled `label` at `at` (its left centre), 26 points tall.
 /// Returns where it ends.
 fn button_soon(ui: &Ui, id: egui::Id, at: Pos2, label: &str, strong: bool, job: &str, t: &Tokens) -> f32 {
     let f = if strong { bold(11.0) } else { font(11.0) };
     let r = Rect::from_min_size(pos2(at.x, at.y - 13.0), vec2(width_of(ui, label, f.clone()) + 16.0, 26.0));
-    field_box(ui, r, t.input, t.input_border);
+    field_box(ui, r, t.panel_darker, t.input_border);
     text(ui, r.center(), Align2::CENTER_CENTER, label, f, t.text_disabled);
-    soon_widget(ui, id, r, job);
+    soon_widget(ui, id, r, label, job);
     r.right()
+}
+
+/// A small filled triangle around `c`, `size` wide, pointing down (`down`) or right: the mockup's
+/// ▾ and ▸.
+fn triangle(ui: &Ui, c: Pos2, size: f32, down: bool, color: Color32) {
+    let (h, w) = (size / 2.0, size * 0.3);
+    let points = if down {
+        vec![c + vec2(-h, -w), c + vec2(h, -w), c + vec2(0.0, w + 1.0)]
+    } else {
+        vec![c + vec2(-w, -h), c + vec2(w + 1.0, 0.0), c + vec2(-w, h)]
+    };
+    ui.painter().add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
 }
 
 /// A caption over a list, from `x` to `right` with a line running from it; `cy` is its middle.
@@ -185,14 +213,46 @@ fn list_caption(ui: &Ui, x: f32, right: f32, cy: f32, label: &str, t: &Tokens) {
     }
 }
 
-/// The hover text of something a later job brings: "Coming soon · J005".
-fn soon(job: &str) -> String {
-    crate::i18n::fmt(tw!("Coming soon · {job}"), &[("job", job)])
+/// The hover text of `what` a later job brings: "Change All Weights… · Coming soon · J005".
+fn soon(what: &str, job: &str) -> String {
+    crate::i18n::fmt(tw!("{what} · Coming soon · {job}"), &[("what", what), ("job", job)])
 }
 
-/// A dimmed control a later job brings: it shows `job` on hover and does nothing.
-fn soon_widget(ui: &Ui, id: egui::Id, r: Rect, job: &str) -> egui::Response {
-    ui.interact(r, id, Sense::hover()).on_hover_text(soon(job))
+/// How long the status bar shows a note, and a message, before it shows the hint again (seconds).
+const NOTE_SECS: f64 = 4.0;
+const MESSAGE_SECS: f64 = 6.0;
+
+/// Where the note a press on something a later job brings left is kept, with when.
+fn note_id() -> egui::Id {
+    wid("soon-note", ())
+}
+
+/// A dimmed control a later job brings, `what` it is: on hover it says when (its `job`); a press
+/// says so in the status bar ([`soon_note`]) and does nothing else.
+fn soon_widget(ui: &Ui, id: egui::Id, r: Rect, what: &str, job: &str) -> egui::Response {
+    let resp = ui.interact(r, id, Sense::click());
+    if resp.clicked() {
+        note_soon(ui.ctx(), what, job);
+    }
+    resp.on_hover_text(soon(what, job))
+}
+
+/// Say in the status bar that `what` comes with `job`.
+fn note_soon(ctx: &egui::Context, what: &str, job: &str) {
+    let note = crate::i18n::fmt(tw!("{what}: coming soon ({job})"), &[("what", what), ("job", job)]);
+    let now = ctx.input(|i| i.time);
+    ctx.data_mut(|d| d.insert_temp(note_id(), (note, now)));
+}
+
+/// The note a press on something a later job brings left, for [`NOTE_SECS`].
+fn soon_note(ctx: &egui::Context) -> Option<String> {
+    let (note, at) = ctx.data(|d| d.get_temp::<(String, f64)>(note_id()))?;
+    let left = NOTE_SECS - (ctx.input(|i| i.time) - at);
+    // Drawn again when it is due to go.
+    (left > 0.0).then(|| {
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+        note
+    })
 }
 
 /// The name of tool `id` as Trowel shows it: its label without "Tool".
@@ -205,22 +265,43 @@ fn tool_name(id: &str) -> String {
         .unwrap_or_default()
 }
 
-/// The active tool's hint at `size`, its keys bold in `key` and the rest in `rest` as on the classic
-/// hint bar, its parts apart by "·"; `first` keeps the first part ("Click to add a corner point").
-fn hint_job(app: &VectorcraftApp, first: bool, size: f32, key: Color32, rest: Color32) -> egui::text::LayoutJob {
-    let mut job = egui::text::LayoutJob::default();
-    for (s, is_key) in crate::chrome::current_hint(app) {
-        let (font_id, color) = if is_key { (bold(size), key) } else { (font(size), rest) };
-        let format = egui::TextFormat { font_id, color, ..Default::default() };
-        match s.split_once('|') {
-            Some((part, _)) if first => {
-                job.append(part.trim_end(), 0.0, format);
-                break;
-            }
-            _ => job.append(&s.replace('|', "·"), 0.0, format),
+/// Where the next line goes.
+struct DrawTarget {
+    /// The layer (or isolated group) new art lands in; none when every layer is locked or hidden.
+    into: Option<vectorcraft_doc::NodeId>,
+    /// Why that is not the current layer, when the current one is locked or hidden.
+    note: Option<String>,
+}
+
+/// A locked or hidden layer takes no new art: the engine puts it in the topmost layer that is shown
+/// and unlocked instead ([`vectorcraft_engine::DocState::insertion_parent`]), or refuses it. The
+/// band, the Control bar and the legend show that layer and say why.
+fn draw_target(st: &vectorcraft_engine::DocState) -> DrawTarget {
+    let into = st.insertion_parent().filter(|p| st.doc.is_editable(*p));
+    let name = |id| st.doc.node(id).map(|n| n.display_name()).unwrap_or_default();
+    let note = match st.current_layer() {
+        Some(c) if !st.doc.is_editable(c) && into != Some(c) => {
+            let template = match (st.doc.is_visible(c), into.is_some()) {
+                (false, true) => tw!("{layer} is hidden: drawing on {target}"),
+                (true, true) => tw!("{layer} is locked: drawing on {target}"),
+                (false, false) => tw!("{layer} is hidden: no layer to draw on"),
+                (true, false) => tw!("{layer} is locked: no layer to draw on"),
+            };
+            Some(crate::i18n::fmt(template, &[("layer", &name(c)), ("target", &into.map(name).unwrap_or_default())]))
         }
-    }
-    job
+        _ if into.is_none() => Some(tw!("No layer to draw on").to_string()),
+        _ => None,
+    };
+    DrawTarget { into, note }
+}
+
+/// The active tool's hint at `size` in `color`, plainly as in the mockup, its parts apart by "·";
+/// `first` keeps the first part ("Click to add a corner point").
+fn hint_job(app: &VectorcraftApp, first: bool, size: f32, color: Color32) -> egui::text::LayoutJob {
+    let all: String = crate::chrome::current_hint(app).into_iter().map(|(s, _)| s).collect();
+    let mut parts = all.split('|').map(str::trim).filter(|p| !p.is_empty());
+    let shown = if first { parts.next().unwrap_or_default().to_string() } else { parts.collect::<Vec<_>>().join(" · ") };
+    egui::text::LayoutJob::simple_singleline(shown, font(size), color)
 }
 
 #[cfg(test)]

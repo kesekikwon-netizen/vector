@@ -392,6 +392,7 @@ struct SysFallback {
 }
 
 /// Families tried (when installed) for characters the loaded fonts lack: CJK, symbols, emoji.
+/// Hangul tries the Korean ones too ([`fallback_families`]).
 #[cfg(not(target_arch = "wasm32"))]
 const SYSTEM_FALLBACKS: &[&str] = &[
     "Helvetica Neue",
@@ -410,10 +411,6 @@ const SYSTEM_FALLBACKS: &[&str] = &[
     "Malgun Gothic",
     "Noto Sans CJK SC",
     "Noto Sans CJK JP",
-    // Korean, where none of the above is installed (Linux without Noto CJK).
-    "Noto Sans CJK KR",
-    "Noto Sans KR",
-    "NanumGothic",
     "Arial Unicode MS",
     "Apple Symbols",
     "Segoe UI Symbol",
@@ -424,6 +421,29 @@ const SYSTEM_FALLBACKS: &[&str] = &[
     "Apple Color Emoji",
     "Noto Color Emoji",
 ];
+
+/// Korean families, for where none of the CJK ones above is installed (Linux without Noto CJK).
+/// Tried for Hangul only, so that Hanja, kana and the rest keep the fonts they had.
+#[cfg(not(target_arch = "wasm32"))]
+const HANGUL_FALLBACKS: &[&str] = &["Noto Sans CJK KR", "Noto Sans KR", "NanumGothic"];
+
+/// Hangul: jamo, compatibility jamo, jamo extended A and B, syllables, halfwidth letters.
+#[cfg(not(target_arch = "wasm32"))]
+fn is_hangul(c: char) -> bool {
+    matches!(c as u32, 0x1100..=0x11FF | 0x3130..=0x318F | 0xA960..=0xA97F | 0xAC00..=0xD7AF | 0xD7B0..=0xD7FF | 0xFFA0..=0xFFDF)
+}
+
+/// The families tried, in order, for a character `c` the loaded fonts lack: the Korean ones go
+/// right after the CJK ones for Hangul.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn fallback_families(c: char) -> Vec<&'static str> {
+    let mut families = SYSTEM_FALLBACKS.to_vec();
+    if is_hangul(c) {
+        let at = families.iter().position(|f| *f == "Noto Sans CJK JP").map_or(families.len(), |i| i + 1);
+        families.splice(at..at, HANGUL_FALLBACKS.iter().copied());
+    }
+    families
+}
 
 static NEXT_ID: AtomicU32 = AtomicU32::new(1);
 const OUTLINE_CACHE_MAX: usize = 50_000;
@@ -1959,7 +1979,7 @@ impl FontDb {
             }
         }
         let covered = |db: &FontDb| db.read_faces().iter().any(|f| f.covers(c));
-        for fam in SYSTEM_FALLBACKS {
+        for fam in fallback_families(c) {
             if !self.is_loaded(fam) && self.load_cataloged(fam) && covered(self) {
                 return true;
             }
