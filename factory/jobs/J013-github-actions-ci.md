@@ -116,5 +116,18 @@ git diff --stat dd6be56 -- . ':!factory' ':!.github/workflows/trowel-ci.yml'
 
 - AI 검토: 통과(2차).
 - 사용자 승인: **대기**. CI 변경이라 사람 검토가 필요하다. 승인 뒤 코드가 바뀌면 다시 검증하고 다시 승인받는다.
-- 러너에서 실제 실행: **미실행**. 저장소 설정에서 액션을 켠 뒤 첫 푸시에서 확인해 이 기록에 덧붙인다.
+- 러너에서 실제 실행: 사용자가 액션을 켠 뒤 첫 실행에서 두 job 모두 통과(아래 「러너 실행」).
 - 되돌리기: `git revert <J013 커밋>` 또는 `.github/workflows/trowel-ci.yml` 삭제. 제품 코드는 바뀌지 않았다.
+
+## 러너 실행 (2026-10-11)
+
+사용자가 저장소 설정에서 액션을 켰고(08:05Z쯤), `ce5009e` 푸시로 첫 실행이 돌았다: https://github.com/kesekikwon-netizen/vector/actions/runs/38123563325 (결론 success).
+
+| job | 결과 | 걸린 시간 | 근거 |
+|---|---|---|---|
+| cargo xtask ci (Linux) | success | 18분 42초 (관문 16분 35초) | 로그 끝 `CI summary: all 7 steps passed (fmt, clippy, test, assets, brands, layers, wasm)` |
+| Windows x64 release build | success | 25분 40초 (빌드 24분 24초) | 「Run the CLI once」 성공(`--version` exit 0), 산출물 `trowel-windows-x64` 54.3 MB(sha256:2fda0ba8…), 2026-10-25까지 받을 수 있음 |
+
+- 캐시가 없는 첫 실행이었다. 러너에는 1.99.0(리눅스)·1.98.1(윈도우)도 깔려 있지만 고정한 1.97.0이 쓰였다(rust-cache 로그).
+- wasm 검사에서 경고 2개(`dialogs/missing_links.rs:69` `ask_update_changed`, `i18n/mod.rs:272` `is_c_locale`가 wasm에서 안 쓰임)가 나왔다. 경고일 뿐 실패가 아니고 이 작업 전부터 있던 것이다(이 작업은 제품 코드를 바꾸지 않았다).
+- 실행 로그는 깃허브에 남고(저장소 설정의 보존 기간), 이 기록에는 결과와 링크만 둔다.
