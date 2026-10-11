@@ -480,3 +480,21 @@ C16의 다른 길(검토자 안 (c): 옮김을 두 번 누르기 시간이 지�
 대상 시험은 위 전체 시험 안에서 돌았다(`rw2-ci-xtask.log`에서 셈): engine `tests_legend::` 26, ui-egui `trowel::` 72 · `i18n::` 37 · `theme::` 6, doc `legend::` 10, 모두 통과. 이번에 더한 시험 11개(엔진 4: `a_row_from_a_line_with_many_dashes_opens_again_as_it_was`, `inspect_leaves_out_a_sublayers_legend`, `an_underlay_goes_on_a_template_layer_at_the_bottom`, `queued_underlays_go_to_the_bottom_too`. 화면 7: 위 검토 2차 표의 시험)와 바꾼 기존 시험 2개가 모두 통과했다. 재작업 1차(5,201)보다 11개 많다.
 
 실제 화면(시안과 나란히)과 확인 검토는 이 커밋을 대상으로 하고, 다음 기록 커밋에 적는다.
+
+## 재작업 2차 화면 확인 (verify)
+
+2026-10-11 23:15–23:20Z, 대상 커밋 `a1c1262`(위 검증의 앱 빌드 `vectorcraft-rw2`). 리눅스 Xvfb(1600 × 988, 화면 :96, 제어 포트 7996), `VECTORCRAFT_LOCALE=ko VECTORCRAFT_NO_PREFS=1`. 구동 스크립트는 `scratchpad/j005/r2/`(`ctl.py`, `draw_plan.py`, `probe.py`), 그림은 `/mnt/project-files/design/trowel-run/J005r2-*.png`.
+
+| 장면 | 한 일 | 본 것 | 그림 |
+|---|---|---|---|
+| 평면 화면 | 새 도면 → `legend.addGroup plan` → 시험용 평면(재작업 1차와 같은 도형) → 펜, 굴광선 | 시안 평면 화면과 나란히. 남은 차이는 재작업 1차 표와 같음(캔버스 스캔·좌표·방위표, 빗금 보기, 도면집 목록, 속성) | `J005r2-side-by-side.png`, `J005r2-plan.png` |
+| C16 | 굴광선 줄을 펼침(자식 줄 18 px) → 1호 주거지를 고름 → 선택 도구 → 아래 줄 「단면 위치선」의 아래쪽 끝(y 524)을 0.12초 사이로 두 번 누름 | 「단면 위치선」 카드가 열림, 1호 주거지는 굴광선에 그대로, 실행 취소 기록 그대로(`Type, Type, Layer Options`), 상태줄 「고른 선은 옮기지 않고 그대로 둡니다」 | `J005r2-c16-double.png` |
+| U24 | `file.place {paths: [1호주거지_실측.png], template: true, underlay: "밑그림"}` → 놓기 창의 「템플릿」에 올림 → `ui.dialog.confirm` | 풍선 「모든 선 아래, 맨 아래의 잠긴 밑그림 레이어에 놓습니다」. 스캔은 맨 아래 잠긴 템플릿 레이어 「밑그림 · 1호주거지_실측.png」에 놓여 모든 선 아래에 보임, 실행 취소 한 단계(`Place`) | `J005r2-u24-tip.png`, `J005r2-u24-underlay.png` |
+| U25 | 새 도면 → 판 머리 「범례 넣기 ▾」 → 「평면용 범례 넣기」 | 지금 줄 「굴광선 (유구 면)」(컨트롤 바 「굴광선 (유구 면) 0.8 pt」), 상태줄 「범례 줄 15개를 넣었습니다」. 빈 「Layer 1」은 남음(사람 결정) | `J005r2-u25-group.png` |
+| C1 나머지 | 굵기 한 번에 → 비율 칸에 0.5를 치고 Enter는 누르지 않음 | 표가 친 값을 따름(0.8 → 0.4, 0.5 → 0.25, 0.2 → 0.1, 0.1 → 0.05) | `J005r2-c1-typing.png` |
+| U26 | 위에서 「바꾸기」 | 카드가 닫히고 상태줄 「범례 줄 10개 · 선 14개를 바꿨습니다」, 잠긴 조사구역 경계는 1.0 그대로 | `J005r2-u26-changed.png` |
+
+화면 확인에서 새로 찾은 것(수정 루프 2회를 다 써서 고치지 않음, 확인 검토에 넘김):
+
+- **S1 펜 모양이 줄을 따라가지 않음.** 펜(다음에 그릴 선)의 모양은 `legend.pick`과 아무것도 고르지 않은 `legend.revert`에서만 줄 모양으로 바뀐다(`crates/engine/src/cmd/legend.rs:210` `set_pen`). 엔진으로 확인: 굴광선을 고르면 펜 0.4(줄과 같음) → `legend.set`으로 그 줄을 0.6으로 바꿔도 펜 0.4 → `legend.weights` ×0.5로 줄이 반이 돼도 펜 그대로. 앱에서도 다른 도면 탭에서 돌아오자 컨트롤 바가 「단면 위치선 0.8 pt」(줄은 0.2 pt, 펜은 다른 도면의 굴광선 모양)였다(`J005r2-u26-changed.png`). 이대로면 굵기 한 번에나 줄 고치기 뒤 처음 그은 선이 옛 굵기로 그려져 곧바로 「따로」가 된다.
+- **S2 밑그림 줄이 둘.** U24 뒤 범례의 빈 「밑그림」 줄(잠긴 템플릿, 0개)이 그대로 남고 스캔은 그 아래 새 레이어 「밑그림 · 1호주거지_실측.png」에 놓인다. 시안은 밑그림 줄이 하나다.
