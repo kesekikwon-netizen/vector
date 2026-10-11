@@ -266,7 +266,7 @@ fn category_fields(ui: &mut egui::Ui, d: &mut Dialog, cat: &str) {
                 if cfg!(all(not(target_arch = "wasm32"), not(target_os = "macos"))) {
                     bool_row(ui, d, sp.key, sp.label);
                     // The window's decorations are chosen once, when the app starts.
-                    ui.label(egui::RichText::new(tl!("Applies the next time VectorCraft starts.")).color(t.text_dim).size(11.0));
+                    ui.label(egui::RichText::new(tl!("Applies the next time Trowel starts.")).color(t.text_dim).size(11.0));
                 }
             }
             PrefKind::Bool => bool_row(ui, d, sp.key, sp.label),
@@ -317,7 +317,7 @@ fn category_fields(ui: &mut egui::Ui, d: &mut Dialog, cat: &str) {
                 });
                 if sp.key == "gpuPreference" {
                     // The window's graphics device is chosen once, when the app starts.
-                    ui.label(egui::RichText::new(tl!("Applies the next time VectorCraft starts.")).color(t.text_dim).size(11.0));
+                    ui.label(egui::RichText::new(tl!("Applies the next time Trowel starts.")).color(t.text_dim).size(11.0));
                 }
             }
             PrefKind::Color => {
@@ -506,6 +506,27 @@ mod tests {
         assert_eq!(a.session.prefs.ui_brightness, "light");
     }
 
+    /// A fresh install draws in Quiet Plate (the UI state's default, the engine preference's
+    /// default and the engine's preset list agree, so the first frame doesn't switch it back),
+    /// and `window.brightness` stores the choice in the preference that persists.
+    #[test]
+    fn fresh_app_resolves_to_plate_and_window_brightness_persists() {
+        let mut a = app();
+        let ctx = egui::Context::default();
+        apply_runtime(&mut a, &ctx);
+        assert_eq!(a.ui.brightness, Brightness::Plate);
+        assert_eq!(a.session.prefs.ui_brightness, "plate");
+        assert_eq!(Tokens::get(&ctx).panel, Tokens::for_brightness(Brightness::Plate).panel);
+        a.run("window.brightness", json!({"brightness": "light"})).unwrap();
+        apply_runtime(&mut a, &ctx);
+        assert_eq!(a.session.prefs.ui_brightness, "light");
+        assert_eq!(Tokens::get(&ctx).panel, Tokens::for_brightness(Brightness::Light).panel);
+        a.run("window.brightness", json!({"brightness": "plate"})).unwrap();
+        apply_runtime(&mut a, &ctx);
+        assert_eq!((a.ui.brightness, a.session.prefs.ui_brightness.as_str()), (Brightness::Plate, "plate"));
+        assert_eq!(Tokens::get(&ctx).panel, Tokens::for_brightness(Brightness::Plate).panel);
+    }
+
     /// Performance › Graphics Processor (#306, #502): shown with its restart note, applied by OK
     /// and saved with the UI state under the key the desktop app reads before the window opens.
     #[test]
@@ -530,7 +551,7 @@ mod tests {
         out.shapes.iter().for_each(|c| texts(&c.shape, &mut shown));
         assert!(shown.iter().any(|t| t.starts_with("Graphics Processor")), "{shown:?}");
         assert!(shown.iter().any(|t| t == "Automatic"), "{shown:?}");
-        assert!(shown.iter().any(|t| t == "Applies the next time VectorCraft starts."), "{shown:?}");
+        assert!(shown.iter().any(|t| t == "Applies the next time Trowel starts."), "{shown:?}");
         a.ui.dialog.as_mut().unwrap().fields.insert("gpuPreference".into(), json!("highPerformance"));
         confirm(&mut a).unwrap();
         assert_eq!(a.session.prefs.gpu_preference, "highPerformance");
@@ -561,7 +582,7 @@ mod tests {
         let mut shown = vec![];
         out.shapes.iter().for_each(|c| texts(&c.shape, &mut shown));
         assert!(shown.iter().any(|t| t == "System Title Bar"), "{shown:?}");
-        assert!(shown.iter().any(|t| t == "Applies the next time VectorCraft starts."), "{shown:?}");
+        assert!(shown.iter().any(|t| t == "Applies the next time Trowel starts."), "{shown:?}");
         a.ui.dialog.as_mut().unwrap().fields.insert("systemTitleBar".into(), json!(true));
         confirm(&mut a).unwrap();
         assert!(a.session.prefs.system_title_bar);

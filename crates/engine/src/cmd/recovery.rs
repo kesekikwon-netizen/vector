@@ -816,7 +816,7 @@ fn targets(s: &mut Session, store: &dyn RecoveryStore, cmd: &str, p: &Value) -> 
                 out.push((area.to_string(), files, hold));
             }
             (Owner::Mine, Some(f)) => return Err(bad(cmd, format!("`{f}` is the copy of a document open now"))),
-            (Owner::Running, Some(f)) => return Err(bad(cmd, format!("`{f}` belongs to a VectorCraft that is running"))),
+            (Owner::Running, Some(f)) => return Err(bad(cmd, format!("`{f}` belongs to a Trowel that is running"))),
             _ => {}
         }
     }

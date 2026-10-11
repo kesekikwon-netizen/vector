@@ -27,7 +27,7 @@ pub fn paint_icon_button(ui: &mut Ui, resp: Response, icon: &str, tip: &str, sel
     };
     ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
     let pad = (size * 0.2).round();
-    icons::paint(ui, icon, rect.shrink(pad), if selected { t.text } else { t.icon });
+    icons::paint(ui, icon, rect.shrink(pad), if selected { t.icon_on } else { t.icon });
     if !tip.is_empty() { resp.on_hover_text(tl!(tip)) } else { resp }
 }
 
@@ -1755,7 +1755,7 @@ pub fn layout_button(ui: &mut Ui, tiles: &[(u8, u8)], selected: bool, tip: &str)
     let color = if !enabled {
         t.text_disabled
     } else if selected {
-        t.accent
+        t.icon_on
     } else {
         t.icon
     };

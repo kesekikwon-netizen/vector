@@ -1,4 +1,4 @@
-//! Design tokens (Illustrator's four UI brightness levels), fonts and egui style.
+//! Design tokens (five UI brightness levels: Illustrator's four plus Quiet Plate), fonts and egui style.
 
 use std::sync::Arc;
 
@@ -8,20 +8,23 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Brightness {
     Dark,
-    #[default]
     MediumDark,
     MediumLight,
     Light,
+    /// Quiet Plate: the default, an ivory plate with ink glyphs (not one of Illustrator's levels).
+    #[default]
+    Plate,
 }
 
 impl Brightness {
-    pub const ALL: [Brightness; 4] = [Brightness::Dark, Brightness::MediumDark, Brightness::MediumLight, Brightness::Light];
+    pub const ALL: [Brightness; 5] = [Brightness::Dark, Brightness::MediumDark, Brightness::MediumLight, Brightness::Light, Brightness::Plate];
     pub fn label(self) -> &'static str {
         match self {
             Brightness::Dark => "Dark",
             Brightness::MediumDark => "Medium Dark",
             Brightness::MediumLight => "Medium Light",
             Brightness::Light => "Light",
+            Brightness::Plate => "Quiet Plate",
         }
     }
     pub fn id(self) -> &'static str {
@@ -30,6 +33,7 @@ impl Brightness {
             Brightness::MediumDark => "mediumDark",
             Brightness::MediumLight => "mediumLight",
             Brightness::Light => "light",
+            Brightness::Plate => "plate",
         }
     }
     pub fn parse(s: &str) -> Option<Self> {
@@ -54,8 +58,12 @@ pub struct Tokens {
     pub icon: Color32,
     pub hover: Color32,
     pub tool_active: Color32,
+    /// Glyphs and text drawn over a `tool_active` well.
+    pub icon_on: Color32,
     pub accent: Color32,
     pub accent_strong: Color32,
+    /// egui's `Visuals.selection.bg_fill`: selected text and selectable rows.
+    pub selection_fill: Color32,
     pub row_selected: Color32,
     pub pasteboard: Color32,
     pub ruler: Color32,
@@ -65,6 +73,8 @@ pub struct Tokens {
     pub measure_bg: Color32,
     pub button: Color32,
     pub radius: u8,
+    /// egui window and menu corners.
+    pub window_radius: u8,
     /// Field values, button labels, link labels.
     pub text_strong: Color32,
     /// Panel tab strips, doc-tab bar, dock header.
@@ -113,8 +123,10 @@ impl Tokens {
             icon: hex(0xcfcfcf),
             hover: hex(0x444444),
             tool_active: hex(0x1d1d1d),
+            icon_on: hex(0xf5f5f5),
             accent: hex(0x378ef0),
             accent_strong: hex(0x1473e6),
+            selection_fill: hex(0x378ef0).gamma_multiply(0.55),
             row_selected: hex(0x484b50),
             pasteboard: hex(0x1e1e1e),
             ruler: hex(0x2f2f2f),
@@ -124,6 +136,7 @@ impl Tokens {
             measure_bg: Color32::from_rgba_unmultiplied(92, 92, 92, 235),
             button: hex(0x444444),
             radius: 2,
+            window_radius: 6,
             text_strong: hex(0xf5f5f5),
             tab_strip: hex(0x282828),
             button_border: hex(0x6a6a6a),
@@ -160,6 +173,7 @@ impl Tokens {
                 icon: hex(0xc2c2c2),
                 hover: hex(0x606060),
                 tool_active: hex(0x303030),
+                icon_on: hex(0xffffff),
                 row_selected: hex(0x52677c),
                 pasteboard: hex(0x606060),
                 ruler: hex(0x333333),
@@ -186,6 +200,7 @@ impl Tokens {
                 icon: hex(0x2a2a2a),
                 hover: hex(0xc8c8c8),
                 tool_active: hex(0x969696),
+                icon_on: hex(0x000000),
                 row_selected: hex(0x9fb4d6),
                 pasteboard: hex(0xa0a0a0),
                 ruler: hex(0xc2c2c2),
@@ -211,6 +226,7 @@ impl Tokens {
                 icon: hex(0x303030),
                 hover: hex(0xdddddd),
                 tool_active: hex(0xcdcdcd),
+                icon_on: hex(0x000000),
                 row_selected: hex(0xc8daf7),
                 pasteboard: hex(0xdcdcdc),
                 ruler: hex(0xeaeaea),
@@ -218,11 +234,61 @@ impl Tokens {
                 button: hex(0xe0e0e0),
                 ..base
             },
+            // Quiet Plate: Trowel's own light theme (ivory ground, ink text, a clay accent on the
+            // axes), every token stated here.
+            Brightness::Plate => Tokens {
+                dark: false,
+                app_bar: hex(0xfaf9f5),
+                panel: hex(0xfaf9f5),
+                panel_darker: hex(0xf5f4ed),
+                tab_strip: hex(0xf0eee6),
+                input: hex(0xffffff),
+                input_border: hex(0xc2c0b6),
+                button_border: hex(0xc2c0b6),
+                border: hex(0xdedcd1),
+                divider: hex(0xdedcd1),
+                text: hex(0x141413),
+                text_strong: hex(0x141413),
+                text_dim: hex(0x5e5d59),
+                text_disabled: hex(0x73726c),
+                icon: hex(0x30302e),
+                hover: hex(0xe8e6dc),
+                tool_active: hex(0x30302e),
+                // Ink glyphs vanish on the ink well: the well's glyphs are ivory.
+                icon_on: hex(0xfaf9f5),
+                accent: hex(0x30302e),
+                accent_strong: hex(0x141413),
+                // A translucent ink accent under ink text can't be read: an oat fill instead.
+                selection_fill: hex(0xe3dacc),
+                row_selected: hex(0xe3dacc),
+                pasteboard: hex(0xf0eee6),
+                ruler: hex(0xf5f4ed),
+                ruler_tick: hex(0x87867f),
+                guide: hex(0x6a9bcc),
+                smart_guide: hex(0xc46686),
+                selection: hex(0xb5573a),
+                anchor_selected: hex(0xb5573a),
+                flyout_active: hex(0x9c4a2f),
+                measure_bg: Color32::from_rgba_unmultiplied(0x14, 0x14, 0x13, 235),
+                button: hex(0xf0eee6),
+                radius: 8,
+                window_radius: 8,
+                font_size: 13.0,
+                caption_close: hex(0xa33b3b),
+                caption_close_text: Color32::WHITE,
+                highlight: hex(0xa33b3b),
+                bleed: hex(0xa33b3b),
+                error: hex(0xa33b3b),
+                warning: hex(0x7a5a00),
+                axis_x: hex(0xd97757),
+                axis_y: hex(0x3f6b31),
+                axis_z: hex(0x6a9bcc),
+            },
         }
     }
 
     pub fn get(ctx: &egui::Context) -> Tokens {
-        ctx.data(|d| d.get_temp::<Tokens>(egui::Id::NULL)).unwrap_or_else(|| Tokens::for_brightness(Brightness::MediumDark))
+        ctx.data(|d| d.get_temp::<Tokens>(egui::Id::NULL)).unwrap_or_else(|| Tokens::for_brightness(Brightness::default()))
     }
     pub fn cr(&self) -> CornerRadius {
         CornerRadius::same(self.radius)
@@ -293,9 +359,9 @@ pub fn apply(ctx: &egui::Context, b: Brightness) {
     v.extreme_bg_color = t.input;
     v.faint_bg_color = t.panel_darker;
     v.window_stroke = Stroke::new(1.0, t.border);
-    v.window_corner_radius = CornerRadius::same(6);
-    v.menu_corner_radius = CornerRadius::same(6);
-    v.selection.bg_fill = t.accent.gamma_multiply(0.55);
+    v.window_corner_radius = CornerRadius::same(t.window_radius);
+    v.menu_corner_radius = CornerRadius::same(t.window_radius);
+    v.selection.bg_fill = t.selection_fill;
     v.selection.stroke = Stroke::new(1.0, t.accent);
     v.hyperlink_color = t.accent;
     v.override_text_color = Some(t.text);
@@ -314,6 +380,8 @@ pub fn apply(ctx: &egui::Context, b: Brightness) {
         wv.corner_radius = t.cr();
         wv.fg_stroke = Stroke::new(1.0, t.text);
     }
+    // The pressed well is `tool_active`: its glyphs and text are the colour drawn over it.
+    w.active.fg_stroke = Stroke::new(1.0, t.icon_on);
     w.noninteractive.bg_stroke = Stroke::new(1.0, t.divider);
     w.inactive.bg_stroke = Stroke::NONE;
     w.hovered.bg_stroke = Stroke::new(1.0, t.input_border);
@@ -341,6 +409,10 @@ pub fn apply(ctx: &egui::Context, b: Brightness) {
 mod tests {
     use super::*;
 
+    fn hex(s: u32) -> Color32 {
+        Color32::from_rgb((s >> 16) as u8, (s >> 8) as u8, s as u8)
+    }
+
     #[test]
     fn brightness_roundtrip() {
         for b in Brightness::ALL {
@@ -348,5 +420,46 @@ mod tests {
             assert_eq!(Brightness::parse(b.label()), Some(b));
         }
         assert!(!Tokens::for_brightness(Brightness::Light).dark);
+        // Quiet Plate: the fifth level and the default of a fresh install.
+        assert_eq!(Brightness::ALL.len(), 5);
+        assert_eq!(Brightness::default(), Brightness::Plate);
+        assert_eq!(Brightness::parse("plate"), Some(Brightness::Plate));
+        assert_eq!(Brightness::parse("Quiet Plate"), Some(Brightness::Plate));
+        assert_eq!(Brightness::Plate.label(), "Quiet Plate");
+        assert_eq!(Brightness::Plate.id(), "plate");
+        let plate = Tokens::for_brightness(Brightness::Plate);
+        assert!(!plate.dark);
+        assert_ne!(plate.icon_on, plate.tool_active, "glyphs show on the pressed well");
+        assert_eq!(plate.selection_fill, hex(0xE3DACC));
+        assert_eq!(plate.radius, 8);
+        assert_eq!(plate.window_radius, 8);
+    }
+
+    /// The four Illustrator levels keep the values measured from public screenshots: the new
+    /// tokens only name what `apply` already drew for them.
+    #[test]
+    fn old_presets_keep_their_rendering() {
+        for b in [Brightness::Dark, Brightness::MediumDark, Brightness::MediumLight, Brightness::Light] {
+            let t = Tokens::for_brightness(b);
+            assert_eq!(t.icon_on, t.text_strong, "{b:?}");
+            assert_eq!(t.selection_fill, t.accent.gamma_multiply(0.55), "{b:?}");
+            assert_eq!(t.window_radius, 6, "{b:?}");
+            assert_eq!(t.radius, 2, "{b:?}");
+            assert_eq!(t.accent, hex(0x378ef0), "{b:?}");
+        }
+    }
+
+    #[test]
+    fn apply_takes_window_radius_selection_fill_and_icon_on_from_tokens() {
+        let ctx = egui::Context::default();
+        apply(&ctx, Brightness::Plate);
+        let t = Tokens::for_brightness(Brightness::Plate);
+        let v = ctx.global_style().visuals.clone();
+        assert_eq!(v.window_corner_radius, CornerRadius::same(8));
+        assert_eq!(v.menu_corner_radius, CornerRadius::same(8));
+        assert_eq!(v.selection.bg_fill, t.selection_fill);
+        assert_eq!(v.widgets.active.fg_stroke.color, t.icon_on);
+        apply(&ctx, Brightness::Light);
+        assert_eq!(ctx.global_style().visuals.window_corner_radius, CornerRadius::same(6));
     }
 }

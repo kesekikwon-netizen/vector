@@ -63,6 +63,26 @@ fn set_normalizes_strings_labels_and_colours() {
     assert_eq!(s.prefs.grid_color, "#abcdef");
     assert_eq!(s.prefs.keyboard_increment, 2.5);
     assert!(!s.prefs.scale_strokes);
+    // The fifth level by its label too.
+    let r = s.execute("prefs.set", &json!({"key": "uiBrightness", "value": "Quiet Plate"})).unwrap();
+    assert_eq!(r["uiBrightness"], json!("plate"));
+    assert_eq!(s.prefs.ui_brightness, "plate");
+}
+
+/// Quiet Plate is the brightness of a fresh install, and the engine's own copy of the preset list
+/// (what `prefs.set` validates and the Preferences dialog offers) knows it.
+#[test]
+fn ui_brightness_defaults_to_plate_and_accepts_it() {
+    assert_eq!(Prefs::default().ui_brightness, "plate");
+    let mut s = Session::new();
+    s.execute("prefs.set", &json!({"key": "uiBrightness", "value": "light"})).unwrap();
+    s.execute("prefs.set", &json!({"key": "uiBrightness", "value": "plate"})).unwrap();
+    assert_eq!(s.prefs.ui_brightness, "plate");
+    let l = s.execute("prefs.list", &json!({})).unwrap();
+    let row = l.as_array().unwrap().iter().find(|e| e["key"] == "uiBrightness").unwrap();
+    assert!(row["options"].as_array().unwrap().contains(&json!("plate")), "{row}");
+    assert!(s.execute("prefs.set", &json!({"key": "uiBrightness", "value": "purple"})).is_err());
+    assert_eq!(s.prefs.ui_brightness, "plate");
 }
 
 #[test]

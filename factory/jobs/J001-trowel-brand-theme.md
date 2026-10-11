@@ -267,3 +267,38 @@ push·merge·브랜치 전환·`git reset/clean/stash` 금지.
 ## 기준 커밋
 
 `2d297f89db8652317922cc5830e20addbb979645` (`git -C /home/claude/vector rev-parse HEAD`, 브랜치 `claude/project-thread-5e8gjw`, 2026-10-11)
+
+## 구현 요약
+
+기준 커밋 `431b364`(브랜치 `claude/project-thread-5e8gjw`; 명세의 `2d297f8` 위에 factory 명세 커밋 하나가 더 있었다) 위에서 작업했다. 커밋 1개.
+
+### 바뀐 것
+
+- **A. 제품명** — `crates/ui-egui/src/brand.rs`에 `pub const APP_NAME: &str = "Trowel"`(본가), `lib.rs`가 `pub use brand::APP_NAME`, `native_menu.rs:41`은 `pub use crate::brand::APP_NAME`. 창 제목(`chrome.rs`), 앱 바 가운데 레이블, 메뉴 트리 제목·필터(`menus.rs`), About 상자(`dialogs/about.rs`: 제목 `About Trowel`, 이름 `APP_NAME`, 크레딧 줄 = 완료 기준 11의 문장), Mac 앱 메뉴(`Hide/Quit Trowel`), `tl!` 리터럴 7곳(canvas, io, recovery, place, missing_fonts, prefs_dialog ×2), `shortcut_editor.rs`(오류 문구·내보내기 파일 이름), `apps/vectorcraft/src/main.rs`(상태 메시지 `{APP_NAME}`, `with_title`, `run_native`), 엔진 표시 문자열(포맷 label `Trowel`/`Trowel Template`, Links Format, load/place/recovery/walk/fontfiles/save/affinity 문구). 식별자(포맷 id, 확장자, `prefs_path_for`, app_id, `vectorcraft-shortcuts`, `VectorCraft Defaults/Default`, Templates 폴더, MCP 이름, URL)는 그대로다.
+- **i18n** — 카탈로그 12개: 평문 키 11개(cs·pt-br는 자기가 가진 4·10개)와 `@msg` 키 5개의 source·번역에서 제품명을 Trowel로(ko는 조사 를→을, 가→이, 는→은), `brightness must be …` `@msg` 행 8개에 `|plate`, 옛 `Part of ArtCraft…` 행 11개 삭제(zh-hans의 Noto Sans SC 변형 포함), complete 카탈로그 10개에 새 크레딧 행(ko는 명세 문장, 나머지는 평이한 번역)과 `Quiet Plate` 행(ko 「조용한 도판」, `Quickly start a new file` 다음·`Quit Trowel` 앞). zh-hans/zh-hant의 `\tVectorCraft\tVectorCraft` → `\tTrowel\tTrowel`. KEEPS_MENU_NAMES 카탈로그에는 `Trowel` 단독 행 없음. `MENU_KEEP_AS_IS[0]`·i18n 시험은 `APP_NAME`을 본다.
+- **B. 아이콘** — `assets/app-icon/vectorcraft.svg`·`vectorcraft-small.svg` ← 브리프 SVG(바이트 동일). `packaging/icons.sh`로 PNG 10개·scalable SVG·`.ico` 재생성(`.icns`는 iconutil이 없어 그대로). `ASSETS.md` 아이콘 행 15개(Author `권 (project owner)`, Source `Original code-drawn SVG…`, Notes 흙손/`.icns`는 이전 용 그림 유지), LICENSE/README 행의 Source는 `Trowel`. `assets/app-icon/README.md`·`LICENSE.txt` 다시 씀. `brand.rs:1` 문서 주석, `README.md` 아이콘 문단(+ 가족 표의 raw URL이 업스트림 용 그림을 계속 보여준다는 한 줄), `docs/target-app-parity.md`의 `dragon app icon` → `app icon`.
+- **C. 테마** — `theme.rs`: `Brightness::Plate`(끝에 추가, `#[default]`), `ALL` 5개, label `Quiet Plate`/id `plate`; `Tokens`에 `icon_on`·`selection_fill`·`window_radius` 추가(base: `text_strong`과 같은 값, `accent.gamma_multiply(0.55)`, 6; 각 arm에 `icon_on`만 추가; Plate arm은 명세 표의 44개 토큰 전부 명시, `..base` 없음 — 전부 명시하면 clippy `needless_update`), `Tokens::get` 대체값 `Brightness::default()`, `apply`가 창·메뉴 모서리·`selection.bg_fill`·`widgets.active.fg_stroke`를 토큰에서 읽음. 우물 위 글리프 7곳 → `t.icon_on`(`character.rs`는 `!enabled → text_disabled, on → icon_on, else text_strong` 순서라 기존 프리셋은 픽셀 동일). 기본값 3곳(`theme.rs`, `state.rs:497`, `engine/lib.rs:739` `s("plate")`)과 `prefscmds.rs:262` choice, `menus.rs:277/1161` 문구. `docs/ui-parity.md:158`, `docs/target-app-parity.md:374`와 두 문서의 상태 줄·개정 이력.
+- **시험** — `theme.rs` `brightness_roundtrip` 확장 + `old_presets_keep_their_rendering` + `apply_takes_window_radius_selection_fill_and_icon_on_from_tokens`; `prefs_dialog.rs` `fresh_app_resolves_to_plate_and_window_brightness_persists`; `engine/tests_prefs.rs` `set_normalizes_strings_labels_and_colours` 확장 + `ui_brightness_defaults_to_plate_and_accepts_it`; 기댓값 변경: `chrome.rs` 3개, `menus.rs` 창 안 막대 시험, `tests_nativemenu.rs`, `i18n/tests.rs`, `prefs_dialog.rs` ×2, `tests_place.rs`, `save_options.rs`, `tests_placed_document.rs`(모두 제품명·기본 테마 결정에 따른 표시 문자열).
+
+### 검사 (종료 코드; 로그 `/tmp/claude-0/-home-claude/79152f61-3d49-5a1c-acde-dc6cabf2d3d7/scratchpad/factory-logs/J001-build-*.log`)
+
+| 명령 | 종료 |
+|---|---|
+| `packaging/icons.sh` (stderr: iconutil 경고 한 줄) | 0 |
+| `cmp` 브리프 SVG = `vectorcraft.svg` = `vectorcraft-small.svg` = `hicolor/scalable/...svg`; `git diff --quiet HEAD -- assets/app-icon/vectorcraft.icns` | 0 |
+| 완료 기준 16 픽셀 검사 (`python3 -I`) | 0 |
+| `cargo fmt --all` / `cargo fmt --all -- --check` | 0 / 0 |
+| `cargo clippy -p vectorcraft-ui-egui -p vectorcraft-engine -p vectorcraft -p xtask --all-targets -- -D warnings` | 0 (첫 실행은 새 시험의 `ctx.style()` 오류 101 → `global_style()`로 고침) |
+| `cargo test -p vectorcraft-ui-egui` | 101: 931 통과, `tests_sysclip_probe::without_its_thread_the_check_runs_in_line_again` 1개 실패(2초 대기 스레드 시험, 이 작업과 무관; 단독 재실행 3/3 통과) |
+| `cargo test -p vectorcraft-engine --lib` (tests_prefs·tests_placed_document 포함 1659 통과) | 0 |
+| `cargo test -p vectorcraft` (66), `cargo test -p xtask` (35; `the_tree_is_clean`, `packaging_describes_a_vector_app`) | 0 / 0 |
+| `cargo xtask assets` (318 자산 귀속), `cargo xtask brands` | 0 / 0 |
+| 완료 기준 1·6·11·12·18–20·25–26·29–31·33의 grep | 아래 메모 외 모두 기대값 |
+
+### 열린 것·메모
+
+- `cargo xtask ci`는 테스트 러너가 돌린다(이 상자에서는 엔진 통합 시험 바이너리(각 ~800 MB)를 모두 빌드하면 디스크가 차서 `--lib`만 돌렸다; `target/debug/incremental`과 오래된 통합 시험 바이너리를 지워 공간을 비웠다).
+- grep 기대값과 다른 곳(모두 명세의 셈 차이, 내용은 기준대로): `ASSETS.md`의 `trowel blade`는 16이 아니라 **14**(아이콘 17개 파일 중 LICENSE.txt·README.md 행에는 Notes가 없다); `engraved dragon` 1은 `.icns` 행의 Notes를 하이픈 없이 `engraved dragon render`로 써서 맞췄다; `README.md`의 `dragon`은 **2**(한 줄은 `Snapdragon`, 257행, 손대지 않음); `"format": "vectorcraft-shortcuts"`와 `"VectorCraft Templates"`는 원래부터 각각 2줄(변경 없음).
+- 카탈로그에 `VectorCraft`가 남은 source 행 중 명세 목록 밖: zh-hans의 `Keeps the document editable: VectorCraft reopens the PDF…`(`crates/pdf/src/presets.rs`, 범위 밖 크레이트).
+- `.icns`는 이전 용 그림(macOS에서 `packaging/icons.sh` 필요), DMG 배경·MSI 배너·패키징 이름은 범위 밖 — 사람 검토.
+- 화면 확인(`ui.screenshot`)은 하지 않았다(필수 아님).

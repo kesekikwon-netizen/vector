@@ -15,6 +15,7 @@ macro_rules! tl {
 
 pub mod background;
 mod brand;
+pub use brand::APP_NAME;
 pub mod canvas;
 pub mod chrome;
 mod clipboard_probe;

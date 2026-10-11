@@ -55,7 +55,7 @@ pub(crate) struct DocumentArt {
 pub(crate) fn document_art(name: &str, bytes: &[u8], path: Option<&str>, page: u32, bounding: bool, cmd: &str) -> Result<DocumentArt> {
     let file = fileio::file_name(name);
     if !is_native(name, bytes) {
-        return Err(bad(cmd, format!("`{file}` isn't a VectorCraft document")));
+        return Err(bad(cmd, format!("`{file}` isn't a Trowel document")));
     }
     if bytes.len() > MAX_FILE {
         return Err(bad(cmd, format!("`{file}` is over {} MB", MAX_FILE >> 20)));

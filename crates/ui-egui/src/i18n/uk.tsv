@@ -81,7 +81,7 @@
 	A lower value follows the stroke closely; a higher one gives fewer points and smoother curves.	Менше значення точніше відтворює обведення; більше дає менше точок і плавніші криві.
 	A new preset starting from the selected one	Новий набір на основі вибраного
 	A saved copy of the selected preset	Збережена копія вибраного набору
-	About VectorCraft	Про програму VectorCraft
+	About Trowel	Про програму Trowel
 	above	зверху
 	Absolute Position	Абсолютна позиція
 	Accurate	Точний
@@ -184,7 +184,7 @@
 	Appearance Panel	Панель «Оформлення»
 	Appearance panel	Панель «Оформлення»
 	Applies when the linked file is relinked or updated.	Використовується при повторній прив’язці або оновленні пов’язаного файлу.
-	Applies the next time VectorCraft starts.	Застосовується при наступному запуску VectorCraft.
+	Applies the next time Trowel starts.	Застосовується при наступному запуску Trowel.
 	Apply	Застосувати
 	Apply Brush	Застосувати пензель
 	Apply Character Style	Застосувати стиль символу
@@ -267,6 +267,7 @@
 	Bar Graph Tool	Інструмент «Гістограма»
 	Baseline	Базова лінія
 	Baseline Shift	Зміщення базової лінії
+	Based on VectorCraft by the ArtCraft Team. MIT OR Apache-2.0. Fonts: Source Sans 3, Inter, JetBrains Mono (OFL). Icons: Lucide (ISC) + VectorCraft + Trowel.	Засновано на VectorCraft від ArtCraft Team. MIT OR Apache-2.0. Шрифти: Source Sans 3, Inter, JetBrains Mono (OFL). Значки: Lucide (ISC) + VectorCraft + Trowel.
 	Basic Latin	Основна латиниця
 	Batch	Пакет
 	Begin Recording	Почати запис
@@ -1883,7 +1884,6 @@
 	Paragraph Style Options	Параметри стилю абзацу
 	Paragraph Styles	Стилі абзаців
 	Paragraph Symbol	Символ абзацу
-	Part of ArtCraft. MIT OR Apache-2.0. Fonts: Source Sans 3, Inter, JetBrains Mono (OFL). Icons: Lucide (ISC) + VectorCraft.	Частина ArtCraft. MIT OR Apache-2.0. Шрифти: Source Sans 3, Inter, JetBrains Mono (OFL). Значки: Lucide (ISC) + VectorCraft.
 	Password	Пароль
 	Paste	Вставити
 	Paste in Back	Вставити позаду
@@ -2056,7 +2056,8 @@
 	Quarter Space	Четверта шпація
 	Quick Actions	Швидкі дії
 	Quickly start a new file	Швидко створити новий файл
-	Quit VectorCraft	Вийти з VectorCraft
+	Quiet Plate	Тиха пластина
+	Quit Trowel	Вийти з Trowel
 	Radar Graph Tool	Інструмент «Пелюсткова діаграма»
 	Radial	Радіальний
 	Radial Glows	Радіальні світіння
@@ -2174,7 +2175,7 @@
 	{count} folder(s) or file(s) couldn't be read	Не вдалося прочитати папок або файлів: {count}
 	The search stopped at its limit: search a smaller folder.	Пошук зупинився на межі: виберіть меншу папку.
 	Copy only fonts you own or are licensed to install.	Копіюйте лише шрифти, які належать вам або які ви маєте право встановлювати за ліцензією.
-	VectorCraft copies the fonts to {folder}.	VectorCraft копіює шрифти в {folder}.
+	Trowel copies the fonts to {folder}.	Trowel копіює шрифти в {folder}.
 	Registered Trademark Symbol	Символ зареєстрованого товарного знаку
 	Registration marks	Мітки поєднання
 	Registry name:	Ім’я у реєстрі:
@@ -2274,7 +2275,7 @@
 	Revert	Повернути
 	Revert to the saved version of “{name}”?	Повернутися до збереженої версії «{name}»?
 	Replace “{name}”, the file this document was opened from?	Замінити «{name}» — файл, з якого відкрито цей документ?
-	Opening it left out what VectorCraft can't read yet ({what}), so replacing it loses that for good. Save under another name to keep it.	При відкритті було пропущено те, що VectorCraft поки що не вміє читати ({what}), тому заміна файлу втратить це назавжди. Щоб зберегти це, збережіть документ під іншим ім’ям.
+	Opening it left out what Trowel can't read yet ({what}), so replacing it loses that for good. Save under another name to keep it.	При відкритті було пропущено те, що Trowel поки що не вміє читати ({what}), тому заміна файлу втратить це назавжди. Щоб зберегти це, збережіть документ під іншим ім’ям.
 	Revolve…	Обертання…
 	RGB Color	Колір RGB
 	Right	Праворуч
@@ -3085,8 +3086,8 @@
 	Vector Halftone	Векторний напівтон
 	Vector Halftone…	Векторний напівтон…
 	Vector illustration — fast, open, scriptable.	Векторне малювання — швидке, відкрите, кероване сценаріями.
-	VectorCraft didn't quit normally last time. These documents had unsaved changes:	VectorCraft не завершився нормально минулого разу. У цих документах були незбережені зміни:
-	VectorCraft Help…	Довідка VectorCraft…
+	Trowel didn't quit normally last time. These documents had unsaved changes:	Trowel не завершився нормально минулого разу. У цих документах були незбережені зміни:
+	Trowel Help…	Довідка Trowel…
 	VectorCraft on getartcraft.com	VectorCraft на getartcraft.com
 	VectorCraft on GitHub	VectorCraft на GitHub
 	Vectors	Вектори
@@ -3127,7 +3128,7 @@
 	Web Snap:	Прив’язка до web:
 	Weight	Товщина
 	Weight:	Товщина:
-	Welcome to VectorCraft	Ласкаво просимо до VectorCraft
+	Welcome to Trowel	Ласкаво просимо до Trowel
 	When pasting text	При вставці тексту
 	White	Білий
 	Widget Position:	Положення віджету:
@@ -3474,7 +3475,7 @@ axis	Both	Обидві
 @msg	bad trailer	неприпустимий трейлер
 @msg	balance must be between 0 and 100	баланс має бути від 0 до 100
 @msg	batch step {_1} (`{id}`) failed: {e}	крок пакету {_1} (`{id}`) не виконано: {e}
-@msg	brightness must be dark|mediumDark|mediumLight|light	яскравість має бути dark|mediumDark|mediumLight|light
+@msg	brightness must be dark|mediumDark|mediumLight|light|plate	яскравість має бути dark|mediumDark|mediumLight|light|plate
 @msg	can't encode the document: {0}	не вдалося закодувати документ: {0}
 @msg	can't parse shortcut `{c}`	не вдалося розібрати поєднання `{c}`
 @msg	can't parse shortcut `{s}` for `{k}`	не вдалося розібрати поєднання `{s}` для `{k}`
@@ -3625,7 +3626,7 @@ axis	Both	Обидві
 @msg	node {_1} is not text	вузол {_1} не є текстом
 @msg	not a DXF drawing	не є кресленням DXF
 @msg	not a VectorCraft file: {0}	не є файлом VectorCraft: {0}
-@msg	not a VectorCraft shortcut set (missing `overrides`)	не є набором поєднань клавіш VectorCraft (відсутнє `overrides`)
+@msg	not a Trowel shortcut set (missing `overrides`)	не є набором поєднань клавіш Trowel (відсутнє `overrides`)
 @msg	not a graphic style library (format `{_1}`)	не є бібліотекою графічних стилів (формат `{_1}`)
 @msg	not a stored central record	не є збереженим центральним записом
 @msg	not a valid plug-in module: {0}	не є допустимим модулем: {0}
@@ -3846,7 +3847,7 @@ axis	Both	Обидві
 @msg	Sent to {_1}	Відправлено до {_1}
 @msg	{_1} files	{_1} файлів
 @msg	The graphics were lost and have been restarted	Графіка була втрачена та перезапущена
-@msg	The graphics processor tried first couldn't show the window, so VectorCraft started again on {summary}	Графічний процесор, обраний першим, не зміг показати вікно, тому VectorCraft запустився знову на {summary}
+@msg	The graphics processor tried first couldn't show the window, so Trowel started again on {summary}	Графічний процесор, обраний першим, не зміг показати вікно, тому Trowel запустився знову на {summary}
 @msg	Loading VectorCraft…	Завантаження VectorCraft…
 @msg	VectorCraft failed to start: {e}	VectorCraft не вдалося запустити: {e}
 @msg	A browser with WebGPU or WebGL2 is required.	Потрібен браузер із WebGPU або WebGL2.
@@ -3877,13 +3878,13 @@ axis	Both	Обидві
 @msg	its editing data doesn't say where its art is	у даних редагування не зазначено, де знаходиться графіка
 @msg	this file was saved without PDF compatibility, and its editing data can't be read ({why})	цей файл збережений без сумісності з PDF, і його дані редагування не вдається прочитати ({why})
 @msg	No fonts are missing in this document	У цьому документі немає відсутніх шрифтів
-@msg	VectorCraft doesn't search other apps' or the system's folders: {path}	VectorCraft не шукає в папках інших програм і системи: {path}
-@msg	VectorCraft doesn't search the Shared or Public folder in Users: {path}	VectorCraft не шукає в папках Shared і Public у Users: {path}
+@msg	Trowel doesn't search other apps' or the system's folders: {path}	Trowel не шукає в папках інших програм і системи: {path}
+@msg	Trowel doesn't search the Shared or Public folder in Users: {path}	Trowel не шукає в папках Shared і Public у Users: {path}
 @msg	{path} is not a folder	{path} не є папкою
 @msg	the search couldn't start: try again in a moment	не вдалося почати пошук: спробуйте ще раз за мить
 @msg	searching a folder isn't available on the web	пошук у папці недоступний у веб-версії
 @msg	every search thread stopped on an internal error (please report this bug)	усі потоки пошуку зупинилися через внутрішню помилку (повідомте про цю помилку)
-@msg	VectorCraft's Fonts folder isn't set here: the desktop app and vectorcraft-cli set it	Папку Fonts VectorCraft тут не задано: її задають настільна програма та vectorcraft-cli
+@msg	Trowel's Fonts folder isn't set here: the desktop app and vectorcraft-cli set it	Папку Fonts Trowel тут не задано: її задають настільна програма та vectorcraft-cli
 @msg	choose the font files to add	виберіть файли шрифтів для додавання
 @msg	{n} font file(s) are now in {folder}	Файлів шрифтів тепер у {folder}: {n}
 @msg	{n} font file(s) are now in {folder}; {failed} couldn't be added: {reason}	Файлів шрифтів тепер у {folder}: {n}; не вдалося додати {failed}: {reason}
@@ -3895,7 +3896,7 @@ axis	Both	Обидві
 @msg	the files come to more than 1 GB: add fewer at a time	файли займають понад 1 ГБ: додавайте менше за раз
 @msg	every numbered name for it is taken in the Fonts folder	усі нумеровані імена для нього вже зайняті в папці Fonts
 	Services	Служби
-	Hide VectorCraft	Приховати VectorCraft
+	Hide Trowel	Приховати Trowel
 	Zoom	Масштаб
 	Bring All to Front	Усі вікна на передній план
 	Settings	Налаштування
@@ -3903,7 +3904,7 @@ axis	Both	Обидві
 	On: one locked object showing the document, updated when it changes.	Увімк.: один заблокований об’єкт, який показує документ і оновлюється під час його зміни.
 	Off: an editable copy of its art, embedded in this document.	Вимк.: редагована копія графіки, вбудована в цей документ.
 	Images: link to the file instead of only embedding it.	Зображення: пов’язувати із файлом замість простого впровадження.
-	VectorCraft documents: one locked object, updated when the file changes.	Документи VectorCraft: один заблокований об’єкт, який оновлюється під час зміни файлу.
+	Trowel documents: one locked object, updated when the file changes.	Документи Trowel: один заблокований об’єкт, який оновлюється під час зміни файлу.
 	A file dialog is open: choose there first	Відкрито вікно вибору файлу: спочатку зробіть вибір у ньому
 	Shaper	Формоутворення
 	Expand Shaper Group	Розібрати групу формоутворення

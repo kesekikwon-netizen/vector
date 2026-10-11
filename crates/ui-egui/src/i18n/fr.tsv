@@ -88,7 +88,7 @@
 	A lower value follows the stroke closely; a higher one gives fewer points and smoother curves.	Une valeur faible suit le contour de près ; une valeur élevée donne moins de points et des courbes plus lisses.
 	A new preset starting from the selected one	Un nouveau paramètre prédéfini basé sur celui sélectionné
 	A saved copy of the selected preset	Une copie enregistrée du paramètre prédéfini sélectionné
-	About VectorCraft	À propos de VectorCraft
+	About Trowel	À propos de Trowel
 	above	au-dessus
 	Absolute Position	Position absolue
 	Accurate	Précis
@@ -191,7 +191,7 @@
 	Appearance Panel	Panneau Aspect
 	Appearance panel	Panneau Aspect
 	Applies when the linked file is relinked or updated.	S’applique lorsque le fichier lié est de nouveau lié ou mis à jour.
-	Applies the next time VectorCraft starts.	S’applique au prochain démarrage de VectorCraft.
+	Applies the next time Trowel starts.	S’applique au prochain démarrage de Trowel.
 	Apply	Appliquer
 	Apply Brush	Appliquer la forme
 	Apply Character Style	Appliquer le style de caractère
@@ -274,6 +274,7 @@
 	Bar Graph Tool	Outil Graphe en barres
 	Baseline	Ligne de base
 	Baseline Shift	Décalage de la ligne de base
+	Based on VectorCraft by the ArtCraft Team. MIT OR Apache-2.0. Fonts: Source Sans 3, Inter, JetBrains Mono (OFL). Icons: Lucide (ISC) + VectorCraft + Trowel.	Basé sur VectorCraft de l’ArtCraft Team. MIT OR Apache-2.0. Polices : Source Sans 3, Inter, JetBrains Mono (OFL). Icônes : Lucide (ISC) + VectorCraft + Trowel.
 	Basic Latin	Latin de base
 	Batch	Traitement par lots
 	Begin Recording	Démarrer l’enregistrement
@@ -1888,7 +1889,6 @@
 	Paragraph Style Options	Options de style de paragraphe
 	Paragraph Styles	Styles de paragraphe
 	Paragraph Symbol	Pied-de-mouche
-	Part of ArtCraft. MIT OR Apache-2.0. Fonts: Source Sans 3, Inter, JetBrains Mono (OFL). Icons: Lucide (ISC) + VectorCraft.	Fait partie d’ArtCraft. MIT OR Apache-2.0. Polices : Source Sans 3, Inter, JetBrains Mono (OFL). Icônes : Lucide (ISC) + VectorCraft.
 	Password	Mot de passe
 	Paste	Coller
 	Paste in Back	Coller à l’arrière-plan
@@ -2061,7 +2061,8 @@
 	Quarter Space	Quart d’espace
 	Quick Actions	Actions rapides
 	Quickly start a new file	Commencer rapidement un nouveau fichier
-	Quit VectorCraft	Quitter VectorCraft
+	Quiet Plate	Planche calme
+	Quit Trowel	Quitter Trowel
 	Radar Graph Tool	Outil Graphe radar
 	Radial	Radial
 	Radial Glows	Halos radiaux
@@ -2179,7 +2180,7 @@
 	{count} folder(s) or file(s) couldn't be read	{count} dossier(s) ou fichier(s) illisible(s)
 	The search stopped at its limit: search a smaller folder.	La recherche s’est arrêtée à sa limite : recherchez dans un dossier plus petit.
 	Copy only fonts you own or are licensed to install.	Ne copiez que des polices qui vous appartiennent ou dont la licence vous autorise l’installation.
-	VectorCraft copies the fonts to {folder}.	VectorCraft copie les polices dans {folder}.
+	Trowel copies the fonts to {folder}.	Trowel copie les polices dans {folder}.
 	Registered Trademark Symbol	Symbole de marque déposée
 	Registration marks	Repères de montage
 	Registry name:	Nom du registre :
@@ -2279,7 +2280,7 @@
 	Revert	Version précédente
 	Revert to the saved version of “{name}”?	Revenir à la version enregistrée de « {name} » ?
 	Replace “{name}”, the file this document was opened from?	Remplacer « {name} », le fichier à partir duquel ce document a été ouvert ?
-	Opening it left out what VectorCraft can't read yet ({what}), so replacing it loses that for good. Save under another name to keep it.	Son ouverture a laissé de côté ce que VectorCraft ne sait pas encore lire ({what}) : le remplacer le perd définitivement. Enregistrez sous un autre nom pour le conserver.
+	Opening it left out what Trowel can't read yet ({what}), so replacing it loses that for good. Save under another name to keep it.	Son ouverture a laissé de côté ce que Trowel ne sait pas encore lire ({what}) : le remplacer le perd définitivement. Enregistrez sous un autre nom pour le conserver.
 	Revolve…	Révolution…
 	RGB Color	Couleur RVB
 	Right	Droite
@@ -3090,8 +3091,8 @@
 	Vector Halftone	Trame de demi-teintes vectorielle
 	Vector Halftone…	Trame de demi-teintes vectorielle…
 	Vector illustration — fast, open, scriptable.	Illustration vectorielle — rapide, ouverte, scriptable.
-	VectorCraft didn't quit normally last time. These documents had unsaved changes:	VectorCraft ne s’est pas fermé normalement la dernière fois. Ces documents comportaient des modifications non enregistrées :
-	VectorCraft Help…	Aide de VectorCraft…
+	Trowel didn't quit normally last time. These documents had unsaved changes:	Trowel ne s’est pas fermé normalement la dernière fois. Ces documents comportaient des modifications non enregistrées :
+	Trowel Help…	Aide de Trowel…
 	VectorCraft on getartcraft.com	VectorCraft sur getartcraft.com
 	VectorCraft on GitHub	VectorCraft sur GitHub
 	Vectors	Vecteurs
@@ -3132,7 +3133,7 @@
 	Web Snap:	Magnétisme Web :
 	Weight	Épaisseur
 	Weight:	Épaisseur :
-	Welcome to VectorCraft	Bienvenue dans VectorCraft
+	Welcome to Trowel	Bienvenue dans Trowel
 	When pasting text	Lors du collage de texte
 	White	Blanc
 	Widget Position:	Position du widget :
@@ -3488,7 +3489,7 @@ axis	Both	Les deux
 @msg	bad trailer	trailer non valide
 @msg	balance must be between 0 and 100	l’équilibre doit être compris entre 0 et 100
 @msg	batch step {_1} (`{id}`) failed: {e}	l’étape {_1} du lot (`{id}`) a échoué : {e}
-@msg	brightness must be dark|mediumDark|mediumLight|light	la luminosité doit valoir dark|mediumDark|mediumLight|light
+@msg	brightness must be dark|mediumDark|mediumLight|light|plate	la luminosité doit valoir dark|mediumDark|mediumLight|light|plate
 @msg	can't encode the document: {0}	impossible d’encoder le document : {0}
 @msg	can't parse shortcut `{c}`	impossible d’interpréter le raccourci `{c}`
 @msg	can't parse shortcut `{s}` for `{k}`	impossible d’interpréter le raccourci `{s}` pour `{k}`
@@ -3639,7 +3640,7 @@ axis	Both	Les deux
 @msg	node {_1} is not text	le nœud {_1} n’est pas du texte
 @msg	not a DXF drawing	ce n’est pas un dessin DXF
 @msg	not a VectorCraft file: {0}	ce n’est pas un fichier VectorCraft : {0}
-@msg	not a VectorCraft shortcut set (missing `overrides`)	ce n’est pas un jeu de raccourcis VectorCraft (`overrides` manquant)
+@msg	not a Trowel shortcut set (missing `overrides`)	ce n’est pas un jeu de raccourcis Trowel (`overrides` manquant)
 @msg	not a graphic style library (format `{_1}`)	ce n’est pas une bibliothèque de styles graphiques (format `{_1}`)
 @msg	not a stored central record	ce n’est pas un enregistrement central stocké
 @msg	not a valid plug-in module: {0}	ce n’est pas un module de plug-in valide : {0}
@@ -3860,7 +3861,7 @@ axis	Both	Les deux
 @msg	Sent to {_1}	Envoyé à {_1}
 @msg	{_1} files	Fichiers {_1}
 @msg	The graphics were lost and have been restarted	Le contexte graphique a été perdu puis redémarré
-@msg	The graphics processor tried first couldn't show the window, so VectorCraft started again on {summary}	Le processeur graphique essayé en premier n’a pas pu afficher la fenêtre : VectorCraft a redémarré sur {summary}
+@msg	The graphics processor tried first couldn't show the window, so Trowel started again on {summary}	Le processeur graphique essayé en premier n’a pas pu afficher la fenêtre : Trowel a redémarré sur {summary}
 @msg	Loading VectorCraft…	Chargement de VectorCraft…
 @msg	VectorCraft failed to start: {e}	Le démarrage de VectorCraft a échoué : {e}
 @msg	A browser with WebGPU or WebGL2 is required.	Un navigateur prenant en charge WebGPU ou WebGL2 est nécessaire.
@@ -3891,13 +3892,13 @@ axis	Both	Les deux
 @msg	its editing data doesn't say where its art is	ses données d’édition ne disent pas où se trouve son illustration
 @msg	this file was saved without PDF compatibility, and its editing data can't be read ({why})	ce fichier a été enregistré sans compatibilité PDF et ses données d’édition sont illisibles ({why})
 @msg	No fonts are missing in this document	Aucune police ne manque dans ce document
-@msg	VectorCraft doesn't search other apps' or the system's folders: {path}	VectorCraft ne recherche pas dans les dossiers d’autres apps ni du système : {path}
-@msg	VectorCraft doesn't search the Shared or Public folder in Users: {path}	VectorCraft ne recherche pas dans les dossiers Shared et Public de Users : {path}
+@msg	Trowel doesn't search other apps' or the system's folders: {path}	Trowel ne recherche pas dans les dossiers d’autres apps ni du système : {path}
+@msg	Trowel doesn't search the Shared or Public folder in Users: {path}	Trowel ne recherche pas dans les dossiers Shared et Public de Users : {path}
 @msg	{path} is not a folder	{path} n’est pas un dossier
 @msg	the search couldn't start: try again in a moment	la recherche n’a pas pu démarrer : réessayez dans un instant
 @msg	searching a folder isn't available on the web	la recherche dans un dossier n’est pas disponible sur le web
 @msg	every search thread stopped on an internal error (please report this bug)	tous les fils de recherche se sont arrêtés sur une erreur interne (veuillez signaler ce bogue)
-@msg	VectorCraft's Fonts folder isn't set here: the desktop app and vectorcraft-cli set it	Le dossier Fonts de VectorCraft n’est pas défini ici : l’application de bureau et vectorcraft-cli le définissent
+@msg	Trowel's Fonts folder isn't set here: the desktop app and vectorcraft-cli set it	Le dossier Fonts de Trowel n’est pas défini ici : l’application de bureau et vectorcraft-cli le définissent
 @msg	choose the font files to add	choisissez les fichiers de polices à ajouter
 @msg	{n} font file(s) are now in {folder}	{n} fichier(s) de polices se trouvent maintenant dans {folder}
 @msg	{n} font file(s) are now in {folder}; {failed} couldn't be added: {reason}	{n} fichier(s) de polices se trouvent maintenant dans {folder} ; {failed} n’ont pas pu être ajoutés : {reason}
@@ -3911,7 +3912,7 @@ axis	Both	Les deux
 
 # The macOS menu bar (native_menu): the app and Window menus' system items, Settings pages.
 	Services	Services
-	Hide VectorCraft	Masquer VectorCraft
+	Hide Trowel	Masquer Trowel
 	Zoom	Zoom
 	Bring All to Front	Tout ramener au premier plan
 	Settings	Réglages
@@ -3919,7 +3920,7 @@ axis	Both	Les deux
 	On: one locked object showing the document, updated when it changes.	Activé : un objet verrouillé qui affiche le document et se met à jour quand celui-ci change.
 	Off: an editable copy of its art, embedded in this document.	Désactivé : une copie modifiable de son illustration, incorporée dans ce document.
 	Images: link to the file instead of only embedding it.	Images : lier le fichier au lieu de seulement l’incorporer.
-	VectorCraft documents: one locked object, updated when the file changes.	Documents VectorCraft : un objet verrouillé, mis à jour quand le fichier change.
+	Trowel documents: one locked object, updated when the file changes.	Documents Trowel : un objet verrouillé, mis à jour quand le fichier change.
 	A file dialog is open: choose there first	Une boîte de dialogue de fichiers est ouverte : faites d’abord votre choix dans celle-ci
 	Shaper	Shaper
 	Expand Shaper Group	Décomposer le groupe Shaper

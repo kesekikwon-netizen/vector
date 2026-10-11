@@ -112,7 +112,7 @@ fn orientation_button(ui: &mut egui::Ui, along: bool, selected: bool, tip: &str)
         egui::Color32::TRANSPARENT
     };
     ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
-    let color = if selected { t.text } else { t.icon };
+    let color = if selected { t.icon_on } else { t.icon };
     // An arch through the button: y = c + a·x² with x in -1..1.
     let c = rect.center() + vec2(0.0, -2.0);
     let at = |x: f32| pos2(c.x + 9.0 * x, c.y + 6.0 * x * x);

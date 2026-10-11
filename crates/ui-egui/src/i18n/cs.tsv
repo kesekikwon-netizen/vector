@@ -10,7 +10,7 @@
 # language names, OpenType, the built-in workspace names and the bracketed perspective grid preset
 # names.
 	Glowing Edges…	Zářící okraje…
-	About VectorCraft	O aplikaci VectorCraft
+	About Trowel	O aplikaci Trowel
 	Align to Path	Zarovnat k cestě
 	Cut Path at Selected Anchor Points	Rozdělit cestu ve vybraných kotevních bodech
 	Join Our Discord	Připojit se k našemu Discordu
@@ -20,7 +20,7 @@
 	Medium Dark	Středně tmavý
 	Medium Light	Středně světlý
 	Light	Světlý
-	Quit VectorCraft	Ukončit VectorCraft
+	Quit Trowel	Ukončit Trowel
 	File	Soubor
 	New…	Nový…
 	New from Template…	Nový ze šablony…
@@ -584,7 +584,7 @@
 	VectorCraft on getartcraft.com	VectorCraft na getartcraft.com
 	VectorCraft on GitHub	VectorCraft na GitHubu
 	Search Commands…	Hledat příkazy…
-	VectorCraft Help…	Nápověda VectorCraft…
+	Trowel Help…	Nápověda Trowel…
 	Automatic	Automaticky
 	Isolate Selected Group	Izolovat vybranou skupinu
 	Exit Isolation Mode	Ukončit izolovaný režim
@@ -636,7 +636,7 @@
 
 # The macOS menu bar (native_menu): the app and Window menus' system items, Settings pages.
 	Services	Služby
-	Hide VectorCraft	Skrýt VectorCraft
+	Hide Trowel	Skrýt Trowel
 	Hide Others	Skrýt ostatní
 	Minimize	Minimalizovat
 	Zoom	Zvětšit

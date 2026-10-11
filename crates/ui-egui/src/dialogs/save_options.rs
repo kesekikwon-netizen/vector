@@ -301,7 +301,7 @@ mod tests {
         // The save panel offers every save format, the document's own first.
         let pick = &picks.borrow()[0];
         let labels: Vec<&str> = pick.filters.iter().map(|f| f.0).collect();
-        assert_eq!(labels, ["VectorCraft", "VectorCraft Template", "PDF", "SVG", "SVG Compressed", "PDF-compatible .ai"]);
+        assert_eq!(labels, ["Trowel", "Trowel Template", "PDF", "SVG", "SVG Compressed", "PDF-compatible .ai"]);
         assert_eq!(pick.name, "Untitled-1.vectorcraft");
         let d = dialog(&app);
         assert_eq!((d.kind.as_str(), d.str("path").as_str(), d.str("mode").as_str()), ("svgOptions", "art.svg", "save"));
@@ -341,7 +341,7 @@ mod tests {
         let pick = &picks.borrow()[1];
         assert_eq!(pick.name, "Untitled-1 template.vctemplate");
         assert_eq!(pick.folder.as_deref().map(std::path::Path::new), Some(folder.as_path()));
-        assert_eq!(pick.filters, [("VectorCraft Template", &["vctemplate"][..])]);
+        assert_eq!(pick.filters, [("Trowel Template", &["vctemplate"][..])]);
         assert_eq!(written.borrow()[1].0, "copy.vectorcraft", "the picked name is kept");
     }
 

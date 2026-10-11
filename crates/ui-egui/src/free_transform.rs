@@ -96,7 +96,7 @@ fn button(ui: &mut Ui, glyph: Glyph, tip: &str, on: bool, enabled: bool) -> bool
     ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
     let color = match (enabled, on) {
         (false, _) => t.text_dim,
-        (true, true) => t.text,
+        (true, true) => t.icon_on,
         (true, false) => t.icon,
     };
     paint(ui, glyph, rect.shrink(6.0), color);

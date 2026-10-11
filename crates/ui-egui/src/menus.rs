@@ -274,7 +274,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "",
         "{collapsed?: bool} collapse the dock's Properties | Layers | Libraries group to icons (true), expand it (false) or toggle (omitted), as the double arrow at the top of the dock does; returns the new state",
     ),
-    ("window.brightness", "UI Brightness", "", "{brightness: dark|mediumDark|mediumLight|light}"),
+    ("window.brightness", "UI Brightness", "", "{brightness: dark|mediumDark|mediumLight|light|plate}"),
     ("window.workspace", "Workspace", "", "{name} switch workspace (Essentials, Essentials Classic, Painting, …)"),
     ("window.workspace.reset", "Reset Essentials", "", "{} reset the current workspace"),
     ("window.workspace.new", "New Workspace…", "", "{name?} save the current layout"),
@@ -316,9 +316,9 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "",
         "{} opens the Save PDF dialog; with params = document.exportPdf options written to path (asked when missing; viewAfterSaving opens the file) → {path, bytes, warnings}",
     ),
-    ("help.about", "About VectorCraft", "", "{}"),
+    ("help.about", "About Trowel", "", "{}"),
     ("help.commandPalette", "Search Commands…", "Cmd+Shift+/", "{}"),
-    ("app.quit", "Quit VectorCraft", "Cmd+Q", "{}"),
+    ("app.quit", "Quit Trowel", "Cmd+Q", "{}"),
     (
         "ui.swatchOptions",
         "Swatch Options…",
@@ -1158,7 +1158,7 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
                 app.canvas.key = None;
                 Ok(json!(b.id()))
             }
-            None => Err("brightness must be dark|mediumDark|mediumLight|light".into()),
+            None => Err("brightness must be dark|mediumDark|mediumLight|light|plate".into()),
         },
         "window.newWindow" => Err("multiple windows land with M11.5".into()),
         "tool.select" => match s("tool") {
@@ -1944,8 +1944,8 @@ pub fn menu_tree_named(english_names: bool) -> Vec<(&'static str, Vec<Item>)> {
             // App menu from this entry and the other menus (About from Help, Settings from Edit,
             // Quit from File, Language and Appearance synthesized). It stays first: `from_tree`
             // gives the first menu the App role.
-            "VectorCraft",
-            vec![c("About VectorCraft", "help.about"), c("Join Our Discord", "help.discord")],
+            crate::brand::APP_NAME,
+            vec![c("About Trowel", "help.about"), c("Join Our Discord", "help.discord")],
         ),
         (
             "File",
@@ -2566,9 +2566,9 @@ pub fn menu_tree_named(english_names: bool) -> Vec<(&'static str, Vec<Item>)> {
                 c("VectorCraft on GitHub", "help.github"),
                 Sep,
                 c("Search Commands…", "help.commandPalette"),
-                todos("VectorCraft Help…", "F1"),
+                todos("Trowel Help…", "F1"),
                 Sep,
-                c("About VectorCraft", "help.about"),
+                c("About Trowel", "help.about"),
             ],
         ),
     ]
@@ -2750,7 +2750,7 @@ pub fn menu_bar(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> f32 {
     let tree = menu_tree_named(app.session.prefs.font_names_in_english);
     // No application menu in the window (as in Illustrator): the bar starts at File on every
     // platform. The VectorCraft menu stays in the tree: the native Mac bar takes it from there.
-    let tree: Vec<(&str, Vec<Item>)> = tree.into_iter().filter(|(title, _)| *title != "VectorCraft").collect();
+    let tree: Vec<(&str, Vec<Item>)> = tree.into_iter().filter(|(title, _)| *title != crate::brand::APP_NAME).collect();
     let (end, open) = egui::MenuBar::new()
         .ui(ui, |ui| {
             let mut titles = Vec::with_capacity(tree.len());
@@ -3592,7 +3592,7 @@ mod tests {
         for t in titles {
             assert!(shown.iter().any(|s| s == t), "{t} missing from {shown:?}");
         }
-        assert!(!shown.iter().any(|s| s == "VectorCraft"), "{shown:?}");
+        assert!(!shown.iter().any(|s| s == crate::brand::APP_NAME), "{shown:?}");
     }
 
     #[test]

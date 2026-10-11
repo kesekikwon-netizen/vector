@@ -14,7 +14,7 @@
 # tested) — and the status and error messages (`@msg` rows at the end, `COMPLETE_MESSAGES`, tested).
 # Left in English on purpose (`MENU_KEEP_AS_IS` in the tests): the product name, language
 # names, OpenType, the built-in workspace names and the bracketed perspective grid preset names.
-	About VectorCraft	VectorCraft について
+	About Trowel	Trowel について
 	All Scripts	すべての文字
 	Anchors:	アンカー:
 	Any Kind	すべての種類
@@ -63,7 +63,7 @@
 	Medium Dark	やや暗い
 	Medium Light	やや明るい
 	Light	明るい
-	Quit VectorCraft	VectorCraft を終了
+	Quit Trowel	Trowel を終了
 	File	ファイル
 	New…	新規…
 	New from Template…	テンプレートから新規…
@@ -638,7 +638,7 @@
 	VectorCraft on getartcraft.com	getartcraft.com の VectorCraft
 	VectorCraft on GitHub	GitHub の VectorCraft
 	Search Commands…	コマンドを検索…
-	VectorCraft Help…	VectorCraft ヘルプ…
+	Trowel Help…	Trowel ヘルプ…
 	Preview	プレビュー
 	Show Edges	エッジを表示
 	Show Corner Widget	コーナーウィジェットを表示
@@ -822,7 +822,7 @@
 	Appearance Panel	アピアランスパネル
 	Appearance of Black	ブラックのアピアランス
 	Appearance panel	アピアランスパネル
-	Applies the next time VectorCraft starts.	VectorCraft の次回起動時に適用されます。
+	Applies the next time Trowel starts.	Trowel の次回起動時に適用されます。
 	Applies when the linked file is relinked or updated.	リンクファイルを再リンクまたは更新したときに適用されます。
 	Apply Brush	ブラシを適用
 	Apply Character Style	文字スタイルを適用
@@ -2084,6 +2084,7 @@
 	Quality:	画質:
 	Quick Actions	クイックアクション
 	Quickly start a new file	新規ファイルをすばやく作成
+	Quiet Plate	静かなプレート
 	RECENT	最近使用したもの
 	Radar Graph Tool	レーダーチャートツール
 	Radial Gradient	円形グラデーション
@@ -2178,7 +2179,7 @@
 	{count} folder(s) or file(s) couldn't be read	{count} 個のフォルダーまたはファイルを読み込めませんでした
 	The search stopped at its limit: search a smaller folder.	検索は上限で停止しました。より小さなフォルダーを検索してください。
 	Copy only fonts you own or are licensed to install.	所有しているフォント、またはインストールするライセンスがあるフォントだけをコピーしてください。
-	VectorCraft copies the fonts to {folder}.	VectorCraft はフォントを {folder} にコピーします。
+	Trowel copies the fonts to {folder}.	Trowel はフォントを {folder} にコピーします。
 	Registry name:	レジストリ名:
 	Release Compound Shape	複合シェイプを解除
 	Release Opacity Mask	不透明マスクを解除
@@ -2247,7 +2248,7 @@
 	Reverse Path Direction On	パスの方向を反転: オン
 	Revert to the saved version of “{name}”?	「{name}」を保存済みの状態に戻しますか？
 	Replace “{name}”, the file this document was opened from?	このドキュメントの開き元のファイル「{name}」を置き換えますか？
-	Opening it left out what VectorCraft can't read yet ({what}), so replacing it loses that for good. Save under another name to keep it.	開いたときに VectorCraft がまだ読み込めない内容（{what}）が除外されたため、置き換えるとそれは完全に失われます。保持するには別の名前で保存してください。
+	Opening it left out what Trowel can't read yet ({what}), so replacing it loses that for good. Save under another name to keep it.	開いたときに Trowel がまだ読み込めない内容（{what}）が除外されたため、置き換えるとそれは完全に失われます。保持するには別の名前で保存してください。
 	Right Grid:	右グリッド:
 	Right Indent	右インデント
 	Right Plane	右面
@@ -2748,7 +2749,7 @@
 	Variation:	バリエーション:
 	Vector Halftone	ベクトルハーフトーン
 	Vector illustration — fast, open, scriptable.	ベクターイラスト — 高速・オープン・スクリプト対応
-	VectorCraft didn't quit normally last time. These documents had unsaved changes:	VectorCraft は前回正常に終了しませんでした。次のドキュメントに未保存の変更があります:
+	Trowel didn't quit normally last time. These documents had unsaved changes:	Trowel は前回正常に終了しませんでした。次のドキュメントに未保存の変更があります:
 	Vectors	ベクター
 	Version {version} — open-source vector illustration in pure Rust.	バージョン {version} — Rust だけで書かれたオープンソースのベクターイラストアプリ。
 	Version:	バージョン:
@@ -2769,7 +2770,7 @@
 	Web Shift	Web シフト
 	Web Snap:	Web スナップ:
 	Weight:	線幅:
-	Welcome to VectorCraft	VectorCraft へようこそ
+	Welcome to Trowel	Trowel へようこそ
 	When pasting text	テキストをペーストするとき
 	White	白
 	Widget Position:	ウィジェットの位置:
@@ -2859,6 +2860,7 @@
 	Art	アート
 	Axis:	軸:
 	Backspace	Backspace
+	Based on VectorCraft by the ArtCraft Team. MIT OR Apache-2.0. Fonts: Source Sans 3, Inter, JetBrains Mono (OFL). Icons: Lucide (ISC) + VectorCraft + Trowel.	ArtCraft Team の VectorCraft を基にしています。MIT OR Apache-2.0。フォント：Source Sans 3、Inter、JetBrains Mono (OFL)。アイコン：Lucide (ISC) + VectorCraft + Trowel。
 	Basic Latin	基本ラテン文字
 	Black and White	白黒
 	Black and White Logo	白黒ロゴ
@@ -3050,7 +3052,6 @@
 	Packaged {n} file(s){note}	{n} 個のファイルをパッケージしました{note}
 	Page information	ページ情報
 	Paragraph Style	段落スタイル
-	Part of ArtCraft. MIT OR Apache-2.0. Fonts: Source Sans 3, Inter, JetBrains Mono (OFL). Icons: Lucide (ISC) + VectorCraft.	ArtCraft の一員。MIT OR Apache-2.0。フォント：Source Sans 3、Inter、JetBrains Mono (OFL)。アイコン：Lucide (ISC) + VectorCraft。
 	Perspective grid presets	遠近グリッドプリセット
 	Phone 390×844	スマートフォン 390×844
 	Place onto a new locked, dimmed template layer below the current layer	現在のレイヤーの下に、ロックされ淡色表示の新規テンプレートレイヤーとして配置
@@ -3277,7 +3278,7 @@ axis	Both	両方
 
 # The macOS menu bar (native_menu): the app and Window menus' system items, Settings pages.
 	Services	サービス
-	Hide VectorCraft	VectorCraft を隠す
+	Hide Trowel	Trowel を隠す
 	Zoom	拡大/縮小
 	Bring All to Front	すべてを手前に移動
 	Settings	環境設定
@@ -3286,7 +3287,7 @@ theme	Appearance	外観
 	On: one locked object showing the document, updated when it changes.	オン：ドキュメントを表示するロックされた 1 つのオブジェクト。ドキュメントの変更時に更新されます。
 	Off: an editable copy of its art, embedded in this document.	オフ：アートの編集可能なコピーをこのドキュメントに埋め込みます。
 	Images: link to the file instead of only embedding it.	画像：埋め込むだけでなく、ファイルにリンクします。
-	VectorCraft documents: one locked object, updated when the file changes.	VectorCraft ドキュメント：ロックされた 1 つのオブジェクト。ファイルの変更時に更新されます。
+	Trowel documents: one locked object, updated when the file changes.	Trowel ドキュメント：ロックされた 1 つのオブジェクト。ファイルの変更時に更新されます。
 	A file dialog is open: choose there first	ファイルダイアログが開いています。先にそちらで選択してください
 	Shaper	Shaper
 	Expand Shaper Group	Shaper グループを拡張
@@ -3362,7 +3363,7 @@ theme	Appearance	外観
 @msg	The graphics were lost and have been restarted	グラフィックス機能が利用できなくなったため、再起動しました
 @msg	VectorCraft failed to start: {e}	VectorCraft を起動できませんでした: {e}
 @msg	Your unsaved changes are kept in this browser: reload the page to get them back.	未保存の変更はこのブラウザーに残っています: 復元するにはページを再読み込みしてください。
-@msg	The graphics processor tried first couldn't show the window, so VectorCraft started again on {summary}	最初に試したグラフィックスプロセッサーではウィンドウを表示できなかったため、{summary} で VectorCraft を再起動しました
+@msg	The graphics processor tried first couldn't show the window, so Trowel started again on {summary}	最初に試したグラフィックスプロセッサーではウィンドウを表示できなかったため、{summary} で Trowel を再起動しました
 @msg	not a DXF drawing	DXF 図面ではありません
 @msg	scale must be a number from {_1} to {_2}, not {s}	縮尺は {_1} から {_2} までの数値にしてください ({s} は指定できません)
 @msg	the artboard to fit must be a positive size up to {_1} pt	合わせる先のアートボードのサイズは 0 より大きく {_1} pt 以下にしてください
@@ -3822,7 +3823,7 @@ theme	Appearance	外観
 @msg	No saved views (View → New View…)	保存した表示はありません (表示 → 新規表示…)
 @msg	`command` must be a command whose menu item opens a dialog (see ui.menuDialog)	`command` には、メニュー項目がダイアログを開くコマンドを指定してください (ui.menuDialog を参照)
 @msg	`{key}` must be true or false	`{key}` には true または false を指定してください
-@msg	brightness must be dark|mediumDark|mediumLight|light	brightness には dark|mediumDark|mediumLight|light のいずれかを指定してください
+@msg	brightness must be dark|mediumDark|mediumLight|light|plate	brightness には dark|mediumDark|mediumLight|light|plate のいずれかを指定してください
 @msg	index must be a number or first, previous, next or last	index には数値、または first、previous、next、last のいずれかを指定してください
 @msg	index must be a number or first, previous, next or last, not `{other}`	index には数値、または first、previous、next、last のいずれかを指定してください (`{other}` は指定できません)
 @msg	lang must be one of {_1}	lang には {_1} のいずれかを指定してください
@@ -3887,7 +3888,7 @@ theme	Appearance	外観
 @msg	no dialog open	ダイアログが開かれていません
 @msg	no file reader	ファイルの読み込み機能がありません
 @msg	no file writer	ファイルの書き込み機能がありません
-@msg	not a VectorCraft shortcut set (missing `overrides`)	VectorCraft のショートカットセットではありません (`overrides` がありません)
+@msg	not a Trowel shortcut set (missing `overrides`)	Trowel のショートカットセットではありません (`overrides` がありません)
 @msg	shortcut for `{k}` must be a string	`{k}` のショートカットは文字列で指定してください
 @msg	tool shortcuts must be a single key (optionally with Shift)	ツールのショートカットには 1 つのキーを指定してください (Shift との組み合わせも可)
 @msg	unknown preset (one of {_1})	不明なプリセットです ({_1} のいずれかを指定してください)
@@ -3907,13 +3908,13 @@ theme	Appearance	外観
 @msg	unknown workspace (one of {_1})	不明なワークスペースです ({_1} のいずれかを指定してください)
 @msg	workspace name can't be empty	ワークスペース名を入力してください
 @msg	No fonts are missing in this document	このドキュメントには見つからないフォントはありません
-@msg	VectorCraft doesn't search other apps' or the system's folders: {path}	VectorCraft は他のアプリやシステムのフォルダーを検索しません: {path}
-@msg	VectorCraft doesn't search the Shared or Public folder in Users: {path}	VectorCraft は Users 内の Shared フォルダーと Public フォルダーを検索しません: {path}
+@msg	Trowel doesn't search other apps' or the system's folders: {path}	Trowel は他のアプリやシステムのフォルダーを検索しません: {path}
+@msg	Trowel doesn't search the Shared or Public folder in Users: {path}	Trowel は Users 内の Shared フォルダーと Public フォルダーを検索しません: {path}
 @msg	{path} is not a folder	{path} はフォルダーではありません
 @msg	the search couldn't start: try again in a moment	検索を開始できませんでした: しばらくしてからもう一度お試しください
 @msg	searching a folder isn't available on the web	Web 版ではフォルダーを検索できません
 @msg	every search thread stopped on an internal error (please report this bug)	すべての検索スレッドが内部エラーで停止しました (このバグを報告してください)
-@msg	VectorCraft's Fonts folder isn't set here: the desktop app and vectorcraft-cli set it	この環境では VectorCraft の Fonts フォルダーが設定されていません: デスクトップアプリと vectorcraft-cli が設定します
+@msg	Trowel's Fonts folder isn't set here: the desktop app and vectorcraft-cli set it	この環境では Trowel の Fonts フォルダーが設定されていません: デスクトップアプリと vectorcraft-cli が設定します
 @msg	choose the font files to add	追加するフォントファイルを選択してください
 @msg	{n} font file(s) are now in {folder}	{n} 個のフォントファイルが {folder} に入りました
 @msg	{n} font file(s) are now in {folder}; {failed} couldn't be added: {reason}	{n} 個のフォントファイルが {folder} に入りましたが、{failed} 個は追加できませんでした: {reason}

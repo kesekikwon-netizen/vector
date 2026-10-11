@@ -1,6 +1,6 @@
 # UI and interaction parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (first checklist: pen, anchors, handles, snapping, nudging, modifiers, panels) · **Target:** Adobe Illustrator 2026 (30.x)
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (Look and feel: Quiet Plate added as the fifth brightness level and the default) · earlier: major (first checklist: pen, anchors, handles, snapping, nudging, modifiers, panels) · **Target:** Adobe Illustrator 2026 (30.x)
 
 How VectorCraft's tools, handles, snapping and panels behave next to Illustrator's. A vector illustrator's
 trust is in the details: where a handle lands, what Shift and Alt do mid-drag, what a smart guide snaps to,
@@ -155,7 +155,7 @@ Layers panel.
 
 ## Look and feel
 
-Medium Dark theme and four brightness levels, the categorized and Advanced toolbars, 35 pt document tabs,
+Five brightness levels (Quiet Plate, the default, plus Illustrator's four), the categorized and Advanced toolbars, 35 pt document tabs,
 33 pt panel tabs, hint bar, contextual task bar and native macOS menus, restyled to values measured from
 public screenshots on 2026-10-02 (~75–80% then). Missing: a System theme that follows the OS (#825), a
 re-measure of the panels added since.
@@ -164,4 +164,5 @@ re-measure of the panels added since.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | Look and feel: Quiet Plate (J001) is the fifth brightness level and the default; the four Illustrator levels keep their measured values |
 | 2026-10-10 | major | First checklist, built from the tool sources and tests against Illustrator 2026's public documentation |

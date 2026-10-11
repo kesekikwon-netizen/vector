@@ -342,8 +342,10 @@ with its author, source and license in [ASSETS.md](ASSETS.md). Release builds al
 fonts of [craft-fonts](https://github.com/storytold/craft-fonts/blob/main/ATTRIBUTION.md) (Japanese,
 Simplified Chinese and Arabic faces; SIL Open Font License 1.1).
 
-The app icon (an engraved dragon on VectorCraft red, `#e8573f`) is the owner's original artwork; its
-palette and files are in [`assets/app-icon/`](assets/app-icon/README.md).
+The app icon (a trowel blade over a clay datum line and two level lines on a slate tile: ivory
+`#FAF9F5`, clay `#D97757`, slate `#141413`) is 권's original work, drawn in code as an SVG; its
+palette and files are in [`assets/app-icon/`](assets/app-icon/README.md). The family table above
+links the upstream repository's icon, so it keeps showing VectorCraft's dragon.
 
 The ArtCraft name, wordmark and logos in [`docs/brand/`](docs/brand/) are trademarks of the
 ArtCraft Team and are not covered by this license. They may be used only unmodified, and only as

@@ -1,8 +1,13 @@
-//! The VectorCraft brand mark: the app icon (the engraved dragon, `assets/app-icon/`, see its
-//! README). The PNG carries the icon's rounded corners; it is decoded once per context into a
-//! mipmapped texture, so it stays crisp from the 18 pt app-bar mark to the About box.
+//! The Trowel brand: the product name and the brand mark, the app icon (a trowel blade over a
+//! datum line and two level lines on a slate tile, `assets/app-icon/`, see its README). The PNG
+//! carries the icon's rounded corners; it is decoded once per context into a mipmapped texture,
+//! so it stays crisp from the 18 pt app-bar mark to the About box.
 
 use egui::{Color32, Context, Id, Rect, TextureHandle, TextureOptions, Ui, pos2};
+
+/// The product name as users see it (window title, app menu, About box). Identifiers on disk
+/// and on the wire (file format, preferences folder, app id, crate names, URLs) keep `vectorcraft`.
+pub const APP_NAME: &str = "Trowel";
 
 /// 128 px: sharp at 44 pt on a 2× display, and the mipmaps keep 22 pt clean.
 const ICON_PNG: &[u8] = include_bytes!("../../../assets/app-icon/hicolor/128x128/apps/ai.storyteller.vectorcraft.png");

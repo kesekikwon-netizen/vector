@@ -540,7 +540,13 @@ fn style_toggle(ui: &mut Ui, g: Glyph, tip: &str, on: bool, enabled: bool) -> bo
     } else if resp.hovered() && enabled {
         ui.painter().rect_filled(r, 3, t.hover);
     }
-    let col = if enabled { t.text_strong } else { t.text_disabled };
+    let col = if !enabled {
+        t.text_disabled
+    } else if on {
+        t.icon_on
+    } else {
+        t.text_strong
+    };
     let big = egui::FontId::proportional(15.0);
     let small = egui::FontId::proportional(10.5);
     let c = r.center();

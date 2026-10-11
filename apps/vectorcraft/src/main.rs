@@ -45,7 +45,7 @@ use vectorcraft_engine::cmd::fileio;
 use vectorcraft_engine::file_access::{self, AutomationRoots};
 use vectorcraft_ui_egui::graphics::GraphicsLoss;
 use vectorcraft_ui_egui::picks::PickRequest;
-use vectorcraft_ui_egui::{ClipboardProbeFactory, FilePick, Services, VectorcraftApp};
+use vectorcraft_ui_egui::{APP_NAME, ClipboardProbeFactory, FilePick, Services, VectorcraftApp};
 
 struct App {
     app: VectorcraftApp,
@@ -103,9 +103,9 @@ impl App {
             // eframe can't give a window a new device: the user saves and starts again.
             self.graphics_lost = self.app.graphics_lost(&why);
             self.app.status(if self.graphics_lost {
-                "The graphics device was lost: unsaved changes are kept for Data Recovery. Save your documents and restart VectorCraft"
+                format!("The graphics device was lost: unsaved changes are kept for Data Recovery. Save your documents and restart {APP_NAME}")
             } else {
-                "The graphics device was lost: save your documents and restart VectorCraft"
+                format!("The graphics device was lost: save your documents and restart {APP_NAME}")
             });
         }
         if self.graphics_lost && ctx.input(|i| i.viewport().close_requested()) {
@@ -410,7 +410,7 @@ fn custom_titlebar(saved: Option<&vectorcraft_ui_egui::UiState>) -> bool {
 fn native_options(custom_titlebar: bool) -> eframe::NativeOptions {
     eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("VectorCraft")
+            .with_title(APP_NAME)
             .with_inner_size(window::DEFAULT_SIZE)
             .with_min_inner_size(window::MIN_SIZE)
             .with_drag_and_drop(true)
@@ -546,7 +546,7 @@ fn main() -> std::process::ExitCode {
     // A panic that ends the window (egui-wgpu's own, #502) is caught here: never a crash.
     let outcome = vectorcraft_engine::guard::catch_panic(|| {
         eframe::run_native(
-            "VectorCraft",
+            APP_NAME,
             options,
             Box::new(move |cc| {
                 let mut app = VectorcraftApp::new(Session::new(), services(cc.winit_window().cloned()));
@@ -588,7 +588,7 @@ fn main() -> std::process::ExitCode {
                             ""
                         };
                         app.status(format!(
-                            "The graphics processor tried first couldn't show the window, so VectorCraft started again on {summary}{hint}"
+                            "The graphics processor tried first couldn't show the window, so {APP_NAME} started again on {summary}{hint}"
                         ));
                     }
                     app.graphics_adapter = Some(summary);
