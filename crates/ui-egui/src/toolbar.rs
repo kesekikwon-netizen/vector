@@ -62,6 +62,16 @@ pub const BASIC: &[(&str, &[&[&str]])] = &[
     ("Color", &[&["gradient", "mesh"], &["eyedropper", "measure"]]),
 ];
 
+/// Trowel archaeological CAD single-column toolbar layout.
+pub const TROWEL_SLOTS: &[(&str, &[&[&str]])] = &[
+    ("Select", &[&["selection"], &["directSelection"]]),
+    ("Draw", &[&["pen"], &["pencil"], &["lineSegment"], &["rectangle"], &["type"]]),
+    ("Modify", &[&["rotate"], &["scale"], &["scissors"]]),
+    ("Paint", &[&["livePaintBucket"], &["eyedropper"]]),
+    ("Navigate", &[&["hand"], &["zoom"]]),
+    ("고고학", &[&["lineSegment"], &["type"], &["polygon"], &["ellipse"], &["measure"]]),
+];
+
 pub(crate) fn tip(t: &ToolInfo) -> String {
     match crate::shortcut_editor::tool_shortcut(t.id) {
         Some(s) => format!("{} ({})", tl!(t.label), s),
@@ -71,6 +81,12 @@ pub(crate) fn tip(t: &ToolInfo) -> String {
 
 /// Slots of the current layout: (category label for the first slot of a category, tool ids).
 fn slots(app: &VectorcraftApp) -> Vec<(Option<&'static str>, Vec<&'static str>)> {
+    if app.ui.brightness == theme::Brightness::Trowel {
+        return TROWEL_SLOTS
+            .iter()
+            .flat_map(|(cat, ss)| ss.iter().enumerate().map(move |(i, s)| (if i == 0 { Some(*cat) } else { None }, s.to_vec())))
+            .collect();
+    }
     if app.ui.toolbar_advanced {
         TOOL_GROUPS.iter().map(|g| (None, g.iter().map(|t| t.id).collect())).collect()
     } else {

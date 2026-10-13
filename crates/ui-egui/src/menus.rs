@@ -1161,6 +1161,12 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
             None => Err("brightness must be dark|mediumDark|mediumLight|light".into()),
         },
         "window.newWindow" => Err("multiple windows land with M11.5".into()),
+        "drawing.new" => app.run("file.newDialog", json!({})),
+        "drawing.weightsAtOnce" => app.run("drawing.weightsAtOnce", p.clone()),
+        "view.alignTracing" => app.run("view.actualSize", json!({})),
+        "drawing.elevationLines" => Ok(json!({})),
+        "drawing.scale" => Ok(json!({})),
+        "drawing.coordinateSystem" => Ok(json!({})),
         "tool.select" => match s("tool") {
             Some(t) if vectorcraft_tools::tool_info(&t).is_some() => {
                 app.select_tool(&t);
@@ -2727,6 +2733,23 @@ pub fn ruler_menu_body(app: &VectorcraftApp, ui: &mut egui::Ui, clicked: &mut Op
     });
 }
 
+/// Trowel archaeological CAD Drawing menu.
+pub fn trowel_drawing_menu() -> (&'static str, Vec<Item>) {
+    (
+        "도면",
+        vec![
+            c("새 도면…", "drawing.new"),
+            Sep,
+            c("굵기 한 번에…", "drawing.weightsAtOnce"),
+            c("밑그림 맞추기…", "view.alignTracing"),
+            c("해발선 만들기…", "drawing.elevationLines"),
+            Sep,
+            c("도면 축척…", "drawing.scale"),
+            c("좌표계…", "drawing.coordinateSystem"),
+        ],
+    )
+}
+
 /// Render the menu bar.
 /// The in-window menu bar. Returns where its titles end (x): the bar itself takes the full width.
 pub fn menu_bar(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> f32 {
@@ -2750,7 +2773,12 @@ pub fn menu_bar(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> f32 {
     let tree = menu_tree_named(app.session.prefs.font_names_in_english);
     // No application menu in the window (as in Illustrator): the bar starts at File on every
     // platform. The VectorCraft menu stays in the tree: the native Mac bar takes it from there.
-    let tree: Vec<(&str, Vec<Item>)> = tree.into_iter().filter(|(title, _)| *title != "VectorCraft").collect();
+    let mut tree: Vec<(&str, Vec<Item>)> = tree.into_iter().filter(|(title, _)| *title != "VectorCraft").collect();
+    if app.ui.brightness == Brightness::Trowel
+        && let Some(pos) = tree.iter().position(|(title, _)| *title == "Effect")
+    {
+        tree.insert(pos + 1, trowel_drawing_menu());
+    }
     let (end, open) = egui::MenuBar::new()
         .ui(ui, |ui| {
             let mut titles = Vec::with_capacity(tree.len());

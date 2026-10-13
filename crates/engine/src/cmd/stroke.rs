@@ -3,7 +3,9 @@
 
 use serde_json::{Value, json};
 use vectorcraft_color::{Color, Paint};
-use vectorcraft_doc::{ArrowAlign, Arrowhead, CharStyle, Dash, LineCap, LineJoin, Node, NodeKind, SavedProfile, StrokeLayer, Unit, WidthProfile};
+use vectorcraft_doc::{
+    AppearanceItem, ArrowAlign, Arrowhead, CharStyle, Dash, LineCap, LineJoin, Node, NodeId, NodeKind, SavedProfile, StrokeLayer, Unit, WidthProfile,
+};
 
 use super::appearance::{ItemTarget, edit_items, item_target};
 use super::paint::painted;
@@ -66,6 +68,15 @@ pub fn specs() -> Vec<CommandSpec> {
             "{} → {profiles: [{id (stroke.set `profile`), label, builtIn, points: [[t, left, right]…]}], current: the selected stroke's profile id or name (nothing selected: the next object drawn's), \"custom\" when it isn't listed, null without a stroke}",
             always,
             profile_list
+        ),
+        cmd!(
+            "drawing.weightsAtOnce",
+            "Stroke Weight",
+            [],
+            None,
+            "{ratio?: f64, layer?: id, ids?: [...]} scale stroke weights across document, layer or objects (default ratio 0.8) → {modified, ratio}",
+            has_doc,
+            weights_at_once
         ),
     ]
 }
@@ -496,4 +507,77 @@ fn profile_list(s: &mut Session, _: &Value) -> Result<Value> {
         .collect();
     let current = s.shown_stroke().map(|st| s.profile_entry(st.profile.as_ref()).map_or("custom", |e| e.id).to_string());
     Ok(json!({ "profiles": profiles, "current": current }))
+}
+
+fn weights_at_once(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "drawing.weightsAtOnce";
+    let ratio = p.get("ratio").and_then(Value::as_f64).unwrap_or(0.8);
+    if !ratio.is_finite() || ratio <= 0.0 {
+        return Err(bad(C, "ratio must be a positive number"));
+    }
+
+    let ids: Vec<NodeId> = if let Some(arr) = p.get("ids").and_then(Value::as_array) {
+        arr.iter().filter_map(|v| v.as_u64().map(NodeId)).collect()
+    } else if let Some(lid) = p.get("layer").and_then(Value::as_u64).map(NodeId) {
+        let d = &s.doc()?.doc;
+        d.node(lid).map(|l| l.layer_art(false)).unwrap_or_default()
+    } else {
+        let d = &s.doc()?.doc;
+        d.layers.iter().flat_map(|l| l.layer_art(false)).collect()
+    };
+
+    let mut modified = 0;
+    edit_items(s, &ids, ItemTarget::Top, C, "Scale Stroke Weights", false, |n, _| {
+        for item in &mut n.appearance.items {
+            if let AppearanceItem::Stroke(st) = item
+                && st.width > 0.0
+            {
+                st.width = (st.width * ratio).clamp(0.01, 1000.0);
+                modified += 1;
+            }
+        }
+        if let NodeKind::Text(ref mut t) = n.kind {
+            for r in &mut t.runs {
+                let mut st = r.style.stroke_layer();
+                if st.width > 0.0 {
+                    st.width = (st.width * ratio).clamp(0.01, 1000.0);
+                    r.style.set_stroke_layer(&st);
+                    modified += 1;
+                }
+            }
+        }
+        Ok(())
+    })?;
+
+    Ok(json!({ "modified": modified, "ratio": ratio }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn weights_at_once_scales_all_strokes_in_document() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let r1 = NodeId(s.execute("shape.rectangle", &json!({"x": 10, "y": 10, "width": 50, "height": 50})).unwrap()["id"].as_u64().unwrap());
+        s.execute("select.set", &json!({"ids": [r1.0]})).unwrap();
+        s.execute("stroke.set", &json!({"weight": 1.0})).unwrap();
+
+        let res = s.execute("drawing.weightsAtOnce", &json!({"ratio": 0.8})).unwrap();
+        assert_eq!(res["ratio"], 0.8);
+        assert!(res["modified"].as_u64().unwrap() >= 1);
+
+        let n = s.active().unwrap().doc.node(r1).unwrap();
+        let st = n
+            .appearance
+            .items
+            .iter()
+            .find_map(|item| match item {
+                AppearanceItem::Stroke(st) => Some(st),
+                _ => None,
+            })
+            .unwrap();
+        assert!((st.width - 0.8).abs() < 1e-3);
+    }
 }

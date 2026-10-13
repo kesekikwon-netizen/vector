@@ -43,6 +43,7 @@ pub mod prefs_dialog;
 pub mod print;
 pub mod recovery;
 pub mod render_worker;
+pub mod ribbon;
 mod scrub;
 pub mod shortcut_editor;
 pub mod shortcuts;
@@ -52,6 +53,7 @@ pub mod theme;
 pub mod titlebar;
 pub mod toolbar;
 mod touch;
+pub mod trowel;
 mod ui_fonts;
 pub mod unsaved;
 pub mod widgets;
@@ -1138,25 +1140,44 @@ impl VectorcraftApp {
         font_menu::end_stale_preview(self, &ctx);
         floating::track(self, &ctx);
         let t = theme::Tokens::get(&ctx);
+        let is_trowel = self.ui.brightness == theme::Brightness::Trowel;
         if self.ui.screen_mode < 2 {
             chrome::app_bar(self, ui);
+            if is_trowel {
+                ribbon::show(self, ui);
+            }
             if self.ui.control_bar {
                 chrome::control_bar(self, ui);
             }
         }
         if self.ui.status_bar && self.ui.screen_mode < 3 {
-            chrome::status_bar(self, ui);
-            chrome::hint_bar(self, ui);
+            if is_trowel {
+                trowel::status_bar(self, ui);
+            } else {
+                chrome::status_bar(self, ui);
+                chrome::hint_bar(self, ui);
+            }
         }
         if self.ui.toolbar && self.ui.screen_mode < 3 {
             toolbar::show(self, ui);
+            if is_trowel {
+                trowel::sheet_index(self, ui);
+            }
         }
         if self.ui.dock && self.ui.screen_mode < 3 {
-            dock::show(self, ui);
+            if is_trowel {
+                trowel::right_dock(self, ui);
+            } else {
+                dock::show(self, ui);
+            }
         }
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.pasteboard)).show(ui, |ui| {
             if self.ui.screen_mode < 3 {
-                chrome::doc_tabs(self, ui);
+                if is_trowel {
+                    trowel::doc_tabs(self, ui);
+                } else {
+                    chrome::doc_tabs(self, ui);
+                }
             }
             canvas::show(self, ui);
         });

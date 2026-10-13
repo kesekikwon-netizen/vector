@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 
-use egui::{CornerRadius, Sense, Stroke, Ui, vec2};
+use egui::{CornerRadius, Rect, Sense, Stroke, StrokeKind, Ui, vec2};
 use serde_json::json;
 use vectorcraft_doc::NodeKind;
 
@@ -71,7 +71,9 @@ pub fn app_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
             let icon = 28.0;
             let search = room >= 64.0 + 8.0 + gap + icon;
             let ws_w = ws_w.min(room - 8.0 - gap - if search { icon } else { 0.0 }).max(64.0);
-            let discord = search && room >= ws_w + 8.0 + gap + icon + 10.0 + gap + crate::community::discord_width(ui, false);
+            let discord = app.ui.brightness != theme::Brightness::Trowel
+                && search
+                && room >= ws_w + 8.0 + gap + icon + 10.0 + gap + crate::community::discord_width(ui, false);
             let mut rui = ui.new_child(egui::UiBuilder::new().max_rect(right).layout(egui::Layout::right_to_left(egui::Align::Center)));
             let ui = &mut rui;
             // Workspace switcher: shows the current workspace, opens Window → Workspace.
@@ -210,10 +212,16 @@ const INLINE_TRANSFORM_WIDTH: f32 = 440.0;
 /// The Control bar (Window → Control), context-sensitive like Illustrator's.
 pub fn control_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
+    let is_trowel = app.ui.brightness == theme::Brightness::Trowel;
+    let bar_height = if is_trowel { 40.0 } else { 34.0 };
     egui::Panel::top("control_bar")
-        .exact_size(34.0)
+        .exact_size(bar_height)
         .frame(egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(10, 0)).stroke(Stroke::new(1.0, t.border)))
         .show(ui, |ui| {
+            if is_trowel {
+                trowel_control_bar(app, ui, &t);
+                return;
+            }
             ui.horizontal_centered(|ui| {
                 // Gripper
                 let (g, _) = ui.allocate_exact_size(vec2(6.0, 20.0), Sense::hover());
@@ -319,6 +327,108 @@ pub fn control_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
                 }
             });
         });
+}
+
+fn trowel_control_bar(app: &mut VectorcraftApp, ui: &mut Ui, t: &Tokens) {
+    ui.horizontal_centered(|ui| {
+        ui.spacing_mut().item_spacing = vec2(8.0, 0.0);
+        let tool_name = match app.session.tool_id() {
+            "pen" => "펜",
+            "pencil" => "연필",
+            "line" => "선분",
+            "rectangle" => "사각형",
+            "type" => "문자",
+            "livePaint" => "칠통",
+            _ => "도구",
+        };
+        ui.label(egui::RichText::new(format!("{tool_name} ›")).color(t.ink).font(egui::FontId::proportional(12.0)));
+
+        ui.label(egui::RichText::new("범례").color(t.muted).font(egui::FontId::proportional(11.0)));
+        let (patch_rect, patch_resp) = ui.allocate_exact_size(vec2(196.0, 26.0), Sense::click());
+        ui.painter().rect(patch_rect, CornerRadius::same(6), t.surface, Stroke::new(1.0, t.edge), StrokeKind::Inside);
+        let p_box = Rect::from_center_size(patch_rect.left_center() + vec2(16.0, 0.0), vec2(20.0, 12.0));
+        ui.painter().rect(p_box, CornerRadius::same(2), t.surface, Stroke::new(2.0, t.ink), StrokeKind::Inside);
+        ui.painter().text(
+            patch_rect.left_center() + vec2(32.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            "굴광선 (유구 면) 0.8 pt",
+            egui::FontId::proportional(11.5),
+            t.ink,
+        );
+        ui.painter().text(patch_rect.right_center() - vec2(10.0, 0.0), egui::Align2::RIGHT_CENTER, "▼", egui::FontId::proportional(9.0), t.muted);
+        if patch_resp.clicked() {
+            let _ = app.run("window.panel", json!({ "panel": "legend" }));
+        }
+
+        // 추정 (파선) 토글
+        let (tog_rect, tog_resp) = ui.allocate_exact_size(vec2(84.0, 26.0), Sense::click());
+        let is_dashed = crate::panels::current_stroke(app).as_ref().map(|s| s.dash.is_some()).unwrap_or(false);
+        ui.painter().rect(
+            tog_rect,
+            CornerRadius::same(6),
+            if is_dashed { t.oat } else { t.surface },
+            Stroke::new(1.0, if is_dashed { t.ring } else { t.edge }),
+            StrokeKind::Inside,
+        );
+        ui.painter().text(tog_rect.center(), egui::Align2::CENTER_CENTER, "추정 (파선)", egui::FontId::proportional(11.5), t.ink);
+        if tog_resp.clicked() {
+            let dash_val = if is_dashed { json!(null) } else { json!([6.0, 3.0]) };
+            let _ = app.run("stroke.set", json!({ "dash": dash_val }));
+        }
+
+        // vr
+        ui.add_space(2.0);
+        let (vr1, _) = ui.allocate_exact_size(vec2(1.0, 18.0), Sense::hover());
+        ui.painter().line_segment([vr1.center_top(), vr1.center_bottom()], Stroke::new(1.0, t.line));
+        ui.add_space(2.0);
+
+        ui.label(egui::RichText::new("닫으면").color(t.muted).font(egui::FontId::proportional(11.0)));
+        let (calc_rect, _) = ui.allocate_exact_size(vec2(104.0, 26.0), Sense::click());
+        ui.painter().rect(calc_rect, CornerRadius::same(6), t.surface, Stroke::new(1.0, t.edge), StrokeKind::Inside);
+        ui.painter().text(calc_rect.center(), egui::Align2::CENTER_CENTER, "면적·둘레 계산 ▼", egui::FontId::proportional(11.0), t.ink);
+
+        // vr
+        ui.add_space(2.0);
+        let (vr2, _) = ui.allocate_exact_size(vec2(1.0, 18.0), Sense::hover());
+        ui.painter().line_segment([vr2.center_top(), vr2.center_bottom()], Stroke::new(1.0, t.line));
+        ui.add_space(2.0);
+
+        // 펜 필압
+        ui.label(egui::RichText::new("펜 필압").color(t.muted).font(egui::FontId::proportional(11.0)));
+        let (seg_rect, _) = ui.allocate_exact_size(vec2(136.0, 26.0), Sense::click());
+        ui.painter().rect(seg_rect, CornerRadius::same(6), t.surface, Stroke::new(1.0, t.edge), StrokeKind::Inside);
+        let left_half = Rect::from_min_size(seg_rect.min, vec2(68.0, 26.0));
+        let right_half = Rect::from_min_size(seg_rect.min + vec2(68.0, 0.0), vec2(68.0, 26.0));
+        ui.painter().rect_filled(left_half, CornerRadius::same(6), t.oat);
+        ui.painter().text(left_half.center(), egui::Align2::CENTER_CENTER, "굵기 그대로", egui::FontId::proportional(11.0), t.ink);
+        ui.painter().text(right_half.center(), egui::Align2::CENTER_CENTER, "필압 따라", egui::FontId::proportional(11.0), t.muted);
+
+        ui.add_space(6.0);
+        ui.label(egui::RichText::new("굵기 · 빗금 · 선종은 오른쪽 「그리기 팔레트」에서").color(t.faint).font(egui::FontId::proportional(11.0)));
+
+        // Right side: 자석 & 허용치
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let (field_rect, _) = ui.allocate_exact_size(vec2(44.0, 26.0), Sense::hover());
+            ui.painter().rect(field_rect, CornerRadius::same(6), t.surface, Stroke::new(1.0, t.edge), StrokeKind::Inside);
+            ui.painter().text(field_rect.center(), egui::Align2::CENTER_CENTER, "12 px", egui::FontId::monospace(11.0), t.ink);
+
+            ui.label(egui::RichText::new("허용치").color(t.muted).font(egui::FontId::proportional(11.0)));
+
+            let snap_on = app.ui.view.snap_to_grid;
+            let (snap_rect, snap_resp) = ui.allocate_exact_size(vec2(52.0, 26.0), Sense::click());
+            ui.painter().rect(
+                snap_rect,
+                CornerRadius::same(6),
+                if snap_on { t.oat } else { t.surface },
+                Stroke::new(1.0, if snap_on { t.ring } else { t.edge }),
+                StrokeKind::Inside,
+            );
+            ui.painter().text(snap_rect.center(), egui::Align2::CENTER_CENTER, "자석", egui::FontId::proportional(11.5), t.ink);
+            if snap_resp.clicked() {
+                let _ = app.run("view.snapToGrid", json!({}));
+            }
+        });
+    });
 }
 
 /// A document tab's title: "Name* @ 66.67 % (RGB/Preview)", or while an opacity mask is edited

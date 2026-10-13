@@ -12,16 +12,18 @@ pub enum Brightness {
     MediumDark,
     MediumLight,
     Light,
+    Trowel,
 }
 
 impl Brightness {
-    pub const ALL: [Brightness; 4] = [Brightness::Dark, Brightness::MediumDark, Brightness::MediumLight, Brightness::Light];
+    pub const ALL: [Brightness; 5] = [Brightness::Dark, Brightness::MediumDark, Brightness::MediumLight, Brightness::Light, Brightness::Trowel];
     pub fn label(self) -> &'static str {
         match self {
             Brightness::Dark => "Dark",
             Brightness::MediumDark => "Medium Dark",
             Brightness::MediumLight => "Medium Light",
             Brightness::Light => "Light",
+            Brightness::Trowel => "Trowel",
         }
     }
     pub fn id(self) -> &'static str {
@@ -30,6 +32,7 @@ impl Brightness {
             Brightness::MediumDark => "mediumDark",
             Brightness::MediumLight => "mediumLight",
             Brightness::Light => "light",
+            Brightness::Trowel => "trowel",
         }
     }
     pub fn parse(s: &str) -> Option<Self> {
@@ -93,6 +96,29 @@ pub struct Tokens {
     pub axis_x: Color32,
     pub axis_y: Color32,
     pub axis_z: Color32,
+    // Trowel / Strata design tokens
+    pub ground: Color32,
+    pub surface: Color32,
+    pub wash: Color32,
+    pub desk: Color32,
+    pub press: Color32,
+    pub oat: Color32,
+    pub hand: Color32,
+    pub ink: Color32,
+    pub ink2: Color32,
+    pub muted: Color32,
+    pub faint: Color32,
+    pub line: Color32,
+    pub edge: Color32,
+    pub ring: Color32,
+    pub action: Color32,
+    pub clay: Color32,
+    pub claytext: Color32,
+    pub block: Color32,
+    pub blockwash: Color32,
+    pub caution: Color32,
+    pub done: Color32,
+    pub sky: Color32,
 }
 
 impl Tokens {
@@ -140,9 +166,32 @@ impl Tokens {
             axis_x: hex(0xef6058),
             axis_y: hex(0x45af63),
             axis_z: hex(0x378ef0),
+            ground: hex(0x262626),
+            surface: hex(0x323232),
+            wash: hex(0x282828),
+            desk: hex(0x1e1e1e),
+            press: hex(0x383838),
+            oat: hex(0x484b50),
+            hand: hex(0xcfcfcf),
+            ink: hex(0xd8d8d8),
+            ink2: hex(0xb0b0b0),
+            muted: hex(0xa8a8a8),
+            faint: hex(0x6e6e6e),
+            line: hex(0x3f3f3f),
+            edge: hex(0x464646),
+            ring: hex(0x6a6a6a),
+            action: hex(0x378ef0),
+            clay: hex(0x1473e6),
+            claytext: hex(0x378ef0),
+            block: hex(0xe34850),
+            blockwash: hex(0x422020),
+            caution: hex(0xf0a330),
+            done: hex(0x45af63),
+            sky: hex(0x4affff),
         };
         match b {
             Brightness::Dark => base,
+            Brightness::Trowel => Self::trowel(),
             // Measured from Illustrator 2026 (plan/illustrator/10-observed-ui.md §1).
             Brightness::MediumDark => Tokens {
                 app_bar: hex(0x535353),
@@ -218,6 +267,76 @@ impl Tokens {
                 button: hex(0xe0e0e0),
                 ..base
             },
+        }
+    }
+
+    /// Strata 「조용한 도판」 design tokens for Trowel.
+    pub fn trowel() -> Self {
+        let hex = |s: u32| Color32::from_rgb((s >> 16) as u8, (s >> 8) as u8, s as u8);
+        Tokens {
+            dark: false,
+            app_bar: hex(0xFAF9F5),
+            panel: hex(0xFAF9F5),
+            panel_darker: hex(0xF5F4ED),
+            input: hex(0xFFFFFF),
+            input_border: hex(0xC2C0B6),
+            border: hex(0xDEDCD1),
+            divider: hex(0xDEDCD1),
+            text: hex(0x141413),
+            text_dim: hex(0x5E5D59),
+            text_disabled: hex(0x73726C),
+            icon: hex(0x30302E),
+            hover: hex(0xE3DACC),
+            tool_active: hex(0x30302E),
+            accent: hex(0xB5573A),
+            accent_strong: hex(0x9C4A2F),
+            row_selected: hex(0xE3DACC),
+            pasteboard: hex(0xF0EEE6),
+            ruler: hex(0xFAF9F5),
+            ruler_tick: hex(0xC2C0B6),
+            smart_guide: hex(0xB5573A),
+            guide: hex(0x6A9BCC),
+            measure_bg: Color32::from_rgba_unmultiplied(245, 244, 237, 235),
+            button: hex(0xFFFFFF),
+            radius: 8,
+            text_strong: hex(0x141413),
+            tab_strip: hex(0xFAF9F5),
+            button_border: hex(0xC2C0B6),
+            selection: hex(0xE3DACC),
+            anchor_selected: hex(0xB5573A),
+            flyout_active: hex(0xB5573A),
+            font_size: 13.0,
+            caption_close: hex(0xA33B3B),
+            caption_close_text: Color32::WHITE,
+            highlight: hex(0xB5573A),
+            bleed: hex(0xA33B3B),
+            error: hex(0xA33B3B),
+            warning: hex(0x7A5A00),
+            axis_x: hex(0xB5573A),
+            axis_y: hex(0x788C5D),
+            axis_z: hex(0x6A9BCC),
+            ground: hex(0xFAF9F5),
+            surface: hex(0xFFFFFF),
+            wash: hex(0xF5F4ED),
+            desk: hex(0xF0EEE6),
+            press: hex(0xE8E6DC),
+            oat: hex(0xE3DACC),
+            hand: hex(0x30302E),
+            ink: hex(0x141413),
+            ink2: hex(0x3D3D3A),
+            muted: hex(0x5E5D59),
+            faint: hex(0x73726C),
+            line: hex(0xDEDCD1),
+            edge: hex(0xC2C0B6),
+            ring: hex(0xB0AEA5),
+            action: hex(0xB5573A),
+            clay: hex(0xD97757),
+            claytext: hex(0x9C4A2F),
+            block: hex(0xA33B3B),
+            blockwash: hex(0xF3DEDA),
+            caution: hex(0x7A5A00),
+            done: hex(0x3F6B31),
+            sky: hex(0x6A9BCC),
         }
     }
 

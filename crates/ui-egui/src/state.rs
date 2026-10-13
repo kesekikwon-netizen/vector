@@ -249,6 +249,9 @@ pub struct UiState {
     pub legacy_language: Option<String>,
     pub brightness: Brightness,
     pub dock_tab: DockTab,
+    /// Document / archaeological sheet view tab for Trowel: 0 plan, 1 section, 2 artifact, 3 plate.
+    #[serde(default)]
+    pub doc_tab: usize,
     /// The dock's tabbed group (Properties | Layers | Libraries) is collapsed to icons at the top of
     /// the icon column (the dock's double arrow, `window.collapseDock`).
     #[serde(default)]
@@ -496,6 +499,7 @@ impl Default for UiState {
             legacy_language: None,
             brightness: Brightness::MediumDark,
             dock_tab: DockTab::Properties,
+            doc_tab: 0,
             dock_collapsed: false,
             open_panel: None,
             control_bar: false,
