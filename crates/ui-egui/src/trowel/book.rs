@@ -7,8 +7,10 @@
 
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
+
 /// Status of the Strata survey GeoPackage (`.gpkg`) connection.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StrataGpkgStatus {
     /// Connected to an existing Strata `.gpkg` file (read-only).
     Connected { filename: String, path: PathBuf },
@@ -30,7 +32,7 @@ impl StrataGpkgStatus {
 }
 
 /// A resolved archaeological drawing book.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolvedDrawingBook {
     /// Drawing book / survey name (e.g. "광령리1").
     pub name: String,
@@ -58,11 +60,12 @@ pub struct ResolvedDrawingBook {
 impl ResolvedDrawingBook {
     /// Strictly resolves the drawing book location to `<Strata 조사 폴더>/도면` per §14(1).
     pub fn resolve(target: &Path) -> Self {
-        let (survey_dir, explicit_gpkg) = if target.is_file() {
+        let (survey_dir, explicit_gpkg) = if target.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("gpkg")) && !target.is_dir() {
             let parent = target.parent().unwrap_or_else(|| Path::new("."));
-            if target.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("gpkg")) {
-                (parent.to_path_buf(), Some(target.to_path_buf()))
-            } else if parent.file_name().is_some_and(|n| n == "도면") {
+            (parent.to_path_buf(), Some(target.to_path_buf()))
+        } else if target.is_file() {
+            let parent = target.parent().unwrap_or_else(|| Path::new("."));
+            if parent.file_name().is_some_and(|n| n == "도면") {
                 (parent.parent().unwrap_or_else(|| Path::new(".")).to_path_buf(), None)
             } else {
                 (parent.to_path_buf(), None)
@@ -76,11 +79,7 @@ impl ResolvedDrawingBook {
         // Rule §14(1): Drawing book folder is strictly <survey_dir>/도면.
         let drawing_book_dir = survey_dir.join("도면");
 
-        let name = survey_dir
-            .file_name()
-            .map(|s| s.to_string_lossy().into_owned())
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "도면집".to_string());
+        let name = survey_dir.file_name().map(|s| s.to_string_lossy().into_owned()).filter(|s| !s.is_empty()).unwrap_or_else(|| "도면집".to_string());
 
         let strata_status = if let Some(gpkg) = explicit_gpkg {
             let filename = gpkg.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -136,9 +135,7 @@ impl ResolvedDrawingBook {
                 let p = entry.path();
                 let is_drawing = p.is_file()
                     && p.extension().is_some_and(|ext| {
-                        ext.eq_ignore_ascii_case("vectorcraft")
-                            || ext.eq_ignore_ascii_case("drawcraft")
-                            || ext.eq_ignore_ascii_case("trowel")
+                        ext.eq_ignore_ascii_case("vectorcraft") || ext.eq_ignore_ascii_case("drawcraft") || ext.eq_ignore_ascii_case("trowel")
                     });
                 if is_drawing {
                     let stem = p.file_stem().map(|s| s.to_string_lossy()).unwrap_or_default();
@@ -159,8 +156,9 @@ impl ResolvedDrawingBook {
 }
 
 /// Recently accessed drawing books manager.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecentDrawingBooks {
+    #[serde(default)]
     pub books: Vec<ResolvedDrawingBook>,
 }
 
@@ -173,9 +171,22 @@ impl Default for RecentDrawingBooks {
 #[allow(dead_code)]
 impl RecentDrawingBooks {
     pub fn new() -> Self {
-        Self {
-            books: Self::default_recents(),
-        }
+        Self { books: Self::default_recents() }
+    }
+
+    /// Serializes recent drawing books into a JSON string.
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    /// Serializes recent drawing books into pretty-printed JSON.
+    pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+
+    /// Deserializes recent drawing books from a JSON string.
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
     }
 
     /// Default drawing books matching mockup §2:

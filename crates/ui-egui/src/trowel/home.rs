@@ -33,54 +33,51 @@ pub(crate) fn show(app: &mut VectorcraftApp, ui: &mut Ui, below: Rect) {
 
     let mut action_cmd = None;
 
-    // Load recent drawing books from egui temp data or fallback to defaults
+    // Load recent drawing books from egui persisted data or fallback to defaults
     let recents_id = egui::Id::new("trowel_recent_books");
-    let mut recents = ui.data_mut(|d| d.get_temp_mut_or_default::<RecentDrawingBooks>(recents_id).clone());
+    let mut recents = ui.data_mut(|d| d.get_persisted_mut_or_default::<RecentDrawingBooks>(recents_id).clone());
     if recents.books.is_empty() {
         recents = RecentDrawingBooks::new();
     }
 
-    egui::ScrollArea::vertical()
-        .id_salt(wid("home-scroll", ()))
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            let width = ui.available_width().min(1500.0);
-            let margin = ((ui.available_width() - width) / 2.0).max(16.0);
+    egui::ScrollArea::vertical().id_salt(wid("home-scroll", ())).auto_shrink([false, false]).show(ui, |ui| {
+        let width = ui.available_width().min(1500.0);
+        let margin = ((ui.available_width() - width) / 2.0).max(16.0);
 
-            ui.horizontal(|ui| {
-                ui.add_space(margin);
-                ui.vertical(|ui| {
-                    ui.set_max_width(width);
-                    ui.add_space(20.0);
+        ui.horizontal(|ui| {
+            ui.add_space(margin);
+            ui.vertical(|ui| {
+                ui.set_max_width(width);
+                ui.add_space(20.0);
 
-                    // 1. Hero Section
-                    if let Some(cmd) = render_hero(ui, &t) {
-                        action_cmd = Some(cmd);
-                    }
-                    ui.add_space(24.0);
+                // 1. Hero Section
+                if let Some(cmd) = render_hero(ui, &t) {
+                    action_cmd = Some(cmd);
+                }
+                ui.add_space(24.0);
 
-                    // 2. Home Columns (Recent Books + Workflow Rail)
-                    if let Some(cmd) = render_homecols(ui, &mut recents, &t) {
-                        action_cmd = Some(cmd);
-                    }
-                    ui.add_space(28.0);
+                // 2. Home Columns (Recent Books + Workflow Rail)
+                if let Some(cmd) = render_homecols(ui, &mut recents, &t) {
+                    action_cmd = Some(cmd);
+                }
+                ui.add_space(28.0);
 
-                    // 3. Archaeological Templates
-                    if let Some(cmd) = render_templates(ui, &t) {
-                        action_cmd = Some(cmd);
-                    }
-                    ui.add_space(24.0);
+                // 3. Archaeological Templates
+                if let Some(cmd) = render_templates(ui, &t) {
+                    action_cmd = Some(cmd);
+                }
+                ui.add_space(24.0);
 
-                    // 4. Connection Summary Bar
-                    render_connection_bar(ui, &t);
-                    ui.add_space(24.0);
-                });
-                ui.add_space(margin);
+                // 4. Connection Summary Bar
+                render_connection_bar(ui, &t);
+                ui.add_space(24.0);
             });
+            ui.add_space(margin);
         });
+    });
 
-    // Save updated recents back to temp storage
-    ui.data_mut(|d| d.insert_temp(recents_id, recents));
+    // Save updated recents back to persisted storage
+    ui.data_mut(|d| d.insert_persisted(recents_id, recents));
 
     // Execute any command triggered from Start Screen
     if let Some((cmd, params)) = action_cmd {
@@ -165,9 +162,7 @@ fn render_hero(ui: &mut Ui, t: &Tokens) -> Option<(&'static str, serde_json::Val
             ui.label(egui::RichText::new("1호 주거지 평면").font(bold(19.0)).color(t.text));
             ui.add_space(2.0);
             ui.label(
-                egui::RichText::new("광령리1 도면집 · 1:20 · 오늘 07:04에 닫음\n3호 수혈을 그리던 중이었습니다.")
-                    .font(font(12.0))
-                    .color(t.text_dim),
+                egui::RichText::new("광령리1 도면집 · 1:20 · 오늘 07:04에 닫음\n3호 수혈을 그리던 중이었습니다.").font(font(12.0)).color(t.text_dim),
             );
             ui.add_space(10.0);
 
@@ -536,30 +531,18 @@ fn draw_template_glyph(ui: &Ui, r: Rect, key: &str, t: &Tokens) {
             for dy in [-12.0, -4.0, 4.0, 12.0] {
                 ui.painter().hline((r.left() + 4.0)..=(r.right() - 4.0), c.y + dy, faint_stroke);
             }
-            let pts = vec![
-                pos2(r.left() + 6.0, c.y - 8.0),
-                pos2(c.x - 8.0, c.y + 2.0),
-                pos2(c.x + 8.0, c.y + 10.0),
-                pos2(r.right() - 6.0, c.y - 4.0),
-            ];
+            let pts =
+                vec![pos2(r.left() + 6.0, c.y - 8.0), pos2(c.x - 8.0, c.y + 2.0), pos2(c.x + 8.0, c.y + 10.0), pos2(r.right() - 6.0, c.y - 4.0)];
             ui.painter().add(egui::Shape::line(pts, ink_stroke));
         }
         "finds" => {
             // Finds preview: pottery section profile with center line
             ui.painter().vline(c.x, (r.top() + 4.0)..=(r.bottom() - 4.0), Stroke::new(0.8, t.text));
-            let pts_left = vec![
-                pos2(c.x - 14.0, r.top() + 8.0),
-                pos2(c.x - 18.0, c.y),
-                pos2(c.x - 10.0, r.bottom() - 8.0),
-                pos2(c.x, r.bottom() - 8.0),
-            ];
+            let pts_left =
+                vec![pos2(c.x - 14.0, r.top() + 8.0), pos2(c.x - 18.0, c.y), pos2(c.x - 10.0, r.bottom() - 8.0), pos2(c.x, r.bottom() - 8.0)];
             ui.painter().add(egui::Shape::line(pts_left, ink_stroke));
-            let pts_right = vec![
-                pos2(c.x + 14.0, r.top() + 8.0),
-                pos2(c.x + 18.0, c.y),
-                pos2(c.x + 10.0, r.bottom() - 8.0),
-                pos2(c.x, r.bottom() - 8.0),
-            ];
+            let pts_right =
+                vec![pos2(c.x + 14.0, r.top() + 8.0), pos2(c.x + 18.0, c.y), pos2(c.x + 10.0, r.bottom() - 8.0), pos2(c.x, r.bottom() - 8.0)];
             ui.painter().add(egui::Shape::line(pts_right, ink_stroke));
         }
         "siteplan" => {
@@ -598,42 +581,20 @@ fn draw_trowel_logo(ui: &Ui, r: Rect, t: &Tokens) {
         pos2(r.right() - 9.0, r.top() + 17.0),
     ];
     ui.painter().add(egui::Shape::line(pts, Stroke::new(2.5, t.icon_on)));
-    ui.painter().hline(
-        (r.left() + 10.0)..=(r.right() - 9.0),
-        r.bottom() - 11.0,
-        Stroke::new(2.5, clay),
-    );
+    ui.painter().hline((r.left() + 10.0)..=(r.right() - 9.0), r.bottom() - 11.0, Stroke::new(2.5, clay));
 }
 
 /// A styled action button (standard or clay).
-fn action_button(
-    ui: &mut Ui,
-    id: egui::Id,
-    label: &str,
-    is_clay: bool,
-    t: &Tokens,
-) -> egui::Response {
+fn action_button(ui: &mut Ui, id: egui::Id, label: &str, is_clay: bool, t: &Tokens) -> egui::Response {
     let pad = 16.0;
     let font_id = if is_clay { bold(13.0) } else { font(13.0) };
     let text_w = width_of(ui, label, font_id.clone());
     let (rect, _) = ui.allocate_exact_size(vec2(text_w + pad * 2.0, 38.0), Sense::hover());
     let resp = ui.interact(rect, id, Sense::click());
 
-    let (bg_color, text_color) = if is_clay {
-        (t.clay, t.icon_on)
-    } else {
-        (t.input, t.text)
-    };
+    let (bg_color, text_color) = if is_clay { (t.clay, t.icon_on) } else { (t.input, t.text) };
 
-    let fill = if resp.hovered() {
-        if is_clay {
-            t.action
-        } else {
-            t.hover
-        }
-    } else {
-        bg_color
-    };
+    let fill = if resp.hovered() { if is_clay { t.action } else { t.hover } } else { bg_color };
 
     ui.painter().rect(rect, CornerRadius::same(8), fill, Stroke::new(1.0, t.input_border), StrokeKind::Inside);
     text(ui, rect.center(), Align2::CENTER_CENTER, label, font_id, text_color);

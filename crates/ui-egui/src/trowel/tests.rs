@@ -1150,10 +1150,15 @@ fn status_bar_shows_scale_and_tm_coordinates() {
 
     // Set scale 1:20 and bind origin to CP1 (152840.123, 512340.456)
     h.app.run("doc.setScale", json!({"scale": "1:20"})).unwrap();
-    h.app.run("doc.setOrigin", json!({
-        "canvas": [100.0, 100.0],
-        "world": [152840.123, 512340.456]
-    })).unwrap();
+    h.app
+        .run(
+            "doc.setOrigin",
+            json!({
+                "canvas": [100.0, 100.0],
+                "world": [152840.123, 512340.456]
+            }),
+        )
+        .unwrap();
     h.settle();
 
     let line = h.line_in(bar);
@@ -2503,7 +2508,8 @@ fn a_soon_note_drops_a_dialogs_ellipsis() {
 fn test_drawing_book_path_resolution() {
     use super::book::ResolvedDrawingBook;
 
-    let base_dir = std::env::temp_dir().join(format!("trowel_book_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let base_dir = std::env::temp_dir()
+        .join(format!("trowel_book_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
     let survey_dir = base_dir.join("광령리1");
     let book_dir = survey_dir.join("도면");
     let _ = std::fs::create_dir_all(&book_dir);
@@ -2545,10 +2551,10 @@ fn test_drawing_book_path_resolution() {
     let _ = std::fs::write(book_dir.join("보고서 도판.vectorcraft"), b"{}");
 
     let (plan, section, finds, plate) = ResolvedDrawingBook::scan_drawings(&book_dir);
-    assert_eq!(plan, 1);    // 1호 주거지 평면
+    assert_eq!(plan, 1); // 1호 주거지 평면
     assert_eq!(section, 2); // A-A 단면, 토층도
-    assert_eq!(finds, 1);   // 1호 토기 유물
-    assert_eq!(plate, 1);   // 보고서 도판
+    assert_eq!(finds, 1); // 1호 토기 유물
+    assert_eq!(plate, 1); // 보고서 도판
 
     // Clean up
     let _ = std::fs::remove_dir_all(&base_dir);
@@ -2603,17 +2609,17 @@ fn test_headless_start_screen_frame_rendering() {
 
     // Verify key text elements from §2
     let text_dump: String = h.texts.iter().map(|t| t.text.as_str()).collect::<Vec<_>>().join(" ");
-    
+
     // Brand & Title
     assert!(text_dump.contains("Trowel"), "Must contain brand 'Trowel'");
     assert!(text_dump.contains("발굴 도면"), "Must contain title '발굴 도면'");
     assert!(text_dump.contains("도면집을 이어서 열거나, 새 도면을 시작하세요."), "Must contain subtitle");
-    
+
     // Quick Actions
     assert!(text_dump.contains("＋ 새 도면"), "Must contain '＋ 새 도면'");
     assert!(text_dump.contains("도면집 열기"), "Must contain '도면집 열기'");
     assert!(text_dump.contains("Strata 조사에서 시작"), "Must contain 'Strata 조사에서 시작'");
-    
+
     // Resume Work Card
     assert!(text_dump.contains("이어서 작업"), "Must contain '이어서 작업'");
     assert!(text_dump.contains("1호 주거지 평면"), "Must contain '1호 주거지 평면'");
@@ -2699,4 +2705,294 @@ fn test_ribbon_new_drawing_tiles_dispatch() {
     assert_eq!(scale.scale.denom, 20.0, "Section scale must be 1:20");
     let layers: Vec<String> = doc.doc.layers.iter().map(|l| l.display_name().to_string()).collect();
     assert!(layers.iter().any(|n| n.contains("단면선") || n.contains("레벨선") || n.contains("토층선")), "Must contain section legend layers");
+}
+
+#[test]
+fn test_adversarial_drawing_book_resolve() {
+    use super::book::{ResolvedDrawingBook, StrataGpkgStatus};
+
+    let base_dir = std::env::temp_dir()
+        .join(format!("trowel_adv_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let _ = std::fs::create_dir_all(&base_dir);
+
+    // 1. Target is a survey folder containing .gpkg -> confirms 도면 subfolder is used and .gpkg status is Connected
+    let survey_dir = base_dir.join("광령리1");
+    let book_dir = survey_dir.join("도면");
+    let _ = std::fs::create_dir_all(&book_dir);
+    let gpkg_path = survey_dir.join("광령리1.gpkg");
+    let _ = std::fs::write(&gpkg_path, b"mock gpkg");
+
+    let b1 = ResolvedDrawingBook::resolve(&survey_dir);
+    assert_eq!(b1.survey_dir, survey_dir);
+    assert_eq!(b1.drawing_book_dir, book_dir);
+    assert!(b1.strata_status.is_connected(), "Survey folder with .gpkg must have Connected status");
+    if let StrataGpkgStatus::Connected { filename, path } = &b1.strata_status {
+        assert_eq!(filename, "광령리1.gpkg");
+        assert_eq!(path, &gpkg_path);
+    }
+
+    // 2. Target is already inside 도면 subfolder -> confirms parent survey folder is located and .gpkg status is Connected
+    let b2 = ResolvedDrawingBook::resolve(&book_dir);
+    assert_eq!(b2.survey_dir, survey_dir);
+    assert_eq!(b2.drawing_book_dir, book_dir);
+    assert!(b2.strata_status.is_connected(), "도면 subfolder target must locate parent and have Connected status");
+
+    // 3. Target folder has NO .gpkg -> what is the status?
+    let no_gpkg_dir = base_dir.join("중문동");
+    let no_gpkg_book_dir = no_gpkg_dir.join("도면");
+    let _ = std::fs::create_dir_all(&no_gpkg_book_dir);
+    let b3 = ResolvedDrawingBook::resolve(&no_gpkg_dir);
+    assert_eq!(b3.drawing_book_dir, no_gpkg_book_dir);
+    // CHALLENGE: Check if it's Missing vs Disconnected
+    eprintln!("[CHALLENGE] Target folder with NO .gpkg status: {:?}", b3.strata_status);
+
+    // 4. Target is a standalone .drawcraft or .vectorcraft file outside 도면 -> confirms Disconnected status
+    let standalone_file = base_dir.join("standalone_drawing.vectorcraft");
+    let _ = std::fs::write(&standalone_file, b"{}");
+    let b4 = ResolvedDrawingBook::resolve(&standalone_file);
+    eprintln!("[CHALLENGE] Standalone drawing file status: {:?}", b4.strata_status);
+    assert_eq!(b4.strata_status, StrataGpkgStatus::Disconnected, "Standalone drawing file must have Disconnected status");
+
+    // 5. Category scanning (scan_drawings): verify correct classification
+    let cat_test_dir = base_dir.join("cat_test_도면");
+    let _ = std::fs::create_dir_all(&cat_test_dir);
+    let _ = std::fs::write(cat_test_dir.join("1호 주거지 평면.vectorcraft"), b"{}");
+    let _ = std::fs::write(cat_test_dir.join("전체배치.drawcraft"), b"{}"); // fallback to plan
+    let _ = std::fs::write(cat_test_dir.join("A-A 단면.vectorcraft"), b"{}");
+    let _ = std::fs::write(cat_test_dir.join("트렌치 토층도.drawcraft"), b"{}");
+    let _ = std::fs::write(cat_test_dir.join("1호 토기 유물.trowel"), b"{}");
+    let _ = std::fs::write(cat_test_dir.join("완형토기 실측.vectorcraft"), b"{}");
+    let _ = std::fs::write(cat_test_dir.join("보고서 도판 1.vectorcraft"), b"{}");
+    // Non-drawing files should NOT be counted:
+    let _ = std::fs::write(cat_test_dir.join("notes.txt"), b"some text");
+    let _ = std::fs::write(cat_test_dir.join("survey.gpkg"), b"binary");
+    let _ = std::fs::write(cat_test_dir.join("photo.png"), b"image");
+
+    let (plan, section, finds, plate) = ResolvedDrawingBook::scan_drawings(&cat_test_dir);
+    assert_eq!(plan, 2, "plan count mismatch");
+    assert_eq!(section, 2, "section count mismatch");
+    assert_eq!(finds, 2, "finds count mismatch");
+    assert_eq!(plate, 1, "plate count mismatch");
+
+    let _ = std::fs::remove_dir_all(&base_dir);
+}
+
+#[test]
+fn test_adversarial_recent_drawing_books_operations() {
+    use super::book::{RecentDrawingBooks, ResolvedDrawingBook, StrataGpkgStatus};
+    use std::path::PathBuf;
+
+    let mut recents = RecentDrawingBooks::new();
+    assert_eq!(recents.books.len(), 3);
+
+    // 1. remove_at out-of-bounds does not panic
+    recents.remove_at(100);
+    assert_eq!(recents.books.len(), 3, "out-of-bounds remove_at must not change length or panic");
+
+    // 2. remove_at valid
+    recents.remove_at(0);
+    assert_eq!(recents.books.len(), 2);
+    assert_eq!(recents.books[0].name, "중문동 2지점");
+
+    // 3. add deduplicates if drawing_book_dir is the same
+    let duplicate = ResolvedDrawingBook {
+        name: "중문동 2지점 신규".to_string(),
+        survey_dir: PathBuf::from("D:\\발굴\\중문동"),
+        drawing_book_dir: PathBuf::from("D:\\발굴\\중문동\\도면"),
+        strata_status: StrataGpkgStatus::Disconnected,
+        plan_count: 10,
+        section_count: 5,
+        finds_count: 2,
+        plate_count: 1,
+        crs: "5186 중부원점".to_string(),
+        last_opened: "방금".to_string(),
+    };
+    recents.add(duplicate);
+    assert_eq!(recents.books.len(), 2, "add with duplicate drawing_book_dir must replace/deduplicate");
+    assert_eq!(recents.books[0].name, "중문동 2지점 신규");
+
+    // 4. remove_by_path using survey_dir
+    recents.remove_by_path(&PathBuf::from("D:\\발굴\\중문동"));
+    assert_eq!(recents.books.len(), 1);
+    assert_eq!(recents.books[0].name, "하가리 시굴");
+
+    // 5. remove_by_path non-existent path
+    recents.remove_by_path(&PathBuf::from("D:\\발굴\\없는경로"));
+    assert_eq!(recents.books.len(), 1);
+}
+
+#[test]
+fn test_adversarial_recent_books_json_roundtrip() {
+    use super::book::{RecentDrawingBooks, StrataGpkgStatus};
+    use std::path::PathBuf;
+
+    // 1. Verify default recent books serialization containing multiple books & statuses:
+    //    - Connected: 광령리1
+    //    - Disconnected: 중문동 2지점
+    //    - Missing: 하가리 시굴
+    let recents = RecentDrawingBooks::new();
+    assert_eq!(recents.books.len(), 3);
+    assert!(recents.books[0].strata_status.is_connected());
+    assert_eq!(recents.books[1].strata_status, StrataGpkgStatus::Disconnected);
+    assert!(recents.books[2].strata_status.is_missing());
+
+    // Serialize using serde_json directly
+    let json_str = serde_json::to_string(&recents).expect("serialization failed");
+    assert!(!json_str.is_empty(), "serialized JSON string must not be empty");
+    assert!(json_str.contains("광령리1"), "JSON must preserve book names");
+    assert!(json_str.contains("하가리 시굴"), "JSON must preserve missing book name");
+    assert!(json_str.contains("Connected"), "JSON must serialize Connected status");
+    assert!(json_str.contains("Disconnected"), "JSON must serialize Disconnected status");
+    assert!(json_str.contains("Missing"), "JSON must serialize Missing status");
+
+    // Deserialize and verify structural equality
+    let roundtripped: RecentDrawingBooks = serde_json::from_str(&json_str).expect("deserialization failed");
+    assert_eq!(recents, roundtripped, "Deserialized RecentDrawingBooks must be identical to original");
+
+    // Detailed verification of all 3 books and statuses after roundtrip
+    assert_eq!(roundtripped.books.len(), 3);
+
+    // Book 0: Connected
+    assert_eq!(roundtripped.books[0].name, "광령리1");
+    match &roundtripped.books[0].strata_status {
+        StrataGpkgStatus::Connected { filename, path } => {
+            assert_eq!(filename, "광령리1.gpkg");
+            assert_eq!(path, &PathBuf::from("D:\\발굴\\광령리1\\광령리1.gpkg"));
+        }
+        other => panic!("Expected Connected status for book 0, got {:?}", other),
+    }
+    assert_eq!(roundtripped.books[0].plan_count, 4);
+    assert_eq!(roundtripped.books[0].section_count, 3);
+    assert_eq!(roundtripped.books[0].finds_count, 8);
+    assert_eq!(roundtripped.books[0].plate_count, 2);
+    assert_eq!(roundtripped.books[0].crs, "5186 중부원점");
+
+    // Book 1: Disconnected
+    assert_eq!(roundtripped.books[1].name, "중문동 2지점");
+    assert_eq!(roundtripped.books[1].strata_status, StrataGpkgStatus::Disconnected);
+    assert!(!roundtripped.books[1].strata_status.is_connected());
+    assert!(!roundtripped.books[1].strata_status.is_missing());
+
+    // Book 2: Missing
+    assert_eq!(roundtripped.books[2].name, "하가리 시굴");
+    match &roundtripped.books[2].strata_status {
+        StrataGpkgStatus::Missing { filename, expected_path } => {
+            assert_eq!(filename, "하가리.gpkg");
+            assert_eq!(expected_path, &PathBuf::from("D:\\발굴\\하가리\\하가리.gpkg"));
+        }
+        other => panic!("Expected Missing status for book 2, got {:?}", other),
+    }
+
+    // 2. Roundtrip empty RecentDrawingBooks
+    let empty = RecentDrawingBooks { books: vec![] };
+    let empty_json = serde_json::to_string(&empty).expect("empty serialization failed");
+    let roundtripped_empty: RecentDrawingBooks = serde_json::from_str(&empty_json).expect("empty deserialization failed");
+    assert_eq!(empty, roundtripped_empty);
+    assert!(roundtripped_empty.books.is_empty());
+
+    // 3. Roundtrip pretty-printed JSON
+    let pretty_json = serde_json::to_string_pretty(&recents).expect("pretty serialization failed");
+    let roundtripped_pretty: RecentDrawingBooks = serde_json::from_str(&pretty_json).expect("pretty deserialization failed");
+    assert_eq!(recents, roundtripped_pretty);
+
+    // 4. Roundtrip via helper methods on RecentDrawingBooks
+    let helper_json = recents.to_json().expect("to_json helper failed");
+    let roundtripped_helper = RecentDrawingBooks::from_json(&helper_json).expect("from_json helper failed");
+    assert_eq!(recents, roundtripped_helper);
+}
+
+#[test]
+fn test_adversarial_drawing_book_resolve_missing_status() {
+    use super::book::{ResolvedDrawingBook, StrataGpkgStatus};
+    use std::path::{Path, PathBuf};
+
+    // 1. Non-existent .gpkg file path -> StrataGpkgStatus::Missing
+    let missing_gpkg = Path::new("D:\\발굴\\하가리\\하가리.gpkg");
+    let book_missing = ResolvedDrawingBook::resolve(missing_gpkg);
+    assert!(book_missing.strata_status.is_missing(), "Expected Missing status for non-existent .gpkg path, got {:?}", book_missing.strata_status);
+    match &book_missing.strata_status {
+        StrataGpkgStatus::Missing { filename, expected_path } => {
+            assert_eq!(filename, "하가리.gpkg");
+            assert_eq!(expected_path, missing_gpkg);
+        }
+        other => panic!("Expected StrataGpkgStatus::Missing, got {:?}", other),
+    }
+    assert_eq!(book_missing.name, "하가리");
+    assert_eq!(book_missing.survey_dir, PathBuf::from("D:\\발굴\\하가리"));
+    assert_eq!(book_missing.drawing_book_dir, PathBuf::from("D:\\발굴\\하가리\\도면"));
+
+    // 2. Existing directory lacking any .gpkg -> StrataGpkgStatus::Disconnected
+    let base_dir = std::env::temp_dir()
+        .join(format!("trowel_book_missing_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let survey_no_gpkg = base_dir.join("중문동");
+    let _ = std::fs::create_dir_all(&survey_no_gpkg);
+
+    let book_disconnected = ResolvedDrawingBook::resolve(&survey_no_gpkg);
+    assert_eq!(
+        book_disconnected.strata_status,
+        StrataGpkgStatus::Disconnected,
+        "Directory without .gpkg must return Disconnected, got {:?}",
+        book_disconnected.strata_status
+    );
+    assert!(!book_disconnected.strata_status.is_connected());
+    assert!(!book_disconnected.strata_status.is_missing());
+    assert_eq!(book_disconnected.name, "중문동");
+    assert_eq!(book_disconnected.survey_dir, survey_no_gpkg);
+    assert_eq!(book_disconnected.drawing_book_dir, survey_no_gpkg.join("도면"));
+
+    // 3. Subdirectory <survey_dir>/도면 when parent survey lacks .gpkg -> StrataGpkgStatus::Disconnected
+    let book_dir_no_gpkg = survey_no_gpkg.join("도면");
+    let _ = std::fs::create_dir_all(&book_dir_no_gpkg);
+    let book_sub_disconnected = ResolvedDrawingBook::resolve(&book_dir_no_gpkg);
+    assert_eq!(book_sub_disconnected.strata_status, StrataGpkgStatus::Disconnected, "도면 folder of survey without .gpkg must return Disconnected");
+    assert_eq!(book_sub_disconnected.survey_dir, survey_no_gpkg);
+    assert_eq!(book_sub_disconnected.drawing_book_dir, book_dir_no_gpkg);
+
+    // Clean up
+    let _ = std::fs::remove_dir_all(&base_dir);
+}
+
+#[test]
+fn test_adversarial_template_creation_all_variants() {
+    let mut h = Harness::sized(1600.0, 988.0);
+
+    let cases = [
+        ("trowel.newPlan", "개별유구 평·단면도", 20.0, 420.0, 297.0, vec!["조사구역 경계", "굴광선 (유구 면)", "돌", "기준점"]),
+        ("trowel.newSection", "토층 단면도", 20.0, 420.0, 297.0, vec!["단면선 (잘린 땅)", "해발선 50 cm", "토층선"]),
+        ("trowel.newFinds", "유물 실측도", 1.0, 210.0, 297.0, vec!["외형선", "중심선", "복원선"]),
+        ("trowel.newSitePlan", "유구배치도", 100.0, 420.0, 297.0, vec!["조사구역 경계", "시굴격자", "굴광선 (유구 면)"]),
+        ("trowel.newPlate", "보고서 도판", 1.0, 210.0, 297.0, vec![]),
+    ];
+
+    for (cmd, _expected_name, expected_scale, expected_w_mm, expected_h_mm, expected_layers) in cases {
+        h.app.run(cmd, json!({})).unwrap();
+        h.settle();
+
+        let doc = h.app.session.active().unwrap_or_else(|| panic!("failed to activate document for {cmd}"));
+
+        // 1. Check units == Millimeters
+        assert_eq!(doc.doc.units, vectorcraft_doc::Unit::Millimeters, "{cmd}: units must be Millimeters");
+
+        // 2. Check scale config
+        let scale = doc.doc.scale.as_ref().unwrap_or_else(|| panic!("{cmd}: scale must be set"));
+        assert_eq!(scale.scale.denom, expected_scale, "{cmd}: scale denominator mismatch");
+
+        // 3. Check canvas size in points (mm * 72 / 25.4)
+        assert!(!doc.doc.artboards.is_empty(), "{cmd}: document must have at least one artboard");
+        let rect = doc.doc.artboards[0].rect;
+        let expected_w_pt = expected_w_mm * 72.0 / 25.4;
+        let expected_h_pt = expected_h_mm * 72.0 / 25.4;
+        assert!((rect.width() - expected_w_pt).abs() < 1.0, "{cmd}: width mismatch: got {}, expected {}", rect.width(), expected_w_pt);
+        assert!((rect.height() - expected_h_pt).abs() < 1.0, "{cmd}: height mismatch: got {}, expected {}", rect.height(), expected_h_pt);
+
+        // 4. Check expected default layers
+        let layer_names: Vec<String> = doc.doc.layers.iter().map(|l| l.display_name().to_string()).collect();
+        for expected_layer in expected_layers {
+            assert!(
+                layer_names.iter().any(|n| n.contains(expected_layer)),
+                "{cmd}: missing expected layer containing '{expected_layer}', layers present: {:?}",
+                layer_names
+            );
+        }
+    }
 }
