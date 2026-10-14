@@ -690,10 +690,7 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
     let has_pen_force = ui.input(|i| {
         i.events.iter().any(|e| match e {
             egui::Event::Touch { phase, force: Some(f), .. }
-                if *phase != egui::TouchPhase::End
-                    && *phase != egui::TouchPhase::Cancel
-                    && f.is_finite()
-                    && *f > 0.0 =>
+                if *phase != egui::TouchPhase::End && *phase != egui::TouchPhase::Cancel && f.is_finite() && *f > 0.0 =>
             {
                 true
             }
@@ -718,11 +715,17 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
     if has_pen_force {
         prox.in_proximity = true;
         prox.last_seen_time = now;
-        ui.data_mut(|d| d.insert_temp(egui::Id::new("canvas-stylus-proximity"), prox));
+        ui.data_mut(|d| {
+            d.insert_temp(egui::Id::new("canvas-stylus-proximity"), prox);
+            d.remove::<crate::touch::Taps>(egui::Id::new("canvas-touch"));
+        });
     } else if (touch_ended || (drag.is_none() && !pointer.primary_down())) && prox.in_proximity {
         prox.in_proximity = false;
         prox.last_seen_time = now;
-        ui.data_mut(|d| d.insert_temp(egui::Id::new("canvas-stylus-proximity"), prox));
+        ui.data_mut(|d| {
+            d.insert_temp(egui::Id::new("canvas-stylus-proximity"), prox);
+            d.remove::<crate::touch::Taps>(egui::Id::new("canvas-touch"));
+        });
     }
     let palm_rejected = is_capacitive_touch && (prox.in_proximity || (prox.last_seen_time > 0.0 && now - prox.last_seen_time < 0.6));
 
@@ -758,16 +761,16 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
         });
     } else if drag.is_none()
         && resp.hovered()
-        && (pointer.button_pressed(egui::PointerButton::Middle) || ui.data(|d| d.get_temp::<bool>(egui::Id::new("canvas-stylus-barrel2"))).unwrap_or(false))
+        && (pointer.button_pressed(egui::PointerButton::Middle)
+            || ui.data(|d| d.get_temp::<bool>(egui::Id::new("canvas-stylus-barrel2"))).unwrap_or(false))
         && let Some(start) = hover
     {
         // Barrel Button 2 / Middle-button drag pans the view whatever the tool (Task J017 B1: SpringPanState).
         ui.data_mut(|dd| {
-            dd.insert_temp(egui::Id::new("canvas-spring-pan"), SpringPanState {
-                prev_tool: app.session.tool_id().to_string(),
-                start_time: now,
-                active: true,
-            });
+            dd.insert_temp(
+                egui::Id::new("canvas-spring-pan"),
+                SpringPanState { prev_tool: app.session.tool_id().to_string(), start_time: now, active: true },
+            );
             dd.insert_temp(drag_id(), Drag::Pan { start, center: v.center, middle: true });
         });
     } else if let Some(d) = drag {
@@ -847,10 +850,8 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
                 dd.remove::<SpringPanState>(egui::Id::new("canvas-spring-pan"));
                 let prev_prox: StylusProximityState = dd.get_temp(egui::Id::new("canvas-stylus-proximity")).unwrap_or_default();
                 if prev_prox.in_proximity {
-                    dd.insert_temp(
-                        egui::Id::new("canvas-stylus-proximity"),
-                        StylusProximityState { in_proximity: false, last_seen_time: now },
-                    );
+                    dd.remove::<crate::touch::Taps>(egui::Id::new("canvas-touch"));
+                    dd.insert_temp(egui::Id::new("canvas-stylus-proximity"), StylusProximityState { in_proximity: false, last_seen_time: now });
                 }
             });
             if let Some(sp) = sp {
@@ -1042,11 +1043,39 @@ fn touch_gestures(app: &mut VectorcraftApp, ui: &Ui, rect: egui::Rect, view: vec
     let prox: StylusProximityState = ui.data(|d| d.get_temp(egui::Id::new("canvas-stylus-proximity"))).unwrap_or_default();
     let now = ui.input(|i| i.time);
     if prox.in_proximity || (prox.last_seen_time > 0.0 && now - prox.last_seen_time < 0.6) {
+        ui.data_mut(|d| d.remove::<crate::touch::Taps>(egui::Id::new("canvas-touch")));
         return;
+    }
+    let has_pen_force_this_frame = ui.input(|i| {
+        i.events.iter().any(|e| match e {
+            egui::Event::Touch { force: Some(f), phase, .. }
+                if *phase != egui::TouchPhase::End && *phase != egui::TouchPhase::Cancel && f.is_finite() && *f > 0.0 =>
+            {
+                true
+            }
+            _ => false,
+        })
+    });
+    if has_pen_force_this_frame {
+        ui.data_mut(|d| d.remove::<crate::touch::Taps>(egui::Id::new("canvas-touch")));
+        return;
+    }
+    let has_pen_ended_this_frame = ui.input(|i| {
+        i.events.iter().any(|e| match e {
+            egui::Event::Touch { force: Some(f), phase, .. }
+                if (*phase == egui::TouchPhase::End || *phase == egui::TouchPhase::Cancel) && f.is_finite() && *f > 0.0 =>
+            {
+                true
+            }
+            _ => false,
+        })
+    });
+    if has_pen_ended_this_frame {
+        ui.data_mut(|d| d.remove::<crate::touch::Taps>(egui::Id::new("canvas-touch")));
     }
     let (touches, now): (Vec<_>, f64) = ui.input(|i| {
         let t = i.events.iter().filter_map(|e| match e {
-            egui::Event::Touch { id, phase, pos, .. } => Some((*id, *phase, *pos)),
+            egui::Event::Touch { id, phase, pos, force, .. } if force.is_none() || *force == Some(0.0) => Some((*id, *phase, *pos)),
             _ => None,
         });
         (t.collect(), i.time)
@@ -1509,14 +1538,24 @@ fn hit_at(app: &VectorcraftApp, p: Point, zoom: f64) -> Option<vectorcraft_doc::
 /// Right-click: the object under the pointer is selected first unless it already is, then the
 /// context menu lists what applies to the selection ([`crate::menus::context_items`]).
 fn context_menu(app: &mut VectorcraftApp, resp: &egui::Response, xf: &Xf) {
-    let barrel1 = resp.secondary_clicked()
-        || resp.ctx.data(|d| d.get_temp::<bool>(egui::Id::new("canvas-stylus-barrel1"))).unwrap_or(false);
+    let barrel1 = resp.secondary_clicked() || resp.ctx.data(|d| d.get_temp::<bool>(egui::Id::new("canvas-stylus-barrel1"))).unwrap_or(false);
     if barrel1 {
         resp.ctx.data_mut(|d| d.remove::<bool>(egui::Id::new("canvas-stylus-barrel1")));
         let tool = app.session.tool_id();
         let is_drawing_tool = matches!(
             tool,
-            "pen" | "pencil" | "paintbrush" | "curvature" | "lineSegment" | "section-line" | "spot-height" | "find-number" | "posthole" | "hachure" | "pottery" | "stratigraphy"
+            "pen"
+                | "pencil"
+                | "paintbrush"
+                | "curvature"
+                | "lineSegment"
+                | "section-line"
+                | "spot-height"
+                | "find-number"
+                | "posthole"
+                | "hachure"
+                | "pottery"
+                | "stratigraphy"
         );
         let has_interaction = app.session.active().and_then(|s| s.interaction.as_ref()).is_some();
         if is_drawing_tool || has_interaction {
@@ -3834,7 +3873,10 @@ mod tests {
         assert_eq!(cmd, "object.liquify");
         let pressures: Vec<f64> = p["points"].as_array().unwrap().iter().map(|s| (s[2].as_f64().unwrap() * 100.0).round() / 100.0).collect();
         assert_eq!(pressures.first(), Some(&0.2), "the press's own pressure: {pressures:?}");
-        assert!(pressures.len() == 3 && pressures[1] > pressures[0] && pressures[2] > pressures[1], "smoothed pressures must increase with pen force: {pressures:?}");
+        assert!(
+            pressures.len() == 3 && pressures[1] > pressures[0] && pressures[2] > pressures[1],
+            "smoothed pressures must increase with pen force: {pressures:?}"
+        );
     }
 
     /// #491: a pen tap whose press and lift come in one frame selects what it tapped, and the
@@ -4205,5 +4247,141 @@ mod tests {
         let now_1s_later = prox_end.last_seen_time + 1.0;
         let cooldown_active = prox_end.in_proximity || (prox_end.last_seen_time > 0.0 && now_1s_later - prox_end.last_seen_time < 0.6);
         assert!(!cooldown_active, "Palm rejection must be inactive 1.0s after pen release");
+    }
+
+    fn frame_with_time(app: &mut VectorcraftApp, ctx: &egui::Context, events: Vec<egui::Event>, time: f64) {
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0))),
+            events,
+            time: Some(time),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(raw, |ui| show(app, ui));
+        out.textures_delta.clear();
+    }
+
+    #[test]
+    fn test_post_cooldown_touch_gesture_undo_resumption() {
+        let mut app = VectorcraftApp::new(Session::new(), Default::default());
+        app.session.execute("file.new", &json!({"width": 800, "height": 600})).unwrap();
+        app.select_tool("rectangle");
+        let ctx = egui::Context::default();
+        frame_with_time(&mut app, &ctx, vec![], 1.0);
+        let at = app.canvas_rect.unwrap().center();
+
+        let count = |app: &VectorcraftApp| app.session.active().unwrap().doc.layers[0].children().unwrap().len();
+        let touch = |n: u64, phase, pos| egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(n), phase, pos, force: None };
+        let button = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+
+        // 1. Draw 1 rectangle with pen at t = 10.0 .. 10.2
+        frame_with_time(&mut app, &ctx, pen(egui::TouchPhase::Start, at, 0.7), 10.0);
+        frame_with_time(&mut app, &ctx, pen(egui::TouchPhase::Move, at + vec2(100.0, 80.0), 0.7), 10.1);
+        frame_with_time(&mut app, &ctx, pen(egui::TouchPhase::End, at + vec2(100.0, 80.0), 0.7), 10.2);
+        assert_eq!(count(&app), 1, "Pen drew 1 rectangle");
+
+        // 2. Perform two-finger tap at t = 11.2 (1.0s post-cooldown, where dt >= 0.6s)
+        let at0 = at;
+        let at1 = at + vec2(50.0, 0.0);
+        frame_with_time(&mut app, &ctx, vec![touch(0, egui::TouchPhase::Start, at0), egui::Event::PointerMoved(at0), button(at0, true)], 11.2);
+        frame_with_time(
+            &mut app,
+            &ctx,
+            vec![touch(0, egui::TouchPhase::Move, at0 + vec2(6.0, 6.0)), egui::Event::PointerMoved(at0 + vec2(6.0, 6.0))],
+            11.216,
+        );
+        frame_with_time(&mut app, &ctx, vec![touch(2, egui::TouchPhase::Start, at1)], 11.232);
+        frame_with_time(
+            &mut app,
+            &ctx,
+            vec![touch(0, egui::TouchPhase::End, at0), button(at0 + vec2(6.0, 6.0), false), egui::Event::PointerGone],
+            11.248,
+        );
+        frame_with_time(&mut app, &ctx, vec![touch(2, egui::TouchPhase::End, at1)], 11.264);
+        frame_with_time(&mut app, &ctx, vec![], 11.280);
+
+        // 3. Verify that 2-finger tap undo successfully executes edit.undo, reducing count back to 0!
+        assert_eq!(count(&app), 0, "Two-finger tap MUST undo rectangle post-cooldown without app restart");
+    }
+
+    #[test]
+    fn test_proximity_palm_rejection_runtime_adversarial_stress() {
+        let mut app = VectorcraftApp::new(Session::new(), Default::default());
+        app.session.execute("file.new", &json!({"width": 800, "height": 600})).unwrap();
+        app.select_tool("rectangle");
+        let ctx = egui::Context::default();
+        frame_with_time(&mut app, &ctx, vec![], 1.0);
+        let at = app.canvas_rect.unwrap().center();
+
+        let count = |app: &VectorcraftApp| app.session.active().unwrap().doc.layers[0].children().unwrap().len();
+        let touch = |n: u64, phase, pos| egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(n), phase, pos, force: None };
+        let button = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+
+        // 1. Draw 1 rectangle with pen at t = 10.0 .. 10.2
+        frame_with_time(&mut app, &ctx, pen(egui::TouchPhase::Start, at, 0.7), 10.0);
+        frame_with_time(&mut app, &ctx, pen(egui::TouchPhase::Move, at + vec2(100.0, 80.0), 0.7), 10.1);
+        frame_with_time(&mut app, &ctx, pen(egui::TouchPhase::End, at + vec2(100.0, 80.0), 0.7), 10.2);
+        assert_eq!(count(&app), 1, "Pen drew 1 rectangle");
+
+        // 2. Attempt 2-finger tap DURING cooldown (t = 10.4, dt = 0.2s < 0.6s)
+        // Must be rejected; neither undoes nor creates unwanted objects
+        let at0 = at;
+        let at1 = at + vec2(50.0, 0.0);
+        frame_with_time(&mut app, &ctx, vec![touch(0, egui::TouchPhase::Start, at0), egui::Event::PointerMoved(at0), button(at0, true)], 10.4);
+        frame_with_time(
+            &mut app,
+            &ctx,
+            vec![touch(0, egui::TouchPhase::Move, at0 + vec2(6.0, 6.0)), egui::Event::PointerMoved(at0 + vec2(6.0, 6.0))],
+            10.416,
+        );
+        frame_with_time(&mut app, &ctx, vec![touch(2, egui::TouchPhase::Start, at1)], 10.432);
+        frame_with_time(
+            &mut app,
+            &ctx,
+            vec![touch(0, egui::TouchPhase::End, at0), button(at0 + vec2(6.0, 6.0), false), egui::Event::PointerGone],
+            10.448,
+        );
+        frame_with_time(&mut app, &ctx, vec![touch(2, egui::TouchPhase::End, at1)], 10.464);
+        frame_with_time(&mut app, &ctx, vec![], 10.480);
+        assert_eq!(count(&app), 1, "Tap during cooldown must be rejected and must not alter document");
+
+        // 3. Post-cooldown 2-finger tap at t = 11.2 (dt = 1.0s >= 0.6s)
+        // Must successfully undo rectangle back to 0!
+        frame_with_time(&mut app, &ctx, vec![touch(0, egui::TouchPhase::Start, at0), egui::Event::PointerMoved(at0), button(at0, true)], 11.2);
+        frame_with_time(
+            &mut app,
+            &ctx,
+            vec![touch(0, egui::TouchPhase::Move, at0 + vec2(6.0, 6.0)), egui::Event::PointerMoved(at0 + vec2(6.0, 6.0))],
+            11.216,
+        );
+        frame_with_time(&mut app, &ctx, vec![touch(2, egui::TouchPhase::Start, at1)], 11.232);
+        frame_with_time(
+            &mut app,
+            &ctx,
+            vec![touch(0, egui::TouchPhase::End, at0), button(at0 + vec2(6.0, 6.0), false), egui::Event::PointerGone],
+            11.248,
+        );
+        frame_with_time(&mut app, &ctx, vec![touch(2, egui::TouchPhase::End, at1)], 11.264);
+        frame_with_time(&mut app, &ctx, vec![], 11.280);
+        assert_eq!(count(&app), 0, "Two-finger tap post-cooldown must undo back to 0");
+
+        // 4. Three-finger tap at t = 11.5 redoes the rectangle back to 1
+        let at2 = at + vec2(100.0, 0.0);
+        frame_with_time(&mut app, &ctx, vec![touch(0, egui::TouchPhase::Start, at0), egui::Event::PointerMoved(at0), button(at0, true)], 11.5);
+        frame_with_time(
+            &mut app,
+            &ctx,
+            vec![touch(0, egui::TouchPhase::Move, at0 + vec2(6.0, 6.0)), egui::Event::PointerMoved(at0 + vec2(6.0, 6.0))],
+            11.516,
+        );
+        frame_with_time(&mut app, &ctx, vec![touch(2, egui::TouchPhase::Start, at1), touch(3, egui::TouchPhase::Start, at2)], 11.532);
+        frame_with_time(
+            &mut app,
+            &ctx,
+            vec![touch(0, egui::TouchPhase::End, at0), button(at0 + vec2(6.0, 6.0), false), egui::Event::PointerGone],
+            11.548,
+        );
+        frame_with_time(&mut app, &ctx, vec![touch(2, egui::TouchPhase::End, at1), touch(3, egui::TouchPhase::End, at2)], 11.564);
+        frame_with_time(&mut app, &ctx, vec![], 11.580);
+        assert_eq!(count(&app), 1, "Three-finger tap post-cooldown must redo back to 1");
     }
 }
