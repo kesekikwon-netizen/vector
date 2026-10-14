@@ -12,9 +12,7 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 use vectorcraft_color::{Color, Paint};
 use vectorcraft_doc::appearance::{AppearanceItem, Dash, StrokeLayer};
-use vectorcraft_doc::pottery::{
-    MM, PotteryMeasurements, PotteryVessel, SectionFillMode, SectionSide, VesselType,
-};
+use vectorcraft_doc::pottery::{MM, PotteryMeasurements, PotteryVessel, SectionFillMode, SectionSide, VesselType};
 use vectorcraft_doc::{Appearance, CharStyle, Node, NodeId, NodeKind, TextObject};
 use vectorcraft_geom::PathData;
 
@@ -108,13 +106,8 @@ fn parse_point(v: &Value) -> Option<Point> {
     None
 }
 
-
-
 fn create_vessel(s: &mut Session, p: &Value) -> Result<Value> {
-    let centerline_x = p
-        .get("centerlineX")
-        .and_then(Value::as_f64)
-        .ok_or_else(|| bad(C, "centerlineX is required"))?;
+    let centerline_x = p.get("centerlineX").and_then(Value::as_f64).ok_or_else(|| bad(C, "centerlineX is required"))?;
     let name = p.get("name").and_then(Value::as_str).unwrap_or("심발").to_string();
     let find_number = p.get("findNumber").and_then(Value::as_str).unwrap_or("1").to_string();
     let feature = p.get("feature").and_then(Value::as_str).unwrap_or("1호 주거지").to_string();
@@ -143,16 +136,9 @@ fn create_vessel(s: &mut Session, p: &Value) -> Result<Value> {
 
         let cl_pd = PathData::from_bezpath(&cl_bez);
         let mut cl_stroke = StrokeLayer::new(Paint::solid(Color::rgb8(20, 20, 19)), 0.2);
-        cl_stroke.dash = Some(Dash {
-            pattern: vec![12.0, 3.0, 2.0, 3.0],
-            offset: 0.0,
-            align_corners: false,
-        });
+        cl_stroke.dash = Some(Dash { pattern: vec![12.0, 3.0, 2.0, 3.0], offset: 0.0, align_corners: false });
 
-        let cl_app = Appearance {
-            items: vec![AppearanceItem::Stroke(cl_stroke)],
-            ..Default::default()
-        };
+        let cl_app = Appearance { items: vec![AppearanceItem::Stroke(cl_stroke)], ..Default::default() };
 
         let mut cl_node = Node::path(cl_id, cl_pd, cl_app);
         cl_node.name = Some("유물 중심선".to_string());
@@ -204,8 +190,7 @@ fn rim_fit(s: &mut Session, p: &Value) -> Result<Value> {
     let p2 = parse_point(p2_val).ok_or_else(|| bad(C, "invalid p2"))?;
     let p3 = parse_point(p3_val).ok_or_else(|| bad(C, "invalid p3"))?;
 
-    let fit = vectorcraft_geom::fit_circle_3point(p1, p2, p3)
-        .map_err(|e| bad(C, format!("circle fit failed: {e}")))?;
+    let fit = vectorcraft_geom::fit_circle_3point(p1, p2, p3).map_err(|e| bad(C, format!("circle fit failed: {e}")))?;
 
     let apply_vessel_id = p.get("applyToVesselId").and_then(Value::as_str);
     let emit_arc = p.get("emitArc").and_then(Value::as_bool).unwrap_or(false);
@@ -229,11 +214,11 @@ fn rim_fit(s: &mut Session, p: &Value) -> Result<Value> {
             emitted_arc_id = Some(arc_id.0);
         }
 
-        if let Some(v_id) = apply_vessel_id {
-            if let Some(vessel) = doc.pottery_vessels.iter_mut().find(|v| v.id == v_id) {
-                vessel.measurements.rim_diameter_mm = Some(fit.diameter_mm());
-                vessel.measurements.rim_preservation_percent = Some(fit.rim_preservation_percent);
-            }
+        if let Some(v_id) = apply_vessel_id
+            && let Some(vessel) = doc.pottery_vessels.iter_mut().find(|v| v.id == v_id)
+        {
+            vessel.measurements.rim_diameter_mm = Some(fit.diameter_mm());
+            vessel.measurements.rim_preservation_percent = Some(fit.rim_preservation_percent);
         }
 
         Ok(json!({
@@ -258,10 +243,8 @@ fn reflect_exterior(s: &mut Session, p: &Value) -> Result<Value> {
 
     s.edit("Reflect Exterior Profile", |doc, sel| {
         let (source_id, centerline_x) = if let Some(v_id) = vessel_id {
-            let vessel = doc.pottery_vessels.iter().find(|v| v.id == v_id)
-                .ok_or_else(|| bad(C, format!("vessel {v_id} not found")))?;
-            let src = path_id_val.or(vessel.outer_profile_node)
-                .ok_or_else(|| bad(C, "vessel has no outer_profile_node and no pathId given"))?;
+            let vessel = doc.pottery_vessels.iter().find(|v| v.id == v_id).ok_or_else(|| bad(C, format!("vessel {v_id} not found")))?;
+            let src = path_id_val.or(vessel.outer_profile_node).ok_or_else(|| bad(C, "vessel has no outer_profile_node and no pathId given"))?;
             (src, vessel.centerline_x)
         } else {
             let src = path_id_val.ok_or_else(|| bad(C, "pathId is required when vesselId is omitted"))?;
@@ -285,10 +268,10 @@ fn reflect_exterior(s: &mut Session, p: &Value) -> Result<Value> {
         doc.insert(target_parent, usize::MAX, ref_node).map_err(|e| bad(C, e.to_string()))?;
         sel.objects = vec![ref_id];
 
-        if let Some(v_id) = vessel_id {
-            if let Some(vessel) = doc.pottery_vessels.iter_mut().find(|v| v.id == v_id) {
-                vessel.reflected_node = Some(ref_id);
-            }
+        if let Some(v_id) = vessel_id
+            && let Some(vessel) = doc.pottery_vessels.iter_mut().find(|v| v.id == v_id)
+        {
+            vessel.reflected_node = Some(ref_id);
         }
 
         Ok(json!({
@@ -300,10 +283,7 @@ fn reflect_exterior(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn wall_hatch(s: &mut Session, p: &Value) -> Result<Value> {
-    let vessel_id = p
-        .get("vesselId")
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad(C, "vesselId is required"))?;
+    let vessel_id = p.get("vesselId").and_then(Value::as_str).ok_or_else(|| bad(C, "vesselId is required"))?;
 
     let fill_mode_str = p.get("fillMode").and_then(Value::as_str).unwrap_or("hatch");
     let fill_mode = match fill_mode_str {
@@ -322,10 +302,8 @@ fn wall_hatch(s: &mut Session, p: &Value) -> Result<Value> {
 
     s.edit("Generate Wall Hatching", |doc, sel| {
         let (outer_node_id, inner_node_id, centerline_x) = {
-            let vessel = doc.pottery_vessels.iter().find(|v| v.id == vessel_id)
-                .ok_or_else(|| bad(C, format!("vessel {vessel_id} not found")))?;
-            let out_id = vessel.outer_profile_node
-                .ok_or_else(|| bad(C, "vessel has no outer profile path"))?;
+            let vessel = doc.pottery_vessels.iter().find(|v| v.id == vessel_id).ok_or_else(|| bad(C, format!("vessel {vessel_id} not found")))?;
+            let out_id = vessel.outer_profile_node.ok_or_else(|| bad(C, "vessel has no outer profile path"))?;
             (out_id, vessel.inner_profile_node, vessel.centerline_x)
         };
 
@@ -392,20 +370,15 @@ fn wall_hatch(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn measurements(s: &mut Session, p: &Value) -> Result<Value> {
-    let vessel_id = p
-        .get("vesselId")
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad(C, "vesselId is required"))?;
+    let vessel_id = p.get("vesselId").and_then(Value::as_str).ok_or_else(|| bad(C, "vesselId is required"))?;
     let emit_annotations = p.get("emitAnnotations").and_then(Value::as_bool).unwrap_or(false);
 
     let target_parent = s.doc()?.target_parent()?;
 
     s.edit("Pottery Measurements Readout", |doc, sel| {
         let (outer_node_id, inner_node_id, centerline_x, rim_fit_d) = {
-            let vessel = doc.pottery_vessels.iter().find(|v| v.id == vessel_id)
-                .ok_or_else(|| bad(C, format!("vessel {vessel_id} not found")))?;
-            let out_id = vessel.outer_profile_node
-                .ok_or_else(|| bad(C, "vessel has no outer profile path"))?;
+            let vessel = doc.pottery_vessels.iter().find(|v| v.id == vessel_id).ok_or_else(|| bad(C, format!("vessel {vessel_id} not found")))?;
+            let out_id = vessel.outer_profile_node.ok_or_else(|| bad(C, "vessel has no outer profile path"))?;
             let rim_fit_pt = vessel.measurements.rim_diameter_mm.map(|d_mm| d_mm * MM);
             (out_id, vessel.inner_profile_node, vessel.centerline_x, rim_fit_pt)
         };
@@ -415,20 +388,18 @@ fn measurements(s: &mut Session, p: &Value) -> Result<Value> {
             _ => return Err(bad(C, "outer profile node is not a path")),
         };
 
-        let inner_pd = inner_node_id.and_then(|in_id| {
-            match doc.node(in_id).map(|n| &n.kind) {
-                Some(NodeKind::Path { path, .. }) => Some(path.clone()),
-                _ => None,
-            }
+        let inner_pd = inner_node_id.and_then(|in_id| match doc.node(in_id).map(|n| &n.kind) {
+            Some(NodeKind::Path { path, .. }) => Some(path.clone()),
+            _ => None,
         });
 
         let mut m = vectorcraft_pathops::compute_vessel_measurements(centerline_x, &outer_pd, inner_pd.as_ref(), rim_fit_d);
 
         // Keep existing rim fit preservation percent if present
-        if let Some(vessel) = doc.pottery_vessels.iter().find(|v| v.id == vessel_id) {
-            if m.rim_preservation_percent.is_none() {
-                m.rim_preservation_percent = vessel.measurements.rim_preservation_percent;
-            }
+        if let Some(vessel) = doc.pottery_vessels.iter().find(|v| v.id == vessel_id)
+            && m.rim_preservation_percent.is_none()
+        {
+            m.rim_preservation_percent = vessel.measurements.rim_preservation_percent;
         }
 
         let ledger = m.format_ledger();
@@ -440,11 +411,7 @@ fn measurements(s: &mut Session, p: &Value) -> Result<Value> {
             // Dimension labels
             if let Some(rim_cm) = m.rim_diameter_cm() {
                 let lbl_id = doc.alloc_id();
-                let char_style = CharStyle {
-                    size: 8.0,
-                    fill: blue_paint.clone(),
-                    ..Default::default()
-                };
+                let char_style = CharStyle { size: 8.0, fill: blue_paint.clone(), ..Default::default() };
                 let txt_obj = TextObject::point(Point::new(centerline_x, 40.0), &format!("구경 {:.1}cm", rim_cm), char_style);
                 let txt_node = Node::new(lbl_id, NodeKind::Text(Box::new(txt_obj)));
                 annot_children.push(Arc::new(txt_node));
@@ -452,11 +419,7 @@ fn measurements(s: &mut Session, p: &Value) -> Result<Value> {
 
             if let Some(h_cm) = m.height_cm() {
                 let lbl_id = doc.alloc_id();
-                let char_style = CharStyle {
-                    size: 8.0,
-                    fill: blue_paint.clone(),
-                    ..Default::default()
-                };
+                let char_style = CharStyle { size: 8.0, fill: blue_paint.clone(), ..Default::default() };
                 let txt_obj = TextObject::point(Point::new(centerline_x - 40.0, 150.0), &format!("기고 {:.1}cm", h_cm), char_style);
                 let txt_node = Node::new(lbl_id, NodeKind::Text(Box::new(txt_obj)));
                 annot_children.push(Arc::new(txt_node));
@@ -506,8 +469,7 @@ fn wall_offset(s: &mut Session, p: &Value) -> Result<Value> {
         };
 
         let (centerline_x, side) = if let Some(v_id) = p.get("vesselId").and_then(Value::as_str) {
-            let v = doc.pottery_vessels.iter().find(|v| v.id == v_id)
-                .ok_or_else(|| bad(C, format!("vessel {v_id} not found")))?;
+            let v = doc.pottery_vessels.iter().find(|v| v.id == v_id).ok_or_else(|| bad(C, format!("vessel {v_id} not found")))?;
             (v.centerline_x, v.section_side)
         } else {
             let cl_x = p.get("centerlineX").and_then(Value::as_f64).unwrap_or(300.0);
@@ -524,10 +486,10 @@ fn wall_offset(s: &mut Session, p: &Value) -> Result<Value> {
         doc.insert(target_parent, usize::MAX, inner_node).map_err(|e| bad(C, e.to_string()))?;
         sel.objects = vec![inner_id];
 
-        if let Some(v_id) = p.get("vesselId").and_then(Value::as_str) {
-            if let Some(vessel) = doc.pottery_vessels.iter_mut().find(|v| v.id == v_id) {
-                vessel.inner_profile_node = Some(inner_id);
-            }
+        if let Some(v_id) = p.get("vesselId").and_then(Value::as_str)
+            && let Some(vessel) = doc.pottery_vessels.iter_mut().find(|v| v.id == v_id)
+        {
+            vessel.inner_profile_node = Some(inner_id);
         }
 
         Ok(json!({
@@ -545,8 +507,7 @@ fn horizontal_ridge(s: &mut Session, p: &Value) -> Result<Value> {
 
     s.edit("Horizontal Inflection Ridge", |doc, sel| {
         let centerline_x = if let Some(v_id) = p.get("vesselId").and_then(Value::as_str) {
-            let v = doc.pottery_vessels.iter().find(|v| v.id == v_id)
-                .ok_or_else(|| bad(C, format!("vessel {v_id} not found")))?;
+            let v = doc.pottery_vessels.iter().find(|v| v.id == v_id).ok_or_else(|| bad(C, format!("vessel {v_id} not found")))?;
             v.centerline_x
         } else {
             p.get("centerlineX").and_then(Value::as_f64).unwrap_or(300.0)
@@ -566,10 +527,10 @@ fn horizontal_ridge(s: &mut Session, p: &Value) -> Result<Value> {
         doc.insert(target_parent, usize::MAX, ridge_node).map_err(|e| bad(C, e.to_string()))?;
         sel.objects = vec![ridge_id];
 
-        if let Some(v_id) = p.get("vesselId").and_then(Value::as_str) {
-            if let Some(vessel) = doc.pottery_vessels.iter_mut().find(|v| v.id == v_id) {
-                vessel.ridge_nodes.push(ridge_id);
-            }
+        if let Some(v_id) = p.get("vesselId").and_then(Value::as_str)
+            && let Some(vessel) = doc.pottery_vessels.iter_mut().find(|v| v.id == v_id)
+        {
+            vessel.ridge_nodes.push(ridge_id);
         }
 
         Ok(json!({

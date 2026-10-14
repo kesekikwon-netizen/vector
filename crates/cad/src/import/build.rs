@@ -10,9 +10,8 @@ use std::sync::Arc;
 use kurbo::{BezPath, PathEl};
 use vectorcraft_color::{Color, Paint};
 use vectorcraft_doc::{
-    Appearance, AppearanceItem, CharStyle, CoordSystem, Dash, Document, ImageObject, LAYER_COLORS,
-    LayerColor, LineCap, LinkInfo, Node, NodeKind, PlacementOptions, ScaleConfig, ScaleRatio,
-    Symbol, TextObject,
+    Appearance, AppearanceItem, CharStyle, CoordSystem, Dash, Document, ImageObject, LAYER_COLORS, LayerColor, LineCap, LinkInfo, Node, NodeKind,
+    PlacementOptions, ScaleConfig, ScaleRatio, Symbol, TextObject,
 };
 use vectorcraft_geom::{Affine, FillRule, PathData, Point, Rect};
 
@@ -106,10 +105,7 @@ impl<'d, 'a> Build<'d, 'a> {
         Self {
             d,
             o,
-            conv: Converter {
-                imagedefs: d.imagedefs.clone(),
-                ..Converter::default()
-            },
+            conv: Converter { imagedefs: d.imagedefs.clone(), ..Converter::default() },
             doc: Document::new(1.0, 1.0),
             blocks: HashMap::new(),
             bounds: HashMap::new(),
@@ -149,12 +145,8 @@ impl<'d, 'a> Build<'d, 'a> {
         }
         if self.o.preserve_coords || self.o.desca {
             let scale_denom = self.o.scale.or(desca_scale).unwrap_or(20.0);
-            doc.scale = Some(ScaleConfig {
-                scale: ScaleRatio::new(scale_denom),
-                crs: CoordSystem::default(),
-                canvas_origin: Point::ZERO,
-                world_origin,
-            });
+            doc.scale =
+                Some(ScaleConfig { scale: ScaleRatio::new(scale_denom), crs: CoordSystem::default(), canvas_origin: Point::ZERO, world_origin });
         }
         if let Some(ref src) = self.o.source_path
             && let Some(comp_title) = crate::desca::read_companion_sections_json(src)
@@ -535,21 +527,9 @@ impl<'d, 'a> Build<'d, 'a> {
     }
 
     fn image(&mut self, im: &ImageItem, map: Affine) -> Option<Node> {
-        let xf = map
-            * Affine::new([
-                im.u.x,
-                im.u.y,
-                -im.v.x,
-                -im.v.y,
-                im.at.x + im.v.x * (im.height as f64),
-                im.at.y + im.v.y * (im.height as f64),
-            ]);
+        let xf = map * Affine::new([im.u.x, im.u.y, -im.v.x, -im.v.y, im.at.x + im.v.x * (im.height as f64), im.at.y + im.v.y * (im.height as f64)]);
         let link_path = if let Some(ref src) = self.o.source_path {
-            if let Some(parent) = src.parent() {
-                parent.join(&im.path).to_string_lossy().into_owned()
-            } else {
-                im.path.clone()
-            }
+            if let Some(parent) = src.parent() { parent.join(&im.path).to_string_lossy().into_owned() } else { im.path.clone() }
         } else {
             im.path.clone()
         };

@@ -75,31 +75,31 @@ pub fn show_dialog(app: &mut VectorcraftApp, ctx: &egui::Context) {
             ui.data_mut(|d| d.insert_temp(gpkg_path_input_id(), gpkg_path.clone()));
 
             ui.horizontal(|ui| {
-                if ui.button("조사 데이터 분석 (Inspect)").clicked() {
-                    if let Ok(info) = app.run("gpkg.inspect", json!({ "path": gpkg_path })) {
-                        if let Some(arr) = info.get("layers").and_then(Value::as_array) {
-                            let mut detected: Vec<(String, String)> = Vec::new();
-                            for item in arr {
-                                let tbl = item.get("table_name").and_then(Value::as_str).unwrap_or("");
-                                if tbl.is_empty() {
-                                    continue;
-                                }
-                                let desc = item.get("target_layer").and_then(Value::as_str).unwrap_or(tbl);
-                                let count = item.get("feature_count").and_then(Value::as_u64).unwrap_or(0);
-                                detected.push((tbl.to_string(), format!("{desc} ({count}개 객체)")));
-                            }
-                            if !detected.is_empty() {
-                                let all_names: BTreeSet<String> = detected.iter().map(|(tbl, _)| tbl.clone()).collect();
-                                ui.data_mut(|d| {
-                                    d.insert_temp(gpkg_inspected_layers_id(), detected);
-                                    d.insert_temp(gpkg_selected_layers_id(), all_names);
-                                });
-                            }
+                if ui.button("조사 데이터 분석 (Inspect)").clicked()
+                    && let Ok(info) = app.run("gpkg.inspect", json!({ "path": gpkg_path }))
+                    && let Some(arr) = info.get("layers").and_then(Value::as_array)
+                {
+                    let mut detected: Vec<(String, String)> = Vec::new();
+                    for item in arr {
+                        let tbl = item.get("table_name").and_then(Value::as_str).unwrap_or("");
+                        if tbl.is_empty() {
+                            continue;
                         }
+                        let desc = item.get("target_layer").and_then(Value::as_str).unwrap_or(tbl);
+                        let count = item.get("feature_count").and_then(Value::as_u64).unwrap_or(0);
+                        detected.push((tbl.to_string(), format!("{desc} ({count}개 객체)")));
+                    }
+                    if !detected.is_empty() {
+                        let all_names: BTreeSet<String> = detected.iter().map(|(tbl, _)| tbl.clone()).collect();
+                        ui.data_mut(|d| {
+                            d.insert_temp(gpkg_inspected_layers_id(), detected);
+                            d.insert_temp(gpkg_selected_layers_id(), all_names);
+                        });
                     }
                 }
 
-                if ui.button("조사 데이터 동기화 (Sync)").on_hover_text("외부 현장 조사 파일의 최신 수정사항을 검사합니다.").clicked() {
+                if ui.button("조사 데이터 동기화 (Sync)").on_hover_text("외부 현장 조사 파일의 최신 수정사항을 검사합니다.").clicked()
+                {
                     let _ = app.run("gpkg.syncSurvey", json!({ "path": gpkg_path }));
                 }
             });
@@ -107,18 +107,11 @@ pub fn show_dialog(app: &mut VectorcraftApp, ctx: &egui::Context) {
             ui.separator();
 
             let inspected: Option<Vec<(String, String)>> = ui.data(|d| d.get_temp(gpkg_inspected_layers_id()));
-            let layers_to_show: Vec<(String, String)> = inspected.unwrap_or_else(|| {
-                DEFAULT_STRATA_LAYERS
-                    .iter()
-                    .map(|(tbl, desc)| ((*tbl).to_string(), (*desc).to_string()))
-                    .collect()
-            });
+            let layers_to_show: Vec<(String, String)> =
+                inspected.unwrap_or_else(|| DEFAULT_STRATA_LAYERS.iter().map(|(tbl, desc)| ((*tbl).to_string(), (*desc).to_string())).collect());
 
-            let mut selected_layers: BTreeSet<String> = ui
-                .data(|d| d.get_temp(gpkg_selected_layers_id()))
-                .unwrap_or_else(|| {
-                    layers_to_show.iter().map(|(tbl, _)| tbl.clone()).collect()
-                });
+            let mut selected_layers: BTreeSet<String> =
+                ui.data(|d| d.get_temp(gpkg_selected_layers_id())).unwrap_or_else(|| layers_to_show.iter().map(|(tbl, _)| tbl.clone()).collect());
 
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("광령리 1호 유적 표준 레이어 (선택 가능)").strong());

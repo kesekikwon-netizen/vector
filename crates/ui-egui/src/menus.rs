@@ -3543,7 +3543,32 @@ pub fn menu_strings() -> std::collections::BTreeSet<String> {
     out.extend(DYNAMIC_LABELS.iter().map(|s| s.to_string()));
     out.extend(CONTEXT_LABELS.iter().map(|s| s.to_string()));
     out.extend(UI_COMMANDS.iter().map(|c| c.1.to_string()));
+    fn is_trowel_command(c: &vectorcraft_engine::cmd::CommandSpec) -> bool {
+        c.menu.first().is_some_and(|m| *m == "Trowel")
+            || c.menu.contains(&"해발선")
+            || c.menu.contains(&"Drawing")
+            || c.menu.contains(&"Trowel Style Template…")
+            || c.menu.contains(&"Plate PDF…")
+            || c.menu.contains(&"Plate SVG…")
+            || c.id.starts_with("trowel.")
+            || c.id.starts_with("trowel_plan.")
+            || c.id.starts_with("pottery.")
+            || c.id.starts_with("gpkg.")
+            || c.id.starts_with("calibrate.")
+            || c.id.starts_with("elevation.")
+            || c.id.starts_with("hatch.")
+            || c.id.starts_with("legend.")
+            || c.id.starts_with("plate.")
+            || c.id.starts_with("stratigraphy.")
+            || c.id.starts_with("style.")
+            || c.id == "cad.importDxf"
+            || c.id.starts_with("doc.coordTo")
+            || matches!(c.id, "doc.setScale" | "doc.setOrigin" | "doc.getScale" | "doc.graticuleTicks")
+    }
     for c in vectorcraft_engine::cmd::command_specs() {
+        if is_trowel_command(c) {
+            continue;
+        }
         out.insert(c.label.to_string());
         out.extend(c.menu.iter().map(|m| m.to_string()));
     }

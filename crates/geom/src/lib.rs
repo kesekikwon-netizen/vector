@@ -26,8 +26,8 @@ pub use kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathEl, PathSeg, Po
 pub use path::{Anchor, AnchorKind, FillRule, PathData, SubPath};
 pub use projective::Homography;
 pub use registration::{
-    AxisAlignment, PointPair, PointResidual, RegistrationError, RegistrationResult, TwoPointResult,
-    evaluate_residuals, fit_affine, fit_auto, fit_similarity, fit_two_point,
+    AxisAlignment, PointPair, PointResidual, RegistrationError, RegistrationResult, TwoPointResult, evaluate_residuals, fit_affine, fit_auto,
+    fit_similarity, fit_two_point,
 };
 
 /// Tolerance used when comparing handle positions to anchor positions.

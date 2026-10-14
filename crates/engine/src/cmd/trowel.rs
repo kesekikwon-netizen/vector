@@ -73,22 +73,31 @@ fn new_plan(s: &mut Session, p: &Value) -> Result<Value> {
     let name = str_param(p, "name").unwrap_or("개별유구 평·단면도");
     let epsg = u32_or(p, "epsg", 5186);
 
-    s.execute("file.new", &json!({
-        "name": name,
-        "units": "Millimeters",
-        "width": "420 mm",
-        "height": "297 mm",
-        "orientation": "landscape",
-    }))?;
+    s.execute(
+        "file.new",
+        &json!({
+            "name": name,
+            "units": "Millimeters",
+            "width": "420 mm",
+            "height": "297 mm",
+            "orientation": "landscape",
+        }),
+    )?;
 
-    s.execute("doc.setScale", &json!({
-        "scale": 20.0,
-        "epsg": epsg,
-    }))?;
+    s.execute(
+        "doc.setScale",
+        &json!({
+            "scale": 20.0,
+            "epsg": epsg,
+        }),
+    )?;
 
-    s.execute("legend.addGroup", &json!({
-        "group": "plan",
-    }))?;
+    s.execute(
+        "legend.addGroup",
+        &json!({
+            "group": "plan",
+        }),
+    )?;
 
     Ok(json!({ "template": "plan", "name": name, "scale": 20.0, "epsg": epsg }))
 }
@@ -98,22 +107,31 @@ fn new_section(s: &mut Session, p: &Value) -> Result<Value> {
     let name = str_param(p, "name").unwrap_or("토층 단면도");
     let epsg = u32_or(p, "epsg", 5186);
 
-    s.execute("file.new", &json!({
-        "name": name,
-        "units": "Millimeters",
-        "width": "420 mm",
-        "height": "297 mm",
-        "orientation": "landscape",
-    }))?;
+    s.execute(
+        "file.new",
+        &json!({
+            "name": name,
+            "units": "Millimeters",
+            "width": "420 mm",
+            "height": "297 mm",
+            "orientation": "landscape",
+        }),
+    )?;
 
-    s.execute("doc.setScale", &json!({
-        "scale": 20.0,
-        "epsg": epsg,
-    }))?;
+    s.execute(
+        "doc.setScale",
+        &json!({
+            "scale": 20.0,
+            "epsg": epsg,
+        }),
+    )?;
 
-    s.execute("legend.addGroup", &json!({
-        "group": "section",
-    }))?;
+    s.execute(
+        "legend.addGroup",
+        &json!({
+            "group": "section",
+        }),
+    )?;
 
     Ok(json!({ "template": "section", "name": name, "scale": 20.0, "epsg": epsg }))
 }
@@ -123,22 +141,31 @@ fn new_finds(s: &mut Session, p: &Value) -> Result<Value> {
     let name = str_param(p, "name").unwrap_or("유물 실측도");
     let epsg = u32_or(p, "epsg", 5186);
 
-    s.execute("file.new", &json!({
-        "name": name,
-        "units": "Millimeters",
-        "width": "210 mm",
-        "height": "297 mm",
-        "orientation": "portrait",
-    }))?;
+    s.execute(
+        "file.new",
+        &json!({
+            "name": name,
+            "units": "Millimeters",
+            "width": "210 mm",
+            "height": "297 mm",
+            "orientation": "portrait",
+        }),
+    )?;
 
-    s.execute("doc.setScale", &json!({
-        "scale": 1.0,
-        "epsg": epsg,
-    }))?;
+    s.execute(
+        "doc.setScale",
+        &json!({
+            "scale": 1.0,
+            "epsg": epsg,
+        }),
+    )?;
 
-    s.execute("legend.addGroup", &json!({
-        "group": "finds",
-    }))?;
+    s.execute(
+        "legend.addGroup",
+        &json!({
+            "group": "finds",
+        }),
+    )?;
 
     Ok(json!({ "template": "finds", "name": name, "scale": 1.0, "epsg": epsg }))
 }
@@ -148,22 +175,31 @@ fn new_site_plan(s: &mut Session, p: &Value) -> Result<Value> {
     let name = str_param(p, "name").unwrap_or("유구배치도");
     let epsg = u32_or(p, "epsg", 5186);
 
-    s.execute("file.new", &json!({
-        "name": name,
-        "units": "Millimeters",
-        "width": "420 mm",
-        "height": "297 mm",
-        "orientation": "landscape",
-    }))?;
+    s.execute(
+        "file.new",
+        &json!({
+            "name": name,
+            "units": "Millimeters",
+            "width": "420 mm",
+            "height": "297 mm",
+            "orientation": "landscape",
+        }),
+    )?;
 
-    s.execute("doc.setScale", &json!({
-        "scale": 100.0,
-        "epsg": epsg,
-    }))?;
+    s.execute(
+        "doc.setScale",
+        &json!({
+            "scale": 100.0,
+            "epsg": epsg,
+        }),
+    )?;
 
-    s.execute("legend.addGroup", &json!({
-        "group": "plan",
-    }))?;
+    s.execute(
+        "legend.addGroup",
+        &json!({
+            "group": "plan",
+        }),
+    )?;
 
     Ok(json!({ "template": "siteplan", "name": name, "scale": 100.0, "epsg": epsg }))
 }
@@ -173,18 +209,24 @@ fn new_plate(s: &mut Session, p: &Value) -> Result<Value> {
     let name = str_param(p, "name").unwrap_or("보고서 도판");
     let epsg = u32_or(p, "epsg", 5186);
 
-    s.execute("file.new", &json!({
-        "name": name,
-        "units": "Millimeters",
-        "width": "210 mm",
-        "height": "297 mm",
-        "orientation": "portrait",
-    }))?;
+    s.execute(
+        "file.new",
+        &json!({
+            "name": name,
+            "units": "Millimeters",
+            "width": "210 mm",
+            "height": "297 mm",
+            "orientation": "portrait",
+        }),
+    )?;
 
-    s.execute("doc.setScale", &json!({
-        "scale": 1.0,
-        "epsg": epsg,
-    }))?;
+    s.execute(
+        "doc.setScale",
+        &json!({
+            "scale": 1.0,
+            "epsg": epsg,
+        }),
+    )?;
 
     Ok(json!({ "template": "plate", "name": name, "scale": 1.0, "epsg": epsg }))
 }

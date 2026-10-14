@@ -341,11 +341,7 @@ impl LegendTable {
                 continue;
             }
             let line_nodes = lines(layer);
-            let elem_count = if !line_nodes.is_empty() {
-                line_nodes.len()
-            } else {
-                layer.children().map_or(0, |c| c.len())
-            };
+            let elem_count = if !line_nodes.is_empty() { line_nodes.len() } else { layer.children().map_or(0, |c| c.len()) };
 
             if options.filter_unused && elem_count == 0 {
                 continue; // "쓰지 않은 줄은 범례표에 나오지 않습니다"
@@ -372,28 +368,13 @@ impl LegendTable {
             fav_b.cmp(&fav_a)
         });
 
-        let rows_per_col = if options.column_count > 1 {
-            (entries.len() + options.column_count - 1) / options.column_count
-        } else {
-            entries.len()
-        };
+        let rows_per_col = if options.column_count > 1 { entries.len().div_ceil(options.column_count) } else { entries.len() };
 
-        let total_h = if entries.is_empty() {
-            0.0
-        } else {
-            (rows_per_col as f64) * options.row_height_pt + 8.0
-        };
+        let total_h = if entries.is_empty() { 0.0 } else { (rows_per_col as f64) * options.row_height_pt + 8.0 };
 
-        let bounds = Rect::from_origin_size(
-            options.origin,
-            vectorcraft_geom::Size::new(options.table_width_pt, total_h),
-        );
+        let bounds = Rect::from_origin_size(options.origin, vectorcraft_geom::Size::new(options.table_width_pt, total_h));
 
-        Self {
-            entries,
-            options: options.clone(),
-            bounds,
-        }
+        Self { entries, options: options.clone(), bounds }
     }
 }
 
@@ -698,4 +679,3 @@ mod tests {
         assert_eq!(table_all.entries.len(), 2);
     }
 }
-

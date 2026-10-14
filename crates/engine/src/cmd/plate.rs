@@ -4,17 +4,12 @@
 use std::sync::Arc;
 
 use kurbo::{Point, Rect};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use vectorcraft_color::{Color, Paint};
 use vectorcraft_doc::legend::MM;
-use vectorcraft_doc::plate::{
-    BorderFrame, NorthArrowItem, PlateOrientation, PlateSheet, PlateSize,
-    ScaleBarItem, TitleBlockData, ViewportItem,
-};
+use vectorcraft_doc::plate::{BorderFrame, NorthArrowItem, PlateOrientation, PlateSheet, PlateSize, ScaleBarItem, TitleBlockData, ViewportItem};
 use vectorcraft_doc::scale::ScaleRatio;
-use vectorcraft_doc::{
-    Appearance, Artboard, CharStyle, Document, Node, NodeKind, TextObject,
-};
+use vectorcraft_doc::{Appearance, Artboard, CharStyle, Document, Node, NodeKind, TextObject};
 use vectorcraft_geom::{PathData, SubPath, Vec2};
 
 use super::super::*;
@@ -136,9 +131,11 @@ fn create_sheet(s: &mut Session, p: &Value) -> Result<Value> {
     let page_number = p.get("pageNumber").or_else(|| p.get("page_number")).and_then(Value::as_str).unwrap_or("57").to_string();
 
     let (w_pt, h_pt) = size.dimensions_pt(orientation);
-    let sheet_id = p.get("id").and_then(Value::as_str).map(String::from).unwrap_or_else(|| {
-        format!("plate-{}", s.doc().map(|d| d.doc.plate_sheets.len() + 1).unwrap_or(1))
-    });
+    let sheet_id = p
+        .get("id")
+        .and_then(Value::as_str)
+        .map(String::from)
+        .unwrap_or_else(|| format!("plate-{}", s.doc().map(|d| d.doc.plate_sheets.len() + 1).unwrap_or(1)));
 
     let sheet = PlateSheet {
         id: sheet_id.clone(),
@@ -197,11 +194,7 @@ fn add_viewport(s: &mut Session, p: &Value) -> Result<Value> {
     let rotation = p.get("rotation").and_then(Value::as_f64).unwrap_or(0.0);
 
     let pan_offset = if let Some(arr) = p.get("panOffset").or_else(|| p.get("pan_offset")).and_then(Value::as_array) {
-        if arr.len() >= 2 {
-            Vec2::new(arr[0].as_f64().unwrap_or(0.0), arr[1].as_f64().unwrap_or(0.0))
-        } else {
-            Vec2::ZERO
-        }
+        if arr.len() >= 2 { Vec2::new(arr[0].as_f64().unwrap_or(0.0), arr[1].as_f64().unwrap_or(0.0)) } else { Vec2::ZERO }
     } else {
         Vec2::ZERO
     };
@@ -213,11 +206,7 @@ fn add_viewport(s: &mut Session, p: &Value) -> Result<Value> {
     vp.pan_offset = pan_offset;
 
     s.edit("Add Viewport to Plate", |doc, _| {
-        let sheet = if let Some(sid) = sheet_id {
-            doc.plate_sheets.iter_mut().find(|sh| sh.id == sid)
-        } else {
-            doc.plate_sheets.first_mut()
-        };
+        let sheet = if let Some(sid) = sheet_id { doc.plate_sheets.iter_mut().find(|sh| sh.id == sid) } else { doc.plate_sheets.first_mut() };
 
         if let Some(sh) = sheet {
             sh.viewports.push(vp);
@@ -243,11 +232,7 @@ fn update_title_block(s: &mut Session, p: &Value) -> Result<Value> {
     let sheet_id = p.get("sheetId").or_else(|| p.get("sheet_id")).and_then(Value::as_str);
 
     s.edit("Update Title Block", |doc, _| {
-        let sheet = if let Some(sid) = sheet_id {
-            doc.plate_sheets.iter_mut().find(|sh| sh.id == sid)
-        } else {
-            doc.plate_sheets.first_mut()
-        };
+        let sheet = if let Some(sid) = sheet_id { doc.plate_sheets.iter_mut().find(|sh| sh.id == sid) } else { doc.plate_sheets.first_mut() };
 
         let Some(sheet) = sheet else { return Ok(()) };
         let tb = &mut sheet.title_block;
@@ -302,11 +287,7 @@ fn update_scale_bar(s: &mut Session, p: &Value) -> Result<Value> {
 
     let mut total_w = 0.0;
     s.edit("Update Scale Bar", |doc, _| {
-        let sheet = if let Some(sid) = sheet_id {
-            doc.plate_sheets.iter_mut().find(|sh| sh.id == sid)
-        } else {
-            doc.plate_sheets.first_mut()
-        };
+        let sheet = if let Some(sid) = sheet_id { doc.plate_sheets.iter_mut().find(|sh| sh.id == sid) } else { doc.plate_sheets.first_mut() };
 
         let Some(sheet) = sheet else { return Ok(()) };
         let sb = &mut sheet.scale_bar;
@@ -339,11 +320,7 @@ fn update_north_arrow(s: &mut Session, p: &Value) -> Result<Value> {
     let sheet_id = p.get("sheetId").or_else(|| p.get("sheet_id")).and_then(Value::as_str);
 
     s.edit("Update North Arrow", |doc, _| {
-        let sheet = if let Some(sid) = sheet_id {
-            doc.plate_sheets.iter_mut().find(|sh| sh.id == sid)
-        } else {
-            doc.plate_sheets.first_mut()
-        };
+        let sheet = if let Some(sid) = sheet_id { doc.plate_sheets.iter_mut().find(|sh| sh.id == sid) } else { doc.plate_sheets.first_mut() };
 
         let Some(sheet) = sheet else { return Ok(()) };
         let na = &mut sheet.north_arrow;
@@ -372,13 +349,8 @@ pub fn synthesize_plate_document(source_doc: &Document, sheet: &PlateSheet) -> D
     let mut syn_doc = Document::new(w_pt, h_pt);
 
     // Replace artboard with exact sheet dimensions
-    syn_doc.artboards = vec![Artboard {
-        id: 1,
-        name: sheet.name.clone(),
-        rect: Rect::new(0.0, 0.0, w_pt, h_pt),
-        show_center_mark: false,
-        show_cross_hairs: false,
-    }];
+    syn_doc.artboards =
+        vec![Artboard { id: 1, name: sheet.name.clone(), rect: Rect::new(0.0, 0.0, w_pt, h_pt), show_center_mark: false, show_cross_hairs: false }];
     syn_doc.layers.clear();
 
     // 1. Layer: Border Frame & Graticule Ticks
@@ -388,12 +360,15 @@ pub fn synthesize_plate_document(source_doc: &Document, sheet: &PlateSheet) -> D
         let outer_rect = Rect::new(m, m, (w_pt - m).max(m), (h_pt - m).max(m));
 
         // Outer rule (1.2 pt)
-        let outer_path = PathData::single(SubPath::polyline(&[
-            Point::new(outer_rect.x0, outer_rect.y0),
-            Point::new(outer_rect.x1, outer_rect.y0),
-            Point::new(outer_rect.x1, outer_rect.y1),
-            Point::new(outer_rect.x0, outer_rect.y1),
-        ], true));
+        let outer_path = PathData::single(SubPath::polyline(
+            &[
+                Point::new(outer_rect.x0, outer_rect.y0),
+                Point::new(outer_rect.x1, outer_rect.y0),
+                Point::new(outer_rect.x1, outer_rect.y1),
+                Point::new(outer_rect.x0, outer_rect.y1),
+            ],
+            true,
+        ));
         let mut outer_node = Node::path(
             syn_doc.alloc_id(),
             outer_path,
@@ -411,12 +386,15 @@ pub fn synthesize_plate_document(source_doc: &Document, sheet: &PlateSheet) -> D
                 (outer_rect.x1 - inset).max(outer_rect.x0 + inset),
                 (outer_rect.y1 - inset).max(outer_rect.y0 + inset),
             );
-            let inner_path = PathData::single(SubPath::polyline(&[
-                Point::new(inner_rect.x0, inner_rect.y0),
-                Point::new(inner_rect.x1, inner_rect.y0),
-                Point::new(inner_rect.x1, inner_rect.y1),
-                Point::new(inner_rect.x0, inner_rect.y1),
-            ], true));
+            let inner_path = PathData::single(SubPath::polyline(
+                &[
+                    Point::new(inner_rect.x0, inner_rect.y0),
+                    Point::new(inner_rect.x1, inner_rect.y0),
+                    Point::new(inner_rect.x1, inner_rect.y1),
+                    Point::new(inner_rect.x0, inner_rect.y1),
+                ],
+                true,
+            ));
             let mut inner_node = Node::path(
                 syn_doc.alloc_id(),
                 inner_path,
@@ -486,12 +464,15 @@ pub fn synthesize_plate_document(source_doc: &Document, sheet: &PlateSheet) -> D
         let tb_rect = Rect::new(tb_x, tb_y, tb_x + tb_w, tb_y + tb_h);
 
         // Outer frame 1.0 pt
-        let tb_border = PathData::single(SubPath::polyline(&[
-            Point::new(tb_rect.x0, tb_rect.y0),
-            Point::new(tb_rect.x1, tb_rect.y0),
-            Point::new(tb_rect.x1, tb_rect.y1),
-            Point::new(tb_rect.x0, tb_rect.y1),
-        ], true));
+        let tb_border = PathData::single(SubPath::polyline(
+            &[
+                Point::new(tb_rect.x0, tb_rect.y0),
+                Point::new(tb_rect.x1, tb_rect.y0),
+                Point::new(tb_rect.x1, tb_rect.y1),
+                Point::new(tb_rect.x0, tb_rect.y1),
+            ],
+            true,
+        ));
         tb_nodes.push(Arc::new(Node::path(
             syn_doc.alloc_id(),
             tb_border,
@@ -530,12 +511,10 @@ pub fn synthesize_plate_document(source_doc: &Document, sheet: &PlateSheet) -> D
             let bx1 = bx0 + seg_w;
             let fill_color = if i % 2 == 0 { Color::BLACK } else { Color::WHITE };
 
-            let block_path = PathData::single(SubPath::polyline(&[
-                Point::new(bx0, start_y),
-                Point::new(bx1, start_y),
-                Point::new(bx1, start_y + seg_h),
-                Point::new(bx0, start_y + seg_h),
-            ], true));
+            let block_path = PathData::single(SubPath::polyline(
+                &[Point::new(bx0, start_y), Point::new(bx1, start_y), Point::new(bx1, start_y + seg_h), Point::new(bx0, start_y + seg_h)],
+                true,
+            ));
             sb_nodes.push(Arc::new(Node::path(
                 syn_doc.alloc_id(),
                 block_path,
@@ -591,11 +570,7 @@ pub fn synthesize_plate_document(source_doc: &Document, sheet: &PlateSheet) -> D
 fn export_pdf(s: &mut Session, p: &Value) -> Result<Value> {
     let sheet_id = p.get("sheetId").or_else(|| p.get("sheet_id")).and_then(Value::as_str);
     let doc_st = s.doc()?;
-    let sheet = if let Some(sid) = sheet_id {
-        doc_st.doc.plate_sheets.iter().find(|sh| sh.id == sid)
-    } else {
-        doc_st.doc.plate_sheets.first()
-    };
+    let sheet = if let Some(sid) = sheet_id { doc_st.doc.plate_sheets.iter().find(|sh| sh.id == sid) } else { doc_st.doc.plate_sheets.first() };
 
     let Some(sheet) = sheet else {
         return Err(bad("plate.exportPdf", "no plate sheet found in document"));
@@ -603,12 +578,10 @@ fn export_pdf(s: &mut Session, p: &Value) -> Result<Value> {
 
     let syn_doc = synthesize_plate_document(&doc_st.doc, sheet);
     let pdf_opts = vectorcraft_pdf::PdfOptions::default();
-    let bytes = vectorcraft_pdf::export(&syn_doc, &pdf_opts)
-        .map_err(|e| EngineError::Other(format!("PDF export failed: {e}")))?;
+    let bytes = vectorcraft_pdf::export(&syn_doc, &pdf_opts).map_err(|e| EngineError::Other(format!("PDF export failed: {e}")))?;
 
     if let Some(path_str) = p.get("path").and_then(Value::as_str) {
-        std::fs::write(path_str, &bytes)
-            .map_err(|e| EngineError::Other(format!("Failed to write PDF to {path_str}: {e}")))?;
+        std::fs::write(path_str, &bytes).map_err(|e| EngineError::Other(format!("Failed to write PDF to {path_str}: {e}")))?;
     }
 
     Ok(json!({
@@ -621,11 +594,7 @@ fn export_pdf(s: &mut Session, p: &Value) -> Result<Value> {
 fn export_svg(s: &mut Session, p: &Value) -> Result<Value> {
     let sheet_id = p.get("sheetId").or_else(|| p.get("sheet_id")).and_then(Value::as_str);
     let doc_st = s.doc()?;
-    let sheet = if let Some(sid) = sheet_id {
-        doc_st.doc.plate_sheets.iter().find(|sh| sh.id == sid)
-    } else {
-        doc_st.doc.plate_sheets.first()
-    };
+    let sheet = if let Some(sid) = sheet_id { doc_st.doc.plate_sheets.iter().find(|sh| sh.id == sid) } else { doc_st.doc.plate_sheets.first() };
 
     let Some(sheet) = sheet else {
         return Err(bad("plate.exportSvg", "no plate sheet found in document"));
@@ -636,8 +605,7 @@ fn export_svg(s: &mut Session, p: &Value) -> Result<Value> {
     let svg_str = vectorcraft_svg::export(&syn_doc, &svg_opts);
 
     if let Some(path_str) = p.get("path").and_then(Value::as_str) {
-        std::fs::write(path_str, &svg_str)
-            .map_err(|e| EngineError::Other(format!("Failed to write SVG to {path_str}: {e}")))?;
+        std::fs::write(path_str, &svg_str).map_err(|e| EngineError::Other(format!("Failed to write SVG to {path_str}: {e}")))?;
     }
 
     Ok(json!({

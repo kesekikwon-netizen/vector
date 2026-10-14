@@ -433,11 +433,11 @@ fn drawing_menu_sits_before_view_and_waits_for_its_jobs() {
     let at = |h: &Harness, title: &str| h.texts.iter().find(|p| p.text == title && bar.contains_rect(p.rect)).unwrap().rect.center();
     h.click_at(at(&h, "Drawing"));
     let items = h.popup_buttons();
-    assert_eq!(items.len(), 9, "the Drawing menu's items: {items:?}");
-    // The first two run since J005; the others wait for their jobs.
-    assert!(items.iter().skip(2).all(|(_, enabled)| !enabled), "they wait for their jobs");
+    assert_eq!(items.len(), 10, "the Drawing menu's items: {items:?}");
+    // The first 6 run since J012/J018/J019; the others wait for their jobs.
+    assert!(items.iter().skip(6).all(|(_, enabled)| !enabled), "they wait for their jobs");
     let shown: String = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join("|");
-    for item in ["Weights at Once…", "Make Level Lines", "Scale and Coordinate System…", "Send to Strata…"] {
+    for item in ["Weights at Once…", "Make Level Lines", "Scale and Coordinate System…", "Strata GeoPackage"] {
         assert!(shown.contains(item), "{item} in {shown}");
     }
     // A second click puts the menu away; View, after it, is the app's own View menu.
@@ -857,8 +857,8 @@ fn palette_weight_chip_sets_the_next_stroke() {
     assert!(stroke.dash.is_some());
     h.click(wid("dash", "solid"));
     assert!(h.app.session.shown_stroke().unwrap().dash.is_none());
-    // Adding a weight waits for J018: on the wash (hatches run since J014).
-    assert_eq!(h.fill_at(h.rect(wid("weight-add", ())).unwrap()), Some(t.panel_darker));
+    // Adding a weight opens style template management since J018.
+    assert_eq!(h.fill_at(h.rect(wid("weight-add", ())).unwrap()), Some(t.input));
     h.click(wid("hatch", "45"));
     assert_eq!(h.app.session.shown_stroke().unwrap().width, 0.8);
     assert_eq!(h.fill_at(h.rect(wid("hatch", "45")).unwrap()), Some(t.row_selected), "hatch 45 is active");
@@ -1001,11 +1001,9 @@ fn status_bar_shows_messages_for_a_while() {
         assert!(!line.contains("to add a corner point"), "the error, the {time} time: {line}");
         h.later(7.0);
     }
-    // Align (J008) and Cut Face (J014): what they are and when.
+    // Align (J008): what it is and when.
     h.click(wid("tile", "align"));
     assert!(h.line_in(bar).contains("Align: coming soon (J008)"), "{}", h.line_in(bar));
-    h.click(wid("weight-add", ()));
-    assert!(h.line_in(bar).contains("Add a Weight: coming soon (J018)"), "{}", h.line_in(bar));
     h.later(5.0);
     assert!(!h.line_in(bar).contains("coming soon"), "{}", h.line_in(bar));
 }
@@ -1893,7 +1891,7 @@ fn drawing_menu_opens_the_weights_card_and_reverts() {
     };
     let items = open(&mut h);
     let enabled: Vec<bool> = items.iter().map(|(_, e)| *e).collect();
-    assert_eq!(enabled, [true, true, false, false, false, false, false, false, false]);
+    assert_eq!(enabled, [true, true, true, true, true, true, false, false, false, false]);
     h.click_at(h.texts.iter().find(|p| p.text == "Drawing" && bar.contains_rect(p.rect)).unwrap().rect.center());
     h.app.run("select.set", json!({ "ids": [b.0] })).unwrap();
     h.settle();
@@ -3185,7 +3183,12 @@ fn test_canvas_penbar_adversarial_suite() {
 
 #[test]
 fn test_style_dialog_dynamic_diff_and_toggle() {
+    use std::collections::HashMap;
+    use vectorcraft_doc::style_template::MergeAction;
+    use vectorcraft_doc::{LayerColor, Legend, LineType, Node, NodeKind};
+
     let mut h = Harness::new();
+
     // 1. Open style dialog
     style_dialog::toggle_dialog(&h.ctx);
     h.settle();
@@ -3193,36 +3196,201 @@ fn test_style_dialog_dynamic_diff_and_toggle() {
     // 2. Verify window title and content appear
     let win_text = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
     assert!(win_text.contains("도면 양식 템플릿 차이 분석 및 병합"), "Style dialog must open: {win_text}");
-
-    // 3. Verify genuine diff counts appear
     assert!(win_text.contains("템플릿 차이 분석 결과 (Diff)"), "Diff summary header must appear");
-    assert!(win_text.contains("추가:"), "Added chip must appear");
+    assert!(win_text.contains("동일: 0"), "Initial identical count must be 0");
+    assert!(win_text.contains("추가: 7"), "Initial added count must be 7 for default template");
 
-    // 4. Close dialog and verify it is dismissed
-    style_dialog::toggle_dialog(&h.ctx);
+    // 3. Stress-test Dynamic Diff Computation reflects document state changes across frames:
+    // Add a layer in the document matching template's "시굴격자" row (weight: 0.5, Line: Solid, Group: Plan)
+    h.app
+        .session
+        .edit("Add trench grid layer", |doc, _| {
+            let mut l = Node::layer(doc.alloc_id(), "시굴격자", LayerColor::Preset(0));
+            if let NodeKind::Layer { ref mut legend, .. } = l.kind {
+                *legend = Some(Box::new(Legend {
+                    weight: Some(0.5),
+                    line: LineType::Solid,
+                    favourite: false,
+                    sample: vectorcraft_doc::legend::LegendSample::Area,
+                    strata: Some("trial_trench".to_string()),
+                    group: Some(vectorcraft_doc::legend::LegendGroup::Plan),
+                }));
+            }
+            doc.layers.push(std::sync::Arc::new(l));
+            Ok(())
+        })
+        .unwrap();
     h.settle();
 
+    // Verify dynamic diff recomputation in subsequent frame: identical count is now 1, added is 6!
+    let win_text2 = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(win_text2.contains("동일: 1"), "Dynamic diff must update across frames to reflect document changes (동일: 1)");
+    assert!(win_text2.contains("추가: 6"), "Dynamic diff must update added count to 6");
+
+    // 4. Stress-test Batch Action Buttons updating resolutions map:
+    // 4a. "모두 덮어쓰기 (Overwrite)"
+    let overwrite_btn = h.texts.iter().find(|p| p.text.contains("모두 덮어쓰기")).expect("overwrite button").rect.center();
+    h.click_at(overwrite_btn);
+    let res_overwrite: HashMap<String, MergeAction> = h.ctx.data(|d| d.get_temp(wid("style-merge-resolutions-map", ()))).unwrap_or_default();
+    assert!(!res_overwrite.is_empty(), "Resolutions map must be populated on batch overwrite");
+    assert!(res_overwrite.values().all(|&a| a == MergeAction::Overwrite), "All resolutions must be Overwrite");
+
+    // 4b. "모두 기존 유지 (Keep)"
+    let keep_btn = h.texts.iter().find(|p| p.text.contains("모두 기존 유지")).expect("keep button").rect.center();
+    h.click_at(keep_btn);
+    let res_keep: HashMap<String, MergeAction> = h.ctx.data(|d| d.get_temp(wid("style-merge-resolutions-map", ()))).unwrap_or_default();
+    assert!(res_keep.values().all(|&a| a == MergeAction::KeepExisting), "All resolutions must be KeepExisting");
+
+    // 4c. "모두 새 사본 (New Copy)"
+    let copy_btn = h.texts.iter().find(|p| p.text.contains("모두 새 사본")).expect("copy button").rect.center();
+    h.click_at(copy_btn);
+    let res_copy: HashMap<String, MergeAction> = h.ctx.data(|d| d.get_temp(wid("style-merge-resolutions-map", ()))).unwrap_or_default();
+    assert!(res_copy.values().all(|&a| a == MergeAction::ImportAsNewCopy), "All resolutions must be ImportAsNewCopy");
+
+    // 4d. "권장값 복원"
+    let reset_btn = h.texts.iter().find(|p| p.text.contains("권장값 복원")).expect("reset button").rect.center();
+    h.click_at(reset_btn);
+    let res_reset: HashMap<String, MergeAction> = h.ctx.data(|d| d.get_temp(wid("style-merge-resolutions-map", ()))).unwrap_or_default();
+    assert_eq!(res_reset.get("시굴격자"), Some(&MergeAction::KeepExisting), "Identical item must reset to KeepExisting");
+
+    // 5. Stress-test per-item ComboBox / resolution modifications:
+    h.ctx.data_mut(|d| {
+        let mut map: HashMap<String, MergeAction> = d.get_temp(wid("style-merge-resolutions-map", ())).unwrap_or_default();
+        map.insert("조사구역 경계".to_string(), MergeAction::ImportAsNewCopy);
+        d.insert_temp(wid("style-merge-resolutions-map", ()), map);
+    });
+    h.settle();
+    let res_custom: HashMap<String, MergeAction> = h.ctx.data(|d| d.get_temp(wid("style-merge-resolutions-map", ()))).unwrap_or_default();
+    assert_eq!(res_custom.get("조사구역 경계"), Some(&MergeAction::ImportAsNewCopy));
+
+    // 6. Stress-test applying resolutions with style.applyTemplate and verifying single-step undo:
+    let apply_btn = h.texts.iter().find(|p| p.text.contains("선택한 조치로 양식 적용")).expect("apply button").rect.center();
+    h.click_at(apply_btn);
+
+    // Dialog must dismiss automatically upon apply
+    let win_text_applied = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(!win_text_applied.contains("도면 양식 템플릿 차이 분석 및 병합"), "Style dialog must close after apply");
+
+    // Verify styles were added into document
+    let doc_layers = &h.app.session.active().unwrap().doc.layers;
+    assert!(doc_layers.iter().any(|l| l.display_name().contains("조사구역 경계")), "Template layer must be applied to document");
+
+    // Verify single-step undo cleanly removes applied layers
+    h.app.run("edit.undo", json!({})).unwrap();
+    h.settle();
+    let doc_layers_undone = &h.app.session.active().unwrap().doc.layers;
+    assert!(
+        !doc_layers_undone.iter().any(|l| l.display_name().contains("조사구역 경계")),
+        "Undo must roll back template application in a single step"
+    );
+
+    // 7. Verify dialog close button dismisses cleanly:
+    style_dialog::toggle_dialog(&h.ctx);
+    h.settle();
+    let win_text_reopened = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(win_text_reopened.contains("도면 양식 템플릿 차이 분석 및 병합"));
+
+    let close_btn = h.texts.iter().find(|p| p.text == "닫기" && p.rect.top() > 500.0).expect("close button").rect.center();
+    h.click_at(close_btn);
+
     let win_closed = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
-    assert!(!win_closed.contains("도면 양식 템플릿 차이 분석 및 병합"), "Style dialog must close");
+    assert!(!win_closed.contains("도면 양식 템플릿 차이 분석 및 병합"), "Style dialog must dismiss cleanly on 닫기 button");
 }
 
 #[test]
 fn test_gpkg_browser_checkbox_and_toggle() {
+    use std::collections::BTreeSet;
+
     let mut h = Harness::new();
+
     // 1. Open GPKG browser dialog
     gpkg_browser::toggle_dialog(&h.ctx);
     h.settle();
 
-    // 2. Verify dialog content appears
+    // 2. Verify dialog content appears with initial 7 default layers selected
     let win_text = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
     assert!(win_text.contains("Strata OGC GeoPackage 현장 측량 데이터 연동"), "GPKG browser must open: {win_text}");
     assert!(win_text.contains("광령리 1호 유적 표준 레이어"), "Layers header must appear");
-    assert!(win_text.contains("선택)"), "Selection counter must appear");
+    assert!(win_text.contains("(7/7 선택)"), "Initial selection count must be (7/7 선택)");
 
-    // 3. Close dialog and verify dismissal
-    gpkg_browser::toggle_dialog(&h.ctx);
+    // 3. Stress-test persistent checkbox state across frames, Deselect All and Select All:
+    // 3a. Click "전체 해제"
+    let deselect_btn = h.texts.iter().find(|p| p.text == "전체 해제").expect("전체 해제 button").rect.center();
+    h.click_at(deselect_btn);
+    let win_text_desel = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(win_text_desel.contains("(0/7 선택)"), "Count must update to (0/7 선택) after 전체 해제");
+    let sel_empty: BTreeSet<String> = h.ctx.data(|d| d.get_temp(gpkg_browser::gpkg_selected_layers_id())).unwrap_or_default();
+    assert!(sel_empty.is_empty(), "All layers must be deselected in ctx.data");
+
+    // 3b. Verify persistent state across frames (no reset to default)
+    h.settle();
+    let win_text_persist = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(win_text_persist.contains("(0/7 선택)"), "Empty selection must persist across subsequent frames");
+
+    // 3c. Click "전체 선택"
+    let select_all_btn = h.texts.iter().find(|p| p.text == "전체 선택").expect("전체 선택 button").rect.center();
+    h.click_at(select_all_btn);
+    let win_text_sel = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(win_text_sel.contains("(7/7 선택)"), "Count must update to (7/7 선택) after 전체 선택");
+    let sel_full: BTreeSet<String> = h.ctx.data(|d| d.get_temp(gpkg_browser::gpkg_selected_layers_id())).unwrap_or_default();
+    assert_eq!(sel_full.len(), 7, "All 7 layers must be selected in ctx.data");
+
+    // 3d. Subset selection (e.g. exactly 2 layers selected)
+    h.ctx.data_mut(|d| {
+        let mut subset = BTreeSet::new();
+        subset.insert("remains_pit".to_string());
+        subset.insert("stone_wall".to_string());
+        d.insert_temp(gpkg_browser::gpkg_selected_layers_id(), subset);
+    });
+    h.settle();
+    let win_text_subset = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(win_text_subset.contains("(2/7 선택)"), "Subset count must display (2/7 선택)");
+
+    // 4. Stress-test import button passing 'layers': selected_vec into gpkg.importLayers:
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let temp_gpkg = std::env::temp_dir().join(format!("test_ui_gpkg_{now}.gpkg"));
+    vectorcraft_cad::create_7layers_sample_gpkg(&temp_gpkg).unwrap();
+    let gpkg_path_str = temp_gpkg.to_str().unwrap().to_string();
+
+    h.ctx.data_mut(|d| {
+        d.insert_temp(gpkg_browser::gpkg_path_input_id(), gpkg_path_str.clone());
+    });
     h.settle();
 
+    // 4a. Click "조사 데이터 분석 (Inspect)" to analyze GPKG layers
+    let inspect_btn = h.texts.iter().find(|p| p.text.contains("조사 데이터 분석")).expect("inspect button").rect.center();
+    h.click_at(inspect_btn);
+
+    let win_text_inspected = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(win_text_inspected.contains("tr_remains_polygon"), "Inspected layers must show in browser: {win_text_inspected}");
+
+    // 4b. Select ONLY 'tr_remains_polygon' (subset selection)
+    h.ctx.data_mut(|d| {
+        let mut selected = BTreeSet::new();
+        selected.insert("tr_remains_polygon".to_string());
+        d.insert_temp(gpkg_browser::gpkg_selected_layers_id(), selected);
+    });
+    h.settle();
+
+    let win_text_subset_gpkg = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(win_text_subset_gpkg.contains("(1/7 선택)"), "Must display (1/7 선택)");
+
+    // 4c. Click "선택한 레이어 도면으로 가져오기 (Import)"
+    let import_btn = h.texts.iter().find(|p| p.text.contains("선택한 레이어 도면으로 가져오기")).expect("import button").rect.center();
+    h.click_at(import_btn);
+
+    // Verify ONLY the selected layer was imported into the document
+    let doc = &h.app.session.active().unwrap().doc;
+    let imported_layer_names: Vec<String> = doc.layers.iter().map(|l| l.display_name().to_string()).collect();
+    assert!(imported_layer_names.iter().any(|n| n.contains("주거지")), "Selected layer (주거지) must be imported");
+    assert!(!imported_layer_names.iter().any(|n| n.contains("시굴격자")), "Unselected layer 시굴격자 must NOT be imported");
+    assert!(!imported_layer_names.iter().any(|n| n.contains("표고점")), "Unselected layer 표고점 must NOT be imported");
+    std::fs::remove_file(&temp_gpkg).ok();
+
+    // 5. Verify dialog close button dismisses cleanly
+    let close_btn = h.texts.iter().find(|p| p.text == "닫기" && p.rect.top() > 400.0).expect("close button").rect.center();
+    h.click_at(close_btn);
+
     let win_closed = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
-    assert!(!win_closed.contains("Strata OGC GeoPackage 현장 측량 데이터 연동"), "GPKG browser must close");
+    assert!(!win_closed.contains("Strata OGC GeoPackage 현장 측량 데이터 연동"), "GPKG browser must close after clicking 닫기");
 }

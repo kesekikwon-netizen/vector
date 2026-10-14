@@ -4,10 +4,8 @@
 use std::sync::Arc;
 
 use kurbo::Point;
-use serde_json::{json, Value};
-use vectorcraft_cad::{
-    GpkgFeature, GpkgGeometry, GpkgLayerInfo, GpkgReader, StrataLayerKind,
-};
+use serde_json::{Value, json};
+use vectorcraft_cad::{GpkgFeature, GpkgGeometry, GpkgLayerInfo, GpkgReader, StrataLayerKind};
 use vectorcraft_color::{Color, Paint};
 use vectorcraft_doc::scale::{CoordSystem, ScaleConfig, ScaleRatio};
 use vectorcraft_doc::{Appearance, CharStyle, Node, NodeKind, TextObject};
@@ -70,16 +68,13 @@ fn gpkg_import_layers(s: &mut Session, p: &Value) -> Result<Value> {
     let reader = GpkgReader::open(path).map_err(|e| bad("gpkg.importLayers", e))?;
     let survey_info = reader.inspect().map_err(|e| bad("gpkg.importLayers", e))?;
 
-    let filter_layers: Option<Vec<String>> = p.get("layers")
-        .and_then(|v| {
-            if let Some(arr) = v.as_array() {
-                Some(arr.iter().filter_map(Value::as_str).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
-            } else if let Some(s) = v.as_str() {
-                Some(s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect())
-            } else {
-                None
-            }
-        });
+    let filter_layers: Option<Vec<String>> = p.get("layers").and_then(|v| {
+        if let Some(arr) = v.as_array() {
+            Some(arr.iter().filter_map(Value::as_str).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+        } else {
+            v.as_str().map(|s| s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect())
+        }
+    });
 
     let scale_denom = p.get("scale").and_then(Value::as_f64).unwrap_or(20.0);
     let set_origin = p.get("setOrigin").or_else(|| p.get("set_origin")).and_then(Value::as_bool).unwrap_or(true);
@@ -111,10 +106,18 @@ fn gpkg_import_layers(s: &mut Session, p: &Value) -> Result<Value> {
         let features = reader.read_layer_features(&layer_info.table_name).unwrap_or_default();
         for f in &features {
             if let Some(b) = f.geometry.bounds_2d() {
-                if b[0] < all_min_x { all_min_x = b[0]; }
-                if b[1] < all_min_y { all_min_y = b[1]; }
-                if b[2] > all_max_x { all_max_x = b[2]; }
-                if b[3] > all_max_y { all_max_y = b[3]; }
+                if b[0] < all_min_x {
+                    all_min_x = b[0];
+                }
+                if b[1] < all_min_y {
+                    all_min_y = b[1];
+                }
+                if b[2] > all_max_x {
+                    all_max_x = b[2];
+                }
+                if b[3] > all_max_y {
+                    all_max_y = b[3];
+                }
             }
         }
         layer_data.push((layer_info.clone(), features));
@@ -124,11 +127,8 @@ fn gpkg_import_layers(s: &mut Session, p: &Value) -> Result<Value> {
         // Setup or update scale config
         let mut scale_config = doc.scale.clone().unwrap_or_else(|| ScaleConfig::new(scale_denom));
         scale_config.scale = ScaleRatio::new(scale_denom);
-        scale_config.crs = CoordSystem {
-            epsg: survey_info.srs_id as u32,
-            name: survey_info.srs_name.clone(),
-            order: vectorcraft_doc::scale::CoordOrder::EastNorth,
-        };
+        scale_config.crs =
+            CoordSystem { epsg: survey_info.srs_id as u32, name: survey_info.srs_name.clone(), order: vectorcraft_doc::scale::CoordOrder::EastNorth };
 
         if set_origin && all_min_x.is_finite() && all_max_y.is_finite() {
             // Anchor top-left of surveyed area at canvas (100, 100)
@@ -156,26 +156,22 @@ fn gpkg_import_layers(s: &mut Session, p: &Value) -> Result<Value> {
                 match layer_info.kind {
                     StrataLayerKind::RemainsCenter => {
                         // Point label: extract name or text
-                        let label_str = f.attributes.get("feature_name")
-                            .or_else(|| f.attributes.get("name"))
-                            .and_then(Value::as_str)
-                            .unwrap_or("유구");
+                        let label_str =
+                            f.attributes.get("feature_name").or_else(|| f.attributes.get("name")).and_then(Value::as_str).unwrap_or("유구");
                         if let GpkgGeometry::Point { x, y, .. } = f.geometry {
                             let pt = scale_config.world_to_canvas(x, y);
                             let text_node = Node::new(
                                 doc.alloc_id(),
-                                NodeKind::Text(Box::new(TextObject::point(
-                                    pt,
-                                    label_str,
-                                    CharStyle { size: 9.0, ..Default::default() },
-                                ))),
+                                NodeKind::Text(Box::new(TextObject::point(pt, label_str, CharStyle { size: 9.0, ..Default::default() }))),
                             );
                             child_nodes.push(Arc::new(text_node));
                         }
                     }
                     StrataLayerKind::ElevationPoint => {
                         // Elevation point label
-                        let elev_str = f.attributes.get("elevation")
+                        let elev_str = f
+                            .attributes
+                            .get("elevation")
                             .and_then(Value::as_f64)
                             .map(|v| format!("{v:.2}m"))
                             .or_else(|| f.attributes.get("elevation").and_then(Value::as_str).map(String::from))
@@ -184,12 +180,15 @@ fn gpkg_import_layers(s: &mut Session, p: &Value) -> Result<Value> {
                         if let GpkgGeometry::Point { x, y, .. } = f.geometry {
                             let pt = scale_config.world_to_canvas(x, y);
                             // Point marker dot
-                            let dot = PathData::single(SubPath::polyline(&[
-                                Point::new(pt.x - 1.0, pt.y - 1.0),
-                                Point::new(pt.x + 1.0, pt.y - 1.0),
-                                Point::new(pt.x + 1.0, pt.y + 1.0),
-                                Point::new(pt.x - 1.0, pt.y + 1.0),
-                            ], true));
+                            let dot = PathData::single(SubPath::polyline(
+                                &[
+                                    Point::new(pt.x - 1.0, pt.y - 1.0),
+                                    Point::new(pt.x + 1.0, pt.y - 1.0),
+                                    Point::new(pt.x + 1.0, pt.y + 1.0),
+                                    Point::new(pt.x - 1.0, pt.y + 1.0),
+                                ],
+                                true,
+                            ));
                             child_nodes.push(Arc::new(Node::path(
                                 doc.alloc_id(),
                                 dot,
@@ -209,10 +208,7 @@ fn gpkg_import_layers(s: &mut Session, p: &Value) -> Result<Value> {
                     }
                     StrataLayerKind::ArtifactPoint => {
                         // Artifact circled badge
-                        let num_str = f.attributes.get("find_number")
-                            .or_else(|| f.attributes.get("number"))
-                            .and_then(Value::as_str)
-                            .unwrap_or("③");
+                        let num_str = f.attributes.get("find_number").or_else(|| f.attributes.get("number")).and_then(Value::as_str).unwrap_or("③");
 
                         if let GpkgGeometry::Point { x, y, .. } = f.geometry {
                             let pt = scale_config.world_to_canvas(x, y);
@@ -230,17 +226,19 @@ fn gpkg_import_layers(s: &mut Session, p: &Value) -> Result<Value> {
                     _ => {
                         // General path geometry
                         let mut app = Appearance::basic(Paint::None, Paint::solid(Color::BLACK), weight);
-                        if let Some(dashes) = legend.line.dash_pt() {
-                            if let Some(st) = app.stroke_mut() {
-                                st.dash = Some(vectorcraft_doc::Dash { pattern: dashes, ..Default::default() });
-                            }
+                        if let Some(dashes) = legend.line.dash_pt()
+                            && let Some(st) = app.stroke_mut()
+                        {
+                            st.dash = Some(vectorcraft_doc::Dash { pattern: dashes, ..Default::default() });
                         }
 
                         let mut path_node = Node::path(doc.alloc_id(), path_data, app);
 
                         // If hatch presets enabled, inspect feature attributes and assign hatch to polygon geometries
                         if apply_hatch_presets && matches!(f.geometry, GpkgGeometry::Polygon { .. } | GpkgGeometry::MultiPolygon { .. }) {
-                            let type_hint = f.attributes.get("feature_type")
+                            let type_hint = f
+                                .attributes
+                                .get("feature_type")
                                 .or_else(|| f.attributes.get("kind"))
                                 .or_else(|| f.attributes.get("type"))
                                 .or_else(|| f.attributes.get("feature_name"))

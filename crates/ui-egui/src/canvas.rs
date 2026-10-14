@@ -688,14 +688,7 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
 
     // Proximity Palm Rejection for primary contact (Task J017 B3)
     let has_pen_force = ui.input(|i| {
-        i.events.iter().any(|e| match e {
-            egui::Event::Touch { phase, force: Some(f), .. }
-                if *phase != egui::TouchPhase::End && *phase != egui::TouchPhase::Cancel && f.is_finite() && *f > 0.0 =>
-            {
-                true
-            }
-            _ => false,
-        })
+        i.events.iter().any(|e| matches!(e, egui::Event::Touch { phase, force: Some(f), .. } if *phase != egui::TouchPhase::End && *phase != egui::TouchPhase::Cancel && f.is_finite() && *f > 0.0))
     });
     let touch_ended = ui.input(|i| {
         i.events.iter().any(|e| match e {
@@ -853,10 +846,11 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
                     dd.insert_temp(egui::Id::new("canvas-stylus-proximity"), StylusProximityState { in_proximity: false, last_seen_time: now });
                 }
             });
-            if let Some(sp) = sp {
-                if sp.active && app.session.tool_id() != sp.prev_tool {
-                    let _ = app.session.select_tool(&sp.prev_tool, view);
-                }
+            if let Some(sp) = sp
+                && sp.active
+                && app.session.tool_id() != sp.prev_tool
+            {
+                let _ = app.session.select_tool(&sp.prev_tool, view);
             }
             match d {
                 Drag::ZoomBox { start } => {
@@ -1050,28 +1044,14 @@ fn touch_gestures(app: &mut VectorcraftApp, ui: &Ui, rect: egui::Rect, view: vec
         return;
     }
     let has_pen_force_this_frame = ui.input(|i| {
-        i.events.iter().any(|e| match e {
-            egui::Event::Touch { force: Some(f), phase, .. }
-                if *phase != egui::TouchPhase::End && *phase != egui::TouchPhase::Cancel && f.is_finite() && *f > 0.0 =>
-            {
-                true
-            }
-            _ => false,
-        })
+        i.events.iter().any(|e| matches!(e, egui::Event::Touch { force: Some(f), phase, .. } if *phase != egui::TouchPhase::End && *phase != egui::TouchPhase::Cancel && f.is_finite() && *f > 0.0))
     });
     if has_pen_force_this_frame {
         ui.data_mut(|d| d.remove::<crate::touch::Taps>(egui::Id::new("canvas-touch")));
         return;
     }
     let has_pen_ended_this_frame = ui.input(|i| {
-        i.events.iter().any(|e| match e {
-            egui::Event::Touch { force: Some(f), phase, .. }
-                if (*phase == egui::TouchPhase::End || *phase == egui::TouchPhase::Cancel) && f.is_finite() && *f > 0.0 =>
-            {
-                true
-            }
-            _ => false,
-        })
+        i.events.iter().any(|e| matches!(e, egui::Event::Touch { force: Some(f), phase, .. } if (*phase == egui::TouchPhase::End || *phase == egui::TouchPhase::Cancel) && f.is_finite() && *f > 0.0))
     });
     if has_pen_ended_this_frame {
         ui.data_mut(|d| d.remove::<crate::touch::Taps>(egui::Id::new("canvas-touch")));
@@ -4398,19 +4378,8 @@ mod tests {
         let at = app.canvas_rect.unwrap().center();
 
         let count = |app: &VectorcraftApp| app.session.active().unwrap().doc.layers[0].children().unwrap().len();
-        let touch = |n: u64, phase, pos| egui::Event::Touch {
-            device_id: egui::TouchDeviceId(1),
-            id: egui::TouchId(n),
-            phase,
-            pos,
-            force: None,
-        };
-        let button = |pos, pressed| egui::Event::PointerButton {
-            pos,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: Default::default(),
-        };
+        let touch = |n: u64, phase, pos| egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(n), phase, pos, force: None };
+        let button = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
 
         assert_eq!(count(&app), 0, "Initial document should be empty");
 
@@ -4429,19 +4398,11 @@ mod tests {
             frame_with_time(&mut app, &ctx, vec![], t_base + 0.15);
 
             // Assert stylus successfully drew rectangle (count increases to cycle + 1)
-            assert_eq!(
-                count(&app),
-                cycle + 1,
-                "Cycle {cycle}: Stylus drag with f=0.8 must commit a new rectangle"
-            );
+            assert_eq!(count(&app), cycle + 1, "Cycle {cycle}: Stylus drag with f=0.8 must commit a new rectangle");
 
             // 2. Stylus release verification: check NO zombie touches in Taps, StylusProximityState, or canvas-pressure-stable
-            let prox: StylusProximityState =
-                ctx.data(|d| d.get_temp(egui::Id::new("canvas-stylus-proximity"))).unwrap_or_default();
-            assert!(
-                !prox.in_proximity,
-                "Cycle {cycle}: Stylus proximity MUST unlatch in_proximity=false upon release"
-            );
+            let prox: StylusProximityState = ctx.data(|d| d.get_temp(egui::Id::new("canvas-stylus-proximity"))).unwrap_or_default();
+            assert!(!prox.in_proximity, "Cycle {cycle}: Stylus proximity MUST unlatch in_proximity=false upon release");
             assert!(prox.last_seen_time > 0.0, "Cycle {cycle}: Stylus last_seen_time must be recorded");
 
             if let Some(p) = ctx.data(|d| d.get_temp::<f32>(egui::Id::new("canvas-pressure-stable"))) {
@@ -4449,10 +4410,7 @@ mod tests {
             }
 
             let taps: Option<crate::touch::Taps> = ctx.data(|d| d.get_temp(egui::Id::new("canvas-touch")));
-            assert!(
-                taps.as_ref().map_or(true, |t| !t.is_down()),
-                "Cycle {cycle}: No zombie touches in Taps after stylus release"
-            );
+            assert!(taps.as_ref().is_none_or(|t| !t.is_down()), "Cycle {cycle}: No zombie touches in Taps after stylus release");
 
             // 3. Post-cooldown 2-finger tap undo (dt = 1.0s >= 0.6s cooldown)
             let t_undo = t_base + 1.2;
@@ -4484,17 +4442,10 @@ mod tests {
             frame_with_time(&mut app, &ctx, vec![], t_undo + 0.080);
 
             // Verify 2-finger tap undo reduced count back to cycle
-            assert_eq!(
-                count(&app),
-                cycle,
-                "Cycle {cycle}: Post-cooldown 2-finger tap MUST undo rectangle back to {cycle}"
-            );
+            assert_eq!(count(&app), cycle, "Cycle {cycle}: Post-cooldown 2-finger tap MUST undo rectangle back to {cycle}");
 
             let taps_after_undo: Option<crate::touch::Taps> = ctx.data(|d| d.get_temp(egui::Id::new("canvas-touch")));
-            assert!(
-                taps_after_undo.as_ref().map_or(true, |t| !t.is_down()),
-                "Cycle {cycle}: No zombie touches in Taps after undo"
-            );
+            assert!(taps_after_undo.as_ref().is_none_or(|t| !t.is_down()), "Cycle {cycle}: No zombie touches in Taps after undo");
             if let Some(p) = ctx.data(|d| d.get_temp::<f32>(egui::Id::new("canvas-pressure-stable"))) {
                 pressure_leaks.push((cycle, "after_undo", p));
             }
@@ -4516,39 +4467,21 @@ mod tests {
                 vec![touch(id0, egui::TouchPhase::Move, at0 + vec2(4.0, 4.0)), egui::Event::PointerMoved(at0 + vec2(4.0, 4.0))],
                 t_redo + 0.016,
             );
-            frame_with_time(
-                &mut app,
-                &ctx,
-                vec![touch(id1, egui::TouchPhase::Start, at1), touch(id2, egui::TouchPhase::Start, at2)],
-                t_redo + 0.032,
-            );
+            frame_with_time(&mut app, &ctx, vec![touch(id1, egui::TouchPhase::Start, at1), touch(id2, egui::TouchPhase::Start, at2)], t_redo + 0.032);
             frame_with_time(
                 &mut app,
                 &ctx,
                 vec![touch(id0, egui::TouchPhase::End, at0), button(at0 + vec2(4.0, 4.0), false), egui::Event::PointerGone],
                 t_redo + 0.048,
             );
-            frame_with_time(
-                &mut app,
-                &ctx,
-                vec![touch(id1, egui::TouchPhase::End, at1), touch(id2, egui::TouchPhase::End, at2)],
-                t_redo + 0.064,
-            );
+            frame_with_time(&mut app, &ctx, vec![touch(id1, egui::TouchPhase::End, at1), touch(id2, egui::TouchPhase::End, at2)], t_redo + 0.064);
             frame_with_time(&mut app, &ctx, vec![], t_redo + 0.080);
 
             // Verify 3-finger tap redo restored rectangle (count is cycle + 1)
-            assert_eq!(
-                count(&app),
-                cycle + 1,
-                "Cycle {cycle}: Post-cooldown 3-finger tap MUST redo rectangle back to {0}",
-                cycle + 1
-            );
+            assert_eq!(count(&app), cycle + 1, "Cycle {cycle}: Post-cooldown 3-finger tap MUST redo rectangle back to {0}", cycle + 1);
 
             let taps_after_redo: Option<crate::touch::Taps> = ctx.data(|d| d.get_temp(egui::Id::new("canvas-touch")));
-            assert!(
-                taps_after_redo.as_ref().map_or(true, |t| !t.is_down()),
-                "Cycle {cycle}: No zombie touches in Taps after redo"
-            );
+            assert!(taps_after_redo.as_ref().is_none_or(|t| !t.is_down()), "Cycle {cycle}: No zombie touches in Taps after redo");
             if let Some(p) = ctx.data(|d| d.get_temp::<f32>(egui::Id::new("canvas-pressure-stable"))) {
                 pressure_leaks.push((cycle, "after_redo", p));
             }
@@ -4584,42 +4517,24 @@ mod tests {
             frame_with_time(
                 &mut app,
                 &ctx,
-                vec![
-                    touch(id0, egui::TouchPhase::End, at0 + delta),
-                    button(at0 + delta, false),
-                    egui::Event::PointerGone,
-                ],
+                vec![touch(id0, egui::TouchPhase::End, at0 + delta), button(at0 + delta, false), egui::Event::PointerGone],
                 t_drag + 0.048,
             );
             frame_with_time(&mut app, &ctx, vec![touch(id1, egui::TouchPhase::End, at1 + delta)], t_drag + 0.064);
             frame_with_time(&mut app, &ctx, vec![], t_drag + 0.080);
 
             // Verify pan/zoom drag did NOT alter document element count
-            assert_eq!(
-                count(&app),
-                cycle + 1,
-                "Cycle {cycle}: Pan/zoom drag must not alter document element count"
-            );
+            assert_eq!(count(&app), cycle + 1, "Cycle {cycle}: Pan/zoom drag must not alter document element count");
 
             // Verify NO zombie touches accumulate in Taps, StylusProximityState, or canvas-pressure-stable
             let taps_after_drag: Option<crate::touch::Taps> = ctx.data(|d| d.get_temp(egui::Id::new("canvas-touch")));
-            assert!(
-                taps_after_drag.as_ref().map_or(true, |t| !t.is_down()),
-                "Cycle {cycle}: No zombie touches in Taps after pan/zoom drag"
-            );
+            assert!(taps_after_drag.as_ref().is_none_or(|t| !t.is_down()), "Cycle {cycle}: No zombie touches in Taps after pan/zoom drag");
 
-            let prox_after_drag: StylusProximityState =
-                ctx.data(|d| d.get_temp(egui::Id::new("canvas-stylus-proximity"))).unwrap_or_default();
-            assert!(
-                !prox_after_drag.in_proximity,
-                "Cycle {cycle}: Stylus proximity must remain false after pan/zoom drag"
-            );
+            let prox_after_drag: StylusProximityState = ctx.data(|d| d.get_temp(egui::Id::new("canvas-stylus-proximity"))).unwrap_or_default();
+            assert!(!prox_after_drag.in_proximity, "Cycle {cycle}: Stylus proximity must remain false after pan/zoom drag");
 
             let drag_after: Option<Drag> = ctx.data(|d| d.get_temp(drag_id()));
-            assert!(
-                drag_after.is_none(),
-                "Cycle {cycle}: Drag state must be cleared after pan/zoom release"
-            );
+            assert!(drag_after.is_none(), "Cycle {cycle}: Drag state must be cleared after pan/zoom release");
 
             if let Some(p) = ctx.data(|d| d.get_temp::<f32>(egui::Id::new("canvas-pressure-stable"))) {
                 pressure_leaks.push((cycle, "after_pan_zoom", p));

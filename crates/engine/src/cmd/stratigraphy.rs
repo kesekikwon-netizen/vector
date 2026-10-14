@@ -13,9 +13,8 @@ use std::sync::Arc;
 use vectorcraft_color::{Color, Paint};
 use vectorcraft_doc::appearance::{AppearanceItem, FillLayer};
 use vectorcraft_doc::stratigraphy::{
-    NumberingStyle, SoilDescription, StratigraphyFillStyle,
-    StratigraphyLayer, StratigraphyPatternKind, StratigraphyTable, StratigraphyTablePlacement,
-    TableRenderFormat,
+    NumberingStyle, SoilDescription, StratigraphyFillStyle, StratigraphyLayer, StratigraphyPatternKind, StratigraphyTable,
+    StratigraphyTablePlacement, TableRenderFormat,
 };
 use vectorcraft_doc::{Appearance, CharStyle, Justify, Node, NodeKind, TextObject};
 use vectorcraft_geom::{FillRule, PathData};
@@ -67,7 +66,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "stratigraphy.livePaintFill",
             "Live Paint Strata Fill",
             ["Trowel", "토층"],
-            Some("K"),
+            None,
             "{point: [x,y]|{x,y}, layerIndex?: u32, fillStyle?: object, tableId?: string} extract bounded region between strata lines and fill with pattern or tint",
             has_doc,
             live_paint_fill
@@ -127,19 +126,12 @@ fn parse_fill_style(v: Option<&Value>) -> StratigraphyFillStyle {
     }
     if let Some(color_hex) = v.get("colorHex").and_then(Value::as_str) {
         let opacity = v.get("opacity").and_then(Value::as_f64).map(|f| f as f32).unwrap_or(0.15);
-        return StratigraphyFillStyle::Tint {
-            color_hex: color_hex.to_string(),
-            opacity,
-        };
+        return StratigraphyFillStyle::Tint { color_hex: color_hex.to_string(), opacity };
     }
     if let Some(angle_deg) = v.get("angleDeg").and_then(Value::as_f64) {
         let spacing_mm = v.get("spacingMm").and_then(Value::as_f64).unwrap_or(1.0);
         let weight_pt = v.get("weightPt").and_then(Value::as_f64).unwrap_or(0.1);
-        return StratigraphyFillStyle::Hatch {
-            angle_deg,
-            spacing_mm,
-            weight_pt,
-        };
+        return StratigraphyFillStyle::Hatch { angle_deg, spacing_mm, weight_pt };
     }
     StratigraphyFillStyle::None
 }
@@ -164,11 +156,7 @@ fn get_or_create_table<'a>(tables: &'a mut Vec<StratigraphyTable>, table_id: Opt
 
 fn add_layer(s: &mut Session, p: &Value) -> Result<Value> {
     let table_id = p.get("tableId").and_then(Value::as_str);
-    let color_name = p
-        .get("colorName")
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad(C, "colorName is required"))?
-        .to_string();
+    let color_name = p.get("colorName").and_then(Value::as_str).ok_or_else(|| bad(C, "colorName is required"))?.to_string();
     let munsell = p.get("munsell").and_then(Value::as_str).unwrap_or("").to_string();
     let texture = p.get("texture").and_then(Value::as_str).unwrap_or("").to_string();
     let inclusions = p.get("inclusions").and_then(Value::as_str).unwrap_or("").to_string();
@@ -180,17 +168,9 @@ fn add_layer(s: &mut Session, p: &Value) -> Result<Value> {
 
     s.edit("Add Stratigraphy Layer", |doc, _| {
         let table = get_or_create_table(&mut doc.stratigraphy_tables, table_id)?;
-        let index = given_index.unwrap_or_else(|| {
-            table.layers.iter().map(|l| l.index).max().unwrap_or(0) + 1
-        });
+        let index = given_index.unwrap_or_else(|| table.layers.iter().map(|l| l.index).max().unwrap_or(0) + 1);
 
-        let desc = SoilDescription {
-            color_name,
-            munsell,
-            texture,
-            inclusions,
-            notes,
-        };
+        let desc = SoilDescription { color_name, munsell, texture, inclusions, notes };
 
         if let Some(existing) = table.layers.iter_mut().find(|l| l.index == index) {
             existing.description = desc;
@@ -199,14 +179,7 @@ fn add_layer(s: &mut Session, p: &Value) -> Result<Value> {
                 existing.custom_badge = custom_badge;
             }
         } else {
-            table.layers.push(StratigraphyLayer {
-                index,
-                custom_badge,
-                description: desc,
-                fill_style,
-                badge_node_id: None,
-                face_node_id: None,
-            });
+            table.layers.push(StratigraphyLayer { index, custom_badge, description: desc, fill_style, badge_node_id: None, face_node_id: None });
             table.layers.sort_by_key(|l| l.index);
         }
 
@@ -220,22 +193,14 @@ fn add_layer(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn remove_layer(s: &mut Session, p: &Value) -> Result<Value> {
     let table_id = p.get("tableId").and_then(Value::as_str);
-    let index = p
-        .get("index")
-        .and_then(Value::as_u64)
-        .map(|u| u as u32)
-        .ok_or_else(|| bad(C, "index is required"))?;
+    let index = p.get("index").and_then(Value::as_u64).map(|u| u as u32).ok_or_else(|| bad(C, "index is required"))?;
     let delete_badge = p.get("deleteBadge").and_then(Value::as_bool).unwrap_or(false);
 
     s.edit("Remove Stratigraphy Layer", |doc, _| {
         let (pos, badge_to_delete) = {
             let table = get_or_create_table(&mut doc.stratigraphy_tables, table_id)?;
             let pos_opt = table.layers.iter().position(|l| l.index == index);
-            let b_opt = if delete_badge {
-                pos_opt.and_then(|i| table.layers.get(i)).and_then(|l| l.badge_node_id)
-            } else {
-                None
-            };
+            let b_opt = if delete_badge { pos_opt.and_then(|i| table.layers.get(i)).and_then(|l| l.badge_node_id) } else { None };
             (pos_opt, b_opt)
         };
 
@@ -288,11 +253,7 @@ fn circled_number(s: &mut Session, p: &Value) -> Result<Value> {
 
         let number = p.get("number").and_then(Value::as_u64).map(|u| u as u32).unwrap_or(next_num);
 
-        let badge_text = if let Some(ref ct) = custom_text {
-            ct.clone()
-        } else {
-            style.format(number)
-        };
+        let badge_text = if let Some(ref ct) = custom_text { ct.clone() } else { style.format(number) };
 
         let mut children = Vec::with_capacity(3);
 
@@ -303,11 +264,8 @@ fn circled_number(s: &mut Session, p: &Value) -> Result<Value> {
             let dir_x = center.x - target.x;
             let dir_y = center.y - target.y;
             let len = (dir_x * dir_x + dir_y * dir_y).sqrt();
-            let end_pt = if len > radius_pt {
-                Point::new(center.x - (dir_x / len) * radius_pt, center.y - (dir_y / len) * radius_pt)
-            } else {
-                center
-            };
+            let end_pt =
+                if len > radius_pt { Point::new(center.x - (dir_x / len) * radius_pt, center.y - (dir_y / len) * radius_pt) } else { center };
             bez.line_to(end_pt);
 
             let leader_id = doc.alloc_id();
@@ -383,11 +341,7 @@ fn generate_table(s: &mut Session, p: &Value) -> Result<Value> {
     let width_pt = p.get("width").and_then(Value::as_f64).unwrap_or(420.0);
     let font_size_pt = p.get("fontSizePt").and_then(Value::as_f64).unwrap_or(8.0);
     let format_str = p.get("format").and_then(Value::as_str).unwrap_or("grid");
-    let render_format = if format_str == "inline" {
-        TableRenderFormat::Inline
-    } else {
-        TableRenderFormat::Grid
-    };
+    let render_format = if format_str == "inline" { TableRenderFormat::Inline } else { TableRenderFormat::Grid };
 
     let target_parent = s.doc()?.target_parent()?;
 
@@ -460,11 +414,7 @@ fn generate_table(s: &mut Session, p: &Value) -> Result<Value> {
             let cell_center = Point::new(col_left + cw * 0.5, origin.y + header_h * 0.5 + font_size_pt * 0.35);
 
             let txt_id = doc.alloc_id();
-            let char_style = CharStyle {
-                size: font_size_pt,
-                fill: Paint::solid(Color::rgb8(20, 20, 19)),
-                ..Default::default()
-            };
+            let char_style = CharStyle { size: font_size_pt, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
             let mut txt_obj = TextObject::point(cell_center, head_title, char_style);
             txt_obj.para.justify = Justify::Center;
             let mut txt_node = Node::new(txt_id, NodeKind::Text(Box::new(txt_obj)));
@@ -479,31 +429,17 @@ fn generate_table(s: &mut Session, p: &Value) -> Result<Value> {
             let row_top = origin.y + header_h + (row_idx as f64) * row_h;
             let cell_cy = row_top + row_h * 0.5 + font_size_pt * 0.35;
 
-            let row_values = [
-                row_tuple.0.clone(),
-                row_tuple.1.clone(),
-                row_tuple.2.clone(),
-                row_tuple.3.clone(),
-                row_tuple.4.clone(),
-                row_tuple.5.clone(),
-            ];
+            let row_values =
+                [row_tuple.0.clone(), row_tuple.1.clone(), row_tuple.2.clone(), row_tuple.3.clone(), row_tuple.4.clone(), row_tuple.5.clone()];
 
             let mut r_col_left = origin.x;
             for (col_idx, cell_text) in row_values.iter().enumerate() {
                 let cw = col_widths[col_idx];
                 let is_badge = col_idx == 0;
-                let text_pos = if is_badge {
-                    Point::new(r_col_left + cw * 0.5, cell_cy)
-                } else {
-                    Point::new(r_col_left + 6.0, cell_cy)
-                };
+                let text_pos = if is_badge { Point::new(r_col_left + cw * 0.5, cell_cy) } else { Point::new(r_col_left + 6.0, cell_cy) };
 
                 let txt_id = doc.alloc_id();
-                let char_style = CharStyle {
-                    size: font_size_pt,
-                    fill: Paint::solid(Color::rgb8(20, 20, 19)),
-                    ..Default::default()
-                };
+                let char_style = CharStyle { size: font_size_pt, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
                 let mut txt_obj = TextObject::point(text_pos, cell_text, char_style);
                 if is_badge {
                     txt_obj.para.justify = Justify::Center;
@@ -525,13 +461,7 @@ fn generate_table(s: &mut Session, p: &Value) -> Result<Value> {
         sel.objects = vec![group_id];
 
         let table = get_or_create_table(&mut doc.stratigraphy_tables, table_id)?;
-        table.placement = Some(StratigraphyTablePlacement {
-            origin,
-            width_pt,
-            font_size_pt,
-            format: render_format,
-            node_id: Some(group_id),
-        });
+        table.placement = Some(StratigraphyTablePlacement { origin, width_pt, font_size_pt, format: render_format, node_id: Some(group_id) });
 
         Ok(json!({
             "tableId": table.id,
@@ -555,10 +485,10 @@ fn live_paint_fill(s: &mut Session, p: &Value) -> Result<Value> {
     s.edit("Live Paint Strata Fill", |doc, sel| {
         let mut shapes = Vec::new();
         doc.walk(|node| {
-            if let NodeKind::Path { path, .. } = &node.kind {
-                if !path.subpaths.is_empty() {
-                    shapes.push(PoShape::new(path.clone(), FillRule::NonZero, node.id.0));
-                }
+            if let NodeKind::Path { path, .. } = &node.kind
+                && !path.subpaths.is_empty()
+            {
+                shapes.push(PoShape::new(path.clone(), FillRule::NonZero, node.id.0));
             }
         });
 
@@ -568,10 +498,8 @@ fn live_paint_fill(s: &mut Session, p: &Value) -> Result<Value> {
 
         let (regions, _) = vectorcraft_pathops::live_paint(&shapes);
 
-        let face = regions
-            .into_iter()
-            .find(|r| r.contains(point))
-            .ok_or_else(|| bad(C, "click point does not lie inside any bounded planar face"))?;
+        let face =
+            regions.into_iter().find(|r| r.contains(point)).ok_or_else(|| bad(C, "click point does not lie inside any bounded planar face"))?;
 
         let area = face.path.to_bezpath().area().abs();
 
@@ -580,10 +508,7 @@ fn live_paint_fill(s: &mut Session, p: &Value) -> Result<Value> {
                 let col = Color::from_hex(color_hex).unwrap_or(Color::rgb8(180, 140, 100));
                 let mut fill = FillLayer::new(Paint::solid(col));
                 fill.opacity = *opacity;
-                Appearance {
-                    items: vec![AppearanceItem::Fill(fill)],
-                    ..Default::default()
-                }
+                Appearance { items: vec![AppearanceItem::Fill(fill)], ..Default::default() }
             }
             StratigraphyFillStyle::Pattern { kind } => {
                 let (col, op) = match kind {
@@ -594,10 +519,7 @@ fn live_paint_fill(s: &mut Session, p: &Value) -> Result<Value> {
                 };
                 let mut fill = FillLayer::new(Paint::solid(col));
                 fill.opacity = op;
-                Appearance {
-                    items: vec![AppearanceItem::Fill(fill)],
-                    ..Default::default()
-                }
+                Appearance { items: vec![AppearanceItem::Fill(fill)], ..Default::default() }
             }
             StratigraphyFillStyle::Hatch { angle_deg, spacing_mm, weight_pt } => {
                 let hatch_lines = vectorcraft_pathops::generate_section_hatch(&face.path, *spacing_mm, *weight_pt, *angle_deg);
@@ -628,10 +550,7 @@ fn live_paint_fill(s: &mut Session, p: &Value) -> Result<Value> {
             StratigraphyFillStyle::None => {
                 let mut fill = FillLayer::new(Paint::solid(Color::rgb8(210, 180, 140)));
                 fill.opacity = 0.2;
-                Appearance {
-                    items: vec![AppearanceItem::Fill(fill)],
-                    ..Default::default()
-                }
+                Appearance { items: vec![AppearanceItem::Fill(fill)], ..Default::default() }
             }
         };
 
@@ -661,11 +580,7 @@ fn export_tsv(s: &mut Session, p: &Value) -> Result<Value> {
     let table_id = p.get("tableId").and_then(Value::as_str);
     let doc = &s.doc()?.doc;
 
-    let table = if let Some(id) = table_id {
-        doc.stratigraphy_tables.iter().find(|t| t.id == id)
-    } else {
-        doc.stratigraphy_tables.first()
-    };
+    let table = if let Some(id) = table_id { doc.stratigraphy_tables.iter().find(|t| t.id == id) } else { doc.stratigraphy_tables.first() };
 
     let Some(table) = table else {
         return Ok(json!({
@@ -685,11 +600,7 @@ fn validate_stratigraphy(s: &mut Session, p: &Value) -> Result<Value> {
     let table_id = p.get("tableId").and_then(Value::as_str);
     let doc = &s.doc()?.doc;
 
-    let table = if let Some(id) = table_id {
-        doc.stratigraphy_tables.iter().find(|t| t.id == id)
-    } else {
-        doc.stratigraphy_tables.first()
-    };
+    let table = if let Some(id) = table_id { doc.stratigraphy_tables.iter().find(|t| t.id == id) } else { doc.stratigraphy_tables.first() };
 
     let mut warnings = Vec::new();
     let mut orphan_badges = Vec::new();
@@ -704,24 +615,24 @@ fn validate_stratigraphy(s: &mut Session, p: &Value) -> Result<Value> {
                 missing_table_rows.push(layer.index);
                 warnings.push(format!("토층 {}번 설명표 줄이 비어 있습니다", layer.badge_text(t.numbering_style)));
             }
-            if let Some(b_id) = layer.badge_node_id {
-                if doc.node(b_id).is_none() {
-                    warnings.push(format!("토층 {}번 기호 원이 도면에서 누락되었습니다", layer.index));
-                }
+            if let Some(b_id) = layer.badge_node_id
+                && doc.node(b_id).is_none()
+            {
+                warnings.push(format!("토층 {}번 기호 원이 도면에서 누락되었습니다", layer.index));
             }
         }
 
         // Check if any badge nodes on canvas reference numbers outside table
         doc.walk(|node| {
-            if let Some(name) = &node.name {
-                if name.starts_with("토층 번호") {
-                    for part in name.split_whitespace() {
-                        if let Ok(num) = part.parse::<u32>() {
-                            if !table_indices.contains(&num) {
-                                orphan_badges.push(num);
-                                warnings.push(format!("도면에 토층 {}번 기호가 있으나 설명표에 없습니다", num));
-                            }
-                        }
+            if let Some(name) = &node.name
+                && name.starts_with("토층 번호")
+            {
+                for part in name.split_whitespace() {
+                    if let Ok(num) = part.parse::<u32>()
+                        && !table_indices.contains(&num)
+                    {
+                        orphan_badges.push(num);
+                        warnings.push(format!("도면에 토층 {}번 기호가 있으나 설명표에 없습니다", num));
                     }
                 }
             }

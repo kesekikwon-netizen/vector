@@ -17,17 +17,14 @@
 use kurbo::{Point, Rect};
 use serde_json::json;
 use vectorcraft_color::{Color, Paint};
-use vectorcraft_doc::legend::{
-    Legend, LegendGroup, LegendLayoutOptions, LegendSample, LegendTable, LineType, MM,
-};
+use vectorcraft_doc::legend::{Legend, LegendGroup, LegendLayoutOptions, LegendSample, LegendTable, LineType, MM};
 use vectorcraft_doc::plate::{
-    BorderFrame, NorthArrowItem, NorthArrowStyle, PlateOrientation, PlateSheet, PlateSize,
-    ScaleBarItem, ScaleBarStyle, TitleBlockData, ViewportItem,
+    BorderFrame, NorthArrowItem, NorthArrowStyle, PlateOrientation, PlateSheet, PlateSize, ScaleBarItem, ScaleBarStyle, TitleBlockData, ViewportItem,
 };
 use vectorcraft_doc::scale::ScaleRatio;
 use vectorcraft_doc::style_template::{
-    diff_template, DiffStatus, ItemDiff, MergeAction, StyleCategory, StyleMergeResolution,
-    TemplateLegendRow, TrowelStyleTemplate, TROWEL_STYLE_FORMAT, TROWEL_STYLE_VERSION,
+    DiffStatus, ItemDiff, MergeAction, StyleCategory, StyleMergeResolution, TROWEL_STYLE_FORMAT, TROWEL_STYLE_VERSION, TemplateLegendRow,
+    TrowelStyleTemplate, diff_template,
 };
 use vectorcraft_doc::{Appearance, LayerColor, Node, NodeKind};
 use vectorcraft_engine::Session;
@@ -35,9 +32,7 @@ use vectorcraft_geom::{PathData, SubPath, Vec2};
 
 fn test_session() -> Session {
     let mut s = Session::new();
-    let _ = s
-        .execute("file.new", &json!({"width": 1000, "height": 1000}))
-        .unwrap();
+    let _ = s.execute("file.new", &json!({"width": 1000, "height": 1000})).unwrap();
     s
 }
 
@@ -101,10 +96,7 @@ fn test_j012_paper_sizes_mm_and_pt_metrics() {
     assert!((a3_l_h - expected_a3_w).abs() < tolerance);
 
     // 4. Custom dimensions
-    let custom = PlateSize::Custom {
-        width_mm: 150.0,
-        height_mm: 200.0,
-    };
+    let custom = PlateSize::Custom { width_mm: 150.0, height_mm: 200.0 };
     assert_eq!(custom.dimensions_mm(PlateOrientation::Portrait), (150.0, 200.0));
     assert_eq!(custom.dimensions_mm(PlateOrientation::Landscape), (200.0, 150.0));
 }
@@ -163,31 +155,19 @@ fn test_j012_viewport_zoom_standard_scales() {
     let source_scale = ScaleRatio::new(20.0); // 1:20 source drawing
 
     let test_cases = [
-        (ScaleRatio::new(1.0), 20.0),            // 1:1 -> zoom = 20.0
-        (ScaleRatio::new(10.0), 2.0),            // 1:10 -> zoom = 2.0
-        (ScaleRatio::new(20.0), 1.0),            // 1:20 -> zoom = 1.0
-        (ScaleRatio::new(50.0), 0.4),            // 1:50 -> zoom = 0.4
-        (ScaleRatio::new(60.0), 1.0 / 3.0),      // 1:60 -> zoom = 0.3333333333
-        (ScaleRatio::new(100.0), 0.2),           // 1:100 -> zoom = 0.2
-        (ScaleRatio::new(200.0), 0.1),           // 1:200 -> zoom = 0.1
+        (ScaleRatio::new(1.0), 20.0),       // 1:1 -> zoom = 20.0
+        (ScaleRatio::new(10.0), 2.0),       // 1:10 -> zoom = 2.0
+        (ScaleRatio::new(20.0), 1.0),       // 1:20 -> zoom = 1.0
+        (ScaleRatio::new(50.0), 0.4),       // 1:50 -> zoom = 0.4
+        (ScaleRatio::new(60.0), 1.0 / 3.0), // 1:60 -> zoom = 0.3333333333
+        (ScaleRatio::new(100.0), 0.2),      // 1:100 -> zoom = 0.2
+        (ScaleRatio::new(200.0), 0.1),      // 1:200 -> zoom = 0.1
     ];
 
     for (target_scale, expected_zoom) in test_cases {
-        let vp = ViewportItem::new(
-            "vp_test",
-            "Test VP",
-            Rect::new(0.0, 0.0, 100.0, 100.0),
-            target_scale,
-            source_scale,
-        );
+        let vp = ViewportItem::new("vp_test", "Test VP", Rect::new(0.0, 0.0, 100.0, 100.0), target_scale, source_scale);
         let actual_zoom = vp.zoom_factor();
-        assert!(
-            (actual_zoom - expected_zoom).abs() < 1e-9,
-            "Scale 1:{} expected zoom {}, got {}",
-            target_scale.denom,
-            expected_zoom,
-            actual_zoom
-        );
+        assert!((actual_zoom - expected_zoom).abs() < 1e-9, "Scale 1:{} expected zoom {}, got {}", target_scale.denom, expected_zoom, actual_zoom);
 
         let xf = vp.transform();
         for &coeff in &xf.as_coeffs() {
@@ -224,10 +204,7 @@ fn test_j012_viewport_zero_and_negative_scales() {
         assert!(coeff.is_finite());
     }
 
-    let unmanaged_neg_vp = ViewportItem {
-        scale: ScaleRatio { denom: -5.0 },
-        ..unmanaged_zero_vp
-    };
+    let unmanaged_neg_vp = ViewportItem { scale: ScaleRatio { denom: -5.0 }, ..unmanaged_zero_vp };
     assert_eq!(unmanaged_neg_vp.zoom_factor(), 1.0);
 
     // 3. Command execution with zero or negative scales
@@ -266,10 +243,7 @@ fn test_j012_unscaled_paper_pt_line_weight_invariant() {
             let mut l = Node::layer(doc.alloc_id(), &format!("Layer_{i}"), LayerColor::Preset(i as u8));
             let line = Node::path(
                 doc.alloc_id(),
-                PathData::single(SubPath::polyline(
-                    &[Point::new(10.0, 10.0), Point::new(300.0, 300.0)],
-                    false,
-                )),
+                PathData::single(SubPath::polyline(&[Point::new(10.0, 10.0), Point::new(300.0, 300.0)], false)),
                 Appearance::basic(Paint::None, Paint::solid(Color::BLACK), w),
             );
             if let Some(ch) = l.children_mut() {
@@ -320,13 +294,8 @@ fn test_j012_unscaled_paper_pt_line_weight_invariant() {
 
     // Check all layers generated for the viewport in synthesize_plate_document
     // In plate.rs: transformed.appearance.stroke retains the original unscaled paper pt!
-    let lines_in_source: Vec<f64> = doc_st
-        .doc
-        .layers
-        .iter()
-        .flat_map(|l| vectorcraft_doc::legend::lines(l))
-        .map(|n| n.appearance.stroke().unwrap().width)
-        .collect();
+    let lines_in_source: Vec<f64> =
+        doc_st.doc.layers.iter().flat_map(|l| vectorcraft_doc::legend::lines(l)).map(|n| n.appearance.stroke().unwrap().width).collect();
 
     assert_eq!(lines_in_source, vec![0.8, 0.5, 0.2, 0.1]);
 
@@ -547,15 +516,7 @@ fn test_j018_malformed_json_and_unsupported_versions_graceful_error() {
     let mut s = test_session();
 
     // 1. Completely malformed JSON strings
-    let malformed_inputs = [
-        "",
-        "{",
-        "{\"format\": \"trowel-style\"",
-        "not a valid json syntax",
-        "null",
-        "42",
-        "[]",
-    ];
+    let malformed_inputs = ["", "{", "{\"format\": \"trowel-style\"", "not a valid json syntax", "null", "42", "[]"];
 
     for malformed in malformed_inputs {
         let diff_err = s.execute("style.diffTemplate", &json!({ "template": malformed }));
@@ -712,9 +673,9 @@ fn test_j018_diff_template_engine_and_merge_resolutions() {
         .unwrap();
 
     assert_eq!(diff_res["identicalCount"], 1); // 조사구역선
-    assert_eq!(diff_res["modifiedCount"], 1);  // 유구선
-    assert_eq!(diff_res["addedCount"], 1);     // 새석축선
-    assert_eq!(diff_res["missingCount"], 1);   // 임시작업선
+    assert_eq!(diff_res["modifiedCount"], 1); // 유구선
+    assert_eq!(diff_res["addedCount"], 1); // 새석축선
+    assert_eq!(diff_res["missingCount"], 1); // 임시작업선
     assert!(diff_res["summaryKo"].as_str().unwrap().contains("새 항목 1개"));
 
     // Direct Rust API diff_template verification
@@ -729,11 +690,7 @@ fn test_j018_diff_template_engine_and_merge_resolutions() {
     assert!(direct_diff.items.iter().any(|it: &ItemDiff| it.status == DiffStatus::Modified && it.recommended_action == MergeAction::Overwrite));
     assert!(direct_diff.items.iter().any(|it: &ItemDiff| it.status == DiffStatus::Missing && it.recommended_action == MergeAction::KeepExisting));
 
-    let sample_res = StyleMergeResolution {
-        category: StyleCategory::LegendRow,
-        key: "새석축선".to_string(),
-        action: MergeAction::Overwrite,
-    };
+    let sample_res = StyleMergeResolution { category: StyleCategory::LegendRow, key: "새석축선".to_string(), action: MergeAction::Overwrite };
     assert_eq!(sample_res.action, MergeAction::Overwrite);
 
     // 2. Test Merge Resolutions:
@@ -900,13 +857,7 @@ fn test_j018_dynamic_legend_table_filter_unused_and_rendering() {
 
     // Verify ordering: Favourite "단면선" (★) must come first!
     let doc_cur = &s.doc().unwrap().doc;
-    let table_model = LegendTable::build_from_document(
-        doc_cur,
-        &LegendLayoutOptions {
-            filter_unused: true,
-            ..Default::default()
-        },
-    );
+    let table_model = LegendTable::build_from_document(doc_cur, &LegendLayoutOptions { filter_unused: true, ..Default::default() });
     assert_eq!(table_model.entries.len(), 2);
     assert_eq!(table_model.entries[0].label, "단면선", "Favourite layer must be sorted first");
     assert_eq!(table_model.entries[1].label, "굴광선");

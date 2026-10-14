@@ -204,12 +204,7 @@ pub fn read_companion_sections_json(dxf_path: &Path) -> Option<String> {
 
     let content = std::fs::read_to_string(target_path).ok()?;
     let val: serde_json::Value = serde_json::from_str(&content).ok()?;
-    val.get("sections")
-        .and_then(|s| s.as_array())
-        .and_then(|a| a.first())
-        .and_then(|o| o.get("name"))
-        .and_then(|n| n.as_str())
-        .map(|s| s.to_string())
+    val.get("sections").and_then(|s| s.as_array()).and_then(|a| a.first()).and_then(|o| o.get("name")).and_then(|n| n.as_str()).map(|s| s.to_string())
 }
 
 #[cfg(test)]

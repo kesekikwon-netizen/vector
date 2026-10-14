@@ -71,19 +71,17 @@ fn test_style_template_apply_merge_undo() {
     let mut s = test_session();
 
     let mut tmpl = TrowelStyleTemplate::default();
-    tmpl.legend_rows = vec![
-        vectorcraft_doc::style_template::TemplateLegendRow {
-            name: "석축".to_string(),
-            group: Some(vectorcraft_doc::legend::LegendGroup::Plan),
-            weight_pt: Some(0.5),
-            line_type: LineType::Dashed,
-            sample: vectorcraft_doc::legend::LegendSample::Line,
-            favourite: true,
-            strata_key: None,
-            description: None,
-            hatch_preset_ref: None,
-        },
-    ];
+    tmpl.legend_rows = vec![vectorcraft_doc::style_template::TemplateLegendRow {
+        name: "석축".to_string(),
+        group: Some(vectorcraft_doc::legend::LegendGroup::Plan),
+        weight_pt: Some(0.5),
+        line_type: LineType::Dashed,
+        sample: vectorcraft_doc::legend::LegendSample::Line,
+        favourite: true,
+        strata_key: None,
+        description: None,
+        hatch_preset_ref: None,
+    }];
 
     // Apply template
     let apply_res = s

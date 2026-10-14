@@ -93,10 +93,15 @@ fn test_gpkg_feature_hatch_and_7_strata_layers_survey() {
     assert!(layer_names.contains(&"tr_artifact_point"));
 
     // 2. Import layers with applyHatchPresets: true
-    let import_res = s.execute("gpkg.importLayers", &json!({
-        "path": path_str,
-        "applyHatchPresets": true
-    })).unwrap();
+    let import_res = s
+        .execute(
+            "gpkg.importLayers",
+            &json!({
+                "path": path_str,
+                "applyHatchPresets": true
+            }),
+        )
+        .unwrap();
     assert_eq!(import_res["importedLayersCount"], 7);
 
     // 3. Empirically inspect whether hatch presets were attached to imported nodes
@@ -132,26 +137,41 @@ fn test_gpkg_import_layers_filter() {
     let mut s = test_session();
 
     // 1. Import single layer
-    let res1 = s.execute("gpkg.importLayers", &json!({
-        "path": path_str,
-        "layers": ["tr_remains_polygon"]
-    })).unwrap();
+    let res1 = s
+        .execute(
+            "gpkg.importLayers",
+            &json!({
+                "path": path_str,
+                "layers": ["tr_remains_polygon"]
+            }),
+        )
+        .unwrap();
     assert_eq!(res1["importedLayersCount"], 1);
 
     // 2. Import two layers
     let mut s2 = test_session();
-    let res2 = s2.execute("gpkg.importLayers", &json!({
-        "path": path_str,
-        "layers": ["tr_investigation_boundary", "tr_grid"]
-    })).unwrap();
+    let res2 = s2
+        .execute(
+            "gpkg.importLayers",
+            &json!({
+                "path": path_str,
+                "layers": ["tr_investigation_boundary", "tr_grid"]
+            }),
+        )
+        .unwrap();
     assert_eq!(res2["importedLayersCount"], 2);
 
     // 3. Import with applyHatchPresets: false
     let mut s3 = test_session();
-    let res3 = s3.execute("gpkg.importLayers", &json!({
-        "path": path_str,
-        "applyHatchPresets": false
-    })).unwrap();
+    let res3 = s3
+        .execute(
+            "gpkg.importLayers",
+            &json!({
+                "path": path_str,
+                "applyHatchPresets": false
+            }),
+        )
+        .unwrap();
     assert_eq!(res3["importedLayersCount"], 7);
     let doc3 = &s3.doc().unwrap().doc;
     let mut hatch_count3 = 0;
@@ -168,5 +188,3 @@ fn test_gpkg_import_layers_filter() {
 
     std::fs::remove_file(&db_path).ok();
 }
-
-

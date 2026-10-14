@@ -3,8 +3,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use serde_json::json;
-use vectorcraft_doc::hatch::{DEFAULT_CUT_BORDER_PT, HatchDirection, HatchStyle};
 use vectorcraft_doc::NodeId;
+use vectorcraft_doc::hatch::{DEFAULT_CUT_BORDER_PT, HatchDirection, HatchStyle};
 use vectorcraft_engine::Session;
 use vectorcraft_pathops::hatch::{build_adjacency_graph, solve_face_hatching};
 
@@ -22,10 +22,15 @@ fn test_j014_two_adjacent_regions_alternation() {
     let res2 = s.execute("shape.rectangle", &json!({"x": 50.0, "y": 0.0, "width": 50.0, "height": 50.0})).unwrap();
     let id2 = res2["id"].as_u64().unwrap();
 
-    let set_res = s.execute("hatch.set", &json!({
-        "direction": "alt",
-        "ids": [id1, id2]
-    })).unwrap();
+    let set_res = s
+        .execute(
+            "hatch.set",
+            &json!({
+                "direction": "alt",
+                "ids": [id1, id2]
+            }),
+        )
+        .unwrap();
     assert_eq!(set_res["updated"].as_u64().unwrap(), 2);
 
     let doc = s.doc().unwrap();
@@ -56,28 +61,48 @@ fn test_j014_two_adjacent_regions_alternation() {
 fn test_j014_three_mutually_touching_odd_cycle_conflict() {
     let mut s = test_session();
     // 3 mutually adjacent triangles meeting at the center
-    let r1 = s.execute("path.create", &json!({
-        "anchors": [{"x": 0.0, "y": 0.0}, {"x": 50.0, "y": 0.0}, {"x": 25.0, "y": 40.0}],
-        "closed": true
-    })).unwrap();
+    let r1 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 0.0, "y": 0.0}, {"x": 50.0, "y": 0.0}, {"x": 25.0, "y": 40.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id1 = r1["id"].as_u64().unwrap();
 
-    let r2 = s.execute("path.create", &json!({
-        "anchors": [{"x": 50.0, "y": 0.0}, {"x": 100.0, "y": 0.0}, {"x": 25.0, "y": 40.0}],
-        "closed": true
-    })).unwrap();
+    let r2 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 50.0, "y": 0.0}, {"x": 100.0, "y": 0.0}, {"x": 25.0, "y": 40.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id2 = r2["id"].as_u64().unwrap();
 
-    let r3 = s.execute("path.create", &json!({
-        "anchors": [{"x": 0.0, "y": 0.0}, {"x": 25.0, "y": 40.0}, {"x": 100.0, "y": 0.0}],
-        "closed": true
-    })).unwrap();
+    let r3 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 0.0, "y": 0.0}, {"x": 25.0, "y": 40.0}, {"x": 100.0, "y": 0.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id3 = r3["id"].as_u64().unwrap();
 
-    let set_res = s.execute("hatch.set", &json!({
-        "direction": "alt",
-        "ids": [id1, id2, id3]
-    })).unwrap();
+    let set_res = s
+        .execute(
+            "hatch.set",
+            &json!({
+                "direction": "alt",
+                "ids": [id1, id2, id3]
+            }),
+        )
+        .unwrap();
     assert_eq!(set_res["updated"].as_u64().unwrap(), 3);
 
     // Conflict detection

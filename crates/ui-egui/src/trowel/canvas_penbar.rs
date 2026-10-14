@@ -70,20 +70,11 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui, canvas: Rect, t: &Tokens) {
     let total_content_w: f32 = btn_widths.iter().sum::<f32>() + 12.0;
     let bar_w = total_content_w.min(canvas.width() - 32.0);
 
-    let bar_rect = Rect::from_min_size(
-        pos2(canvas.center().x - bar_w / 2.0, canvas.bottom() - 14.0 - BAR_H),
-        vec2(bar_w, BAR_H),
-    );
+    let bar_rect = Rect::from_min_size(pos2(canvas.center().x - bar_w / 2.0, canvas.bottom() - 14.0 - BAR_H), vec2(bar_w, BAR_H));
 
     // Shield interaction from the underlying canvas
     ui.painter().add(
-        egui::epaint::Shadow {
-            offset: [0, 3],
-            blur: 14,
-            spread: 0,
-            color: t.text.gamma_multiply(0.12),
-        }
-        .as_shape(bar_rect, CornerRadius::same(8)),
+        egui::epaint::Shadow { offset: [0, 3], blur: 14, spread: 0, color: t.text.gamma_multiply(0.12) }.as_shape(bar_rect, CornerRadius::same(8)),
     );
 
     let bg_color = t.input;
@@ -152,10 +143,8 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui, canvas: Rect, t: &Tokens) {
         crate::canvas::apply_requests(app, r);
     }
 
-    if close_clicked {
-        if let Some(id) = app.session.active().and_then(|d| d.selection.objects.first().copied()) {
-            crate::menus::invoke(app, "path.close", json!({ "id": id.0 }));
-        }
+    if close_clicked && let Some(id) = app.session.active().and_then(|d| d.selection.objects.first().copied()) {
+        crate::menus::invoke(app, "path.close", json!({ "id": id.0 }));
     }
 
     if let Some(cmd) = action_to_run {

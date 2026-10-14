@@ -1,8 +1,8 @@
 //! Automatic horizontal elevation lines commands (Trowel design 2.1 §4, §4-1, §14(b, c, d)).
 
-use std::sync::Arc;
 use kurbo::{BezPath, Point};
 use serde_json::{Value, json};
+use std::sync::Arc;
 use vectorcraft_color::{Color, Paint};
 use vectorcraft_doc::elevation::{ElevationLabelFormat, ElevationLabelPlacement, ElevationRangeMode, ElevationSpec};
 use vectorcraft_doc::{Appearance, CharStyle, Document, Justify, Node, NodeId, NodeKind, TextObject};
@@ -174,15 +174,8 @@ fn generate_children(doc: &mut Document, spec: &ElevationSpec) -> Result<(Vec<Ar
 
     for label in &out.labels {
         let cid = doc.alloc_id();
-        let style = CharStyle {
-            size: spec.label_font_size_pt,
-            fill: Paint::solid(Color::rgb8(20, 20, 19)),
-            ..Default::default()
-        };
-        let origin = Point::new(
-            label.at.x + if label.anchor_left { 2.0 } else { -2.0 },
-            label.at.y - 2.0,
-        );
+        let style = CharStyle { size: spec.label_font_size_pt, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
+        let origin = Point::new(label.at.x + if label.anchor_left { 2.0 } else { -2.0 }, label.at.y - 2.0);
         let mut t_obj = TextObject::point(origin, &label.text, style);
         if !label.anchor_left {
             t_obj.para.justify = Justify::Right;
@@ -260,10 +253,16 @@ fn update(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn set(s: &mut Session, p: &Value) -> Result<Value> {
-    let id = p.get("id").and_then(|v| v.as_u64()).map(NodeId).or_else(|| s.doc().ok()?.selection.objects.first().copied()).ok_or_else(|| bad("elevation.set", "give id or select an elevation group"))?;
+    let id = p
+        .get("id")
+        .and_then(|v| v.as_u64())
+        .map(NodeId)
+        .or_else(|| s.doc().ok()?.selection.objects.first().copied())
+        .ok_or_else(|| bad("elevation.set", "give id or select an elevation group"))?;
 
     s.edit("Set Elevation Options", |doc, _| {
-        let mut spec = doc.node(id).and_then(|n| n.elevation.as_deref().cloned()).ok_or_else(|| bad("elevation.set", "node is not an elevation group"))?;
+        let mut spec =
+            doc.node(id).and_then(|n| n.elevation.as_deref().cloned()).ok_or_else(|| bad("elevation.set", "node is not an elevation group"))?;
 
         if let Some(d) = p.get("datumM").and_then(|v| v.as_f64()) {
             spec.datum_m = d;
@@ -310,7 +309,12 @@ fn set(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn expand(s: &mut Session, p: &Value) -> Result<Value> {
-    let id = p.get("id").and_then(|v| v.as_u64()).map(NodeId).or_else(|| s.doc().ok()?.selection.objects.first().copied()).ok_or_else(|| bad("elevation.expand", "give id or select an elevation group"))?;
+    let id = p
+        .get("id")
+        .and_then(|v| v.as_u64())
+        .map(NodeId)
+        .or_else(|| s.doc().ok()?.selection.objects.first().copied())
+        .ok_or_else(|| bad("elevation.expand", "give id or select an elevation group"))?;
 
     s.edit("Expand Elevation Lines", |doc, _| {
         let node = doc.node_mut(id).ok_or_else(|| bad("elevation.expand", "node not found"))?;
@@ -323,7 +327,12 @@ fn expand(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn get(s: &mut Session, p: &Value) -> Result<Value> {
-    let id = p.get("id").and_then(|v| v.as_u64()).map(NodeId).or_else(|| s.doc().ok()?.selection.objects.first().copied()).ok_or_else(|| bad("elevation.get", "give id or select an elevation group"))?;
+    let id = p
+        .get("id")
+        .and_then(|v| v.as_u64())
+        .map(NodeId)
+        .or_else(|| s.doc().ok()?.selection.objects.first().copied())
+        .ok_or_else(|| bad("elevation.get", "give id or select an elevation group"))?;
 
     let doc = &s.doc()?.doc;
     let node = doc.node(id).ok_or_else(|| bad("elevation.get", "node not found"))?;

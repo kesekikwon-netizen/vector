@@ -91,31 +91,28 @@ pub use pattern::{Overlap, PatternDef, PatternEdit, RepeatKind, RepeatSpec, Tile
 pub use perspective::PerspectiveAttachment;
 pub use placed_document::PlacedDocument;
 pub use plate::{
-    BorderFrame, NorthArrowItem, NorthArrowStyle, PlateOrientation, PlateSheet, PlateSize,
-    ScaleBarItem, ScaleBarStyle, TitleBlockData, ViewportItem, ViewportSource,
+    BorderFrame, NorthArrowItem, NorthArrowStyle, PlateOrientation, PlateSheet, PlateSize, ScaleBarItem, ScaleBarStyle, TitleBlockData, ViewportItem,
+    ViewportSource,
 };
 pub use pottery::{MM, PotteryMeasurements, PotteryVessel, SectionFillMode, SectionSide, VesselType};
 pub use profiles::ColorProfiles;
 pub use puppet::{PuppetPin, PuppetPins};
-pub use style_template::{
-    DiffStatus, ElevationStyleRules, HatchPreset, ItemDiff, MergeAction, PropertyDiff,
-    SoilPaletteEntry, StrokeWeightTier, StyleCategory, StyleDiff, StyleMergeResolution,
-    TemplateLegendRow, TitleBlockTemplate, TrowelStyleTemplate, TypographyStyle,
-    default_hatch_presets, default_soil_palettes, default_stroke_weights,
-    default_template_legend_rows, diff_template, TROWEL_STYLE_EXTENSION, TROWEL_STYLE_FORMAT,
-    TROWEL_STYLE_VERSION,
-};
 pub use rastersettings::{RasterColorModel, RasterEffectsSettings};
 pub use scale::{CoordOrder, CoordSystem, GraticuleTick, ScaleConfig, ScaleRatio, compute_graticule_ticks};
 pub use selection::{AnchorRef, Selection};
 pub use setup::{Background, DocSetup, ExportText, GridSize, Quotes};
 pub use slices::{CellAlign, CellVAlign, Slice, SliceArea, SliceKind, SliceOptions, SliceSource};
 pub use stratigraphy::{
-    CircledNumberSpec, LayerNumberingStyle, NumberingStyle, SoilDescription, StratigraphyFillStyle,
-    StratigraphyLayer, StratigraphyPatternKind, StratigraphyTable, StratigraphyTablePlacement,
-    TableRenderFormat,
+    CircledNumberSpec, LayerNumberingStyle, NumberingStyle, SoilDescription, StratigraphyFillStyle, StratigraphyLayer, StratigraphyPatternKind,
+    StratigraphyTable, StratigraphyTablePlacement, TableRenderFormat,
 };
 pub use style_libs::StyleLibrary;
+pub use style_template::{
+    DiffStatus, ElevationStyleRules, HatchPreset, ItemDiff, MergeAction, PropertyDiff, SoilPaletteEntry, StrokeWeightTier, StyleCategory, StyleDiff,
+    StyleMergeResolution, TROWEL_STYLE_EXTENSION, TROWEL_STYLE_FORMAT, TROWEL_STYLE_VERSION, TemplateLegendRow, TitleBlockTemplate,
+    TrowelStyleTemplate, TypographyStyle, default_hatch_presets, default_soil_palettes, default_stroke_weights, default_template_legend_rows,
+    diff_template,
+};
 pub use text::{
     AreaFit, AreaOptions, Burasagari, CharAlign, CharPosition, CharStyle, Composer, FirstBaseline, InlineArt, Justify, Kinsoku, LeadingModel,
     Mojikumi, ParaDirection, ParaStyle, PathAlign, PathEffect, ScriptMetrics, TabAlign, TabStop, TextKind, TextObject, TextRun, TextStyleDef,

@@ -595,7 +595,7 @@ mod tests {
         // Count segments: in 100x100 square, diagonal extent is 100 * sqrt(2) approx 141.4 pt
         // With spacing 2.8346 pt, expected lines is approx 141.4 / 2.8346 approx 50 lines
         let move_count = lines.elements().iter().filter(|el| matches!(el, PathEl::MoveTo(_))).count();
-        assert!(move_count >= 40 && move_count <= 60, "Expected approx 50 hatch lines, got {move_count}");
+        assert!((40..=60).contains(&move_count), "Expected approx 50 hatch lines, got {move_count}");
     }
 
     #[test]
@@ -644,12 +644,12 @@ mod tests {
         let lines_0 = emit_hatch_lines(&r, HatchDirection::Deg0, spacing_pt);
         assert!(!lines_0.elements().is_empty());
         let count_0 = lines_0.elements().iter().filter(|el| matches!(el, PathEl::MoveTo(_))).count();
-        assert!(count_0 >= 8 && count_0 <= 12, "Deg0 lines count: {count_0}");
+        assert!((8..=12).contains(&count_0), "Deg0 lines count: {count_0}");
 
         let lines_90 = emit_hatch_lines(&r, HatchDirection::Deg90, spacing_pt);
         assert!(!lines_90.elements().is_empty());
         let count_90 = lines_90.elements().iter().filter(|el| matches!(el, PathEl::MoveTo(_))).count();
-        assert!(count_90 >= 8 && count_90 <= 12, "Deg90 lines count: {count_90}");
+        assert!((8..=12).contains(&count_90), "Deg90 lines count: {count_90}");
 
         let lines_cross = emit_hatch_lines(&r, HatchDirection::Cross, spacing_pt);
         let count_cross = lines_cross.elements().iter().filter(|el| matches!(el, PathEl::MoveTo(_))).count();

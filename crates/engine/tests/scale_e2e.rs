@@ -26,11 +26,16 @@ fn test_j006_set_scale_and_get_scale() {
     assert_eq!(get_before["is_set"], false);
 
     // Set scale to 1:20 with EPSG:5186 and eastnorth
-    let set_res = s.execute("doc.setScale", &json!({
-        "scale": "1:20",
-        "epsg": 5186,
-        "order": "eastnorth"
-    })).unwrap();
+    let set_res = s
+        .execute(
+            "doc.setScale",
+            &json!({
+                "scale": "1:20",
+                "epsg": 5186,
+                "order": "eastnorth"
+            }),
+        )
+        .unwrap();
     assert_eq!(set_res["scale"], "1:20");
     assert_eq!(set_res["denom"], 20.0);
     assert_eq!(set_res["epsg"], 5186);
@@ -55,10 +60,15 @@ fn test_j006_gwangnyeongri_control_points_transformation() {
     s.execute("doc.setScale", &json!({"scale": 20.0})).unwrap();
 
     // 2. Bind CP1 to canvas (100.0, 100.0)
-    let origin_res = s.execute("doc.setOrigin", &json!({
-        "canvas": [100.0, 100.0],
-        "world": [GWANGNYEONGRI_CP1.0, GWANGNYEONGRI_CP1.1]
-    })).unwrap();
+    let origin_res = s
+        .execute(
+            "doc.setOrigin",
+            &json!({
+                "canvas": [100.0, 100.0],
+                "world": [GWANGNYEONGRI_CP1.0, GWANGNYEONGRI_CP1.1]
+            }),
+        )
+        .unwrap();
     assert_eq!(origin_res["scale"], "1:20");
 
     // 3. Convert CP1 back to world
@@ -69,25 +79,30 @@ fn test_j006_gwangnyeongri_control_points_transformation() {
     assert_eq!(cp1_world["y_readout"], "512340.456");
 
     // 4. Test all 4 Gwangnyeong-ri control points forward & backward
-    let control_points = [
-        GWANGNYEONGRI_CP1,
-        GWANGNYEONGRI_CP2,
-        GWANGNYEONGRI_CP3,
-        GWANGNYEONGRI_CP4,
-    ];
+    let control_points = [GWANGNYEONGRI_CP1, GWANGNYEONGRI_CP2, GWANGNYEONGRI_CP3, GWANGNYEONGRI_CP4];
 
     for cp in control_points {
-        let to_canvas = s.execute("doc.coordToCanvas", &json!({
-            "east": cp.0,
-            "north": cp.1
-        })).unwrap();
+        let to_canvas = s
+            .execute(
+                "doc.coordToCanvas",
+                &json!({
+                    "east": cp.0,
+                    "north": cp.1
+                }),
+            )
+            .unwrap();
         let cx = to_canvas["canvas_x"].as_f64().unwrap();
         let cy = to_canvas["canvas_y"].as_f64().unwrap();
 
-        let to_world = s.execute("doc.coordToWorld", &json!({
-            "x": cx,
-            "y": cy
-        })).unwrap();
+        let to_world = s
+            .execute(
+                "doc.coordToWorld",
+                &json!({
+                    "x": cx,
+                    "y": cy
+                }),
+            )
+            .unwrap();
         let recovered_e = to_world["east"].as_f64().unwrap();
         let recovered_n = to_world["north"].as_f64().unwrap();
 
@@ -102,10 +117,14 @@ fn test_j006_coordinate_order_and_orientation() {
     let mut s = test_session();
 
     s.execute("doc.setScale", &json!({"scale": 20.0, "order": "eastnorth"})).unwrap();
-    s.execute("doc.setOrigin", &json!({
-        "canvas": [0.0, 0.0],
-        "world": [1000.0, 2000.0]
-    })).unwrap();
+    s.execute(
+        "doc.setOrigin",
+        &json!({
+            "canvas": [0.0, 0.0],
+            "world": [1000.0, 2000.0]
+        }),
+    )
+    .unwrap();
 
     // Moving right (+x) on canvas increases East (X)
     let right = s.execute("doc.coordToWorld", &json!({"x": 100.0, "y": 0.0})).unwrap();
@@ -126,15 +145,24 @@ fn test_j006_coordinate_order_and_orientation() {
 fn test_j006_graticule_ticks_generation() {
     let mut s = test_session();
     s.execute("doc.setScale", &json!({"scale": 20.0})).unwrap();
-    s.execute("doc.setOrigin", &json!({
-        "canvas": [100.0, 100.0],
-        "world": [152840.0, 512340.0]
-    })).unwrap();
+    s.execute(
+        "doc.setOrigin",
+        &json!({
+            "canvas": [100.0, 100.0],
+            "world": [152840.0, 512340.0]
+        }),
+    )
+    .unwrap();
 
-    let res = s.execute("doc.graticuleTicks", &json!({
-        "interval_m": 5.0,
-        "bounds": [0.0, 0.0, 800.0, 600.0]
-    })).unwrap();
+    let res = s
+        .execute(
+            "doc.graticuleTicks",
+            &json!({
+                "interval_m": 5.0,
+                "bounds": [0.0, 0.0, 800.0, 600.0]
+            }),
+        )
+        .unwrap();
 
     let count = res["count"].as_u64().unwrap();
     assert!(count > 0);
@@ -153,19 +181,28 @@ fn test_j006_paper_fixed_pt_stroke_width_across_scales() {
     let mut s = test_session();
 
     // Draw a rectangle with standard 0.1 pt stroke (e.g. boundary or hatch line)
-    let rect_res = s.execute("shape.rectangle", &json!({
-        "x": 50.0,
-        "y": 50.0,
-        "width": 100.0,
-        "height": 100.0
-    })).unwrap();
+    let rect_res = s
+        .execute(
+            "shape.rectangle",
+            &json!({
+                "x": 50.0,
+                "y": 50.0,
+                "width": 100.0,
+                "height": 100.0
+            }),
+        )
+        .unwrap();
     let id = rect_res["id"].as_u64().unwrap();
 
     // Set stroke width to 0.1 pt
-    s.execute("stroke.set", &json!({
-        "ids": [id],
-        "weight": 0.1
-    })).unwrap();
+    s.execute(
+        "stroke.set",
+        &json!({
+            "ids": [id],
+            "weight": 0.1
+        }),
+    )
+    .unwrap();
 
     // 1. Verify at scale 1:20
     s.execute("doc.setScale", &json!({"scale": 20.0})).unwrap();

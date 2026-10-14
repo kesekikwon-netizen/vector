@@ -28,12 +28,9 @@ use vectorcraft_doc::{Document, Unit};
 use vectorcraft_geom::Rect;
 
 pub use aci::{aci_rgb, nearest_aci};
-pub use geopackage::{
-    GpkgFeature, GpkgGeometry, GpkgLayerInfo, GpkgReader, GpkgSurveyInfo, StrataLayerKind,
-    resolve_feature_hatch,
-};
+pub use geopackage::{GpkgFeature, GpkgGeometry, GpkgLayerInfo, GpkgReader, GpkgSurveyInfo, StrataLayerKind, resolve_feature_hatch};
 #[cfg(not(target_arch = "wasm32"))]
-pub use geopackage::create_sample_gpkg;
+pub use geopackage::{create_7layers_sample_gpkg, create_sample_gpkg};
 pub use import::{CadEncoding, DxfInfo, ImportOptions, Imported, import, info, is_dxf};
 
 /// How deep symbols, blocks and brush art may nest in one another (deeper art is left out).

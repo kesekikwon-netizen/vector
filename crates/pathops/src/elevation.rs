@@ -109,14 +109,7 @@ fn subtract_interval(intervals: Vec<(f64, f64)>, u: f64, v: f64) -> Vec<(f64, f6
 
 /// Clips a horizontal scanline at y against the open void between the ceiling and ground profile,
 /// and subtracts all interior obstacle intervals.
-pub fn clip_elevation_scanline(
-    y: f64,
-    ground_profile: &BezPath,
-    obstacles: &[BezPath],
-    x_min: f64,
-    x_max: f64,
-    ceiling_y: f64,
-) -> Vec<(f64, f64)> {
+pub fn clip_elevation_scanline(y: f64, ground_profile: &BezPath, obstacles: &[BezPath], x_min: f64, x_max: f64, ceiling_y: f64) -> Vec<(f64, f64)> {
     let profile_pts = flatten_path(ground_profile, 0.25);
     if profile_pts.len() < 2 {
         return Vec::new();
@@ -211,12 +204,7 @@ pub fn clip_elevation_scanline(
 }
 
 /// Generates all elevation line segments and labels according to the given ElevationSpec.
-pub fn generate_elevation(
-    ground_profile: &BezPath,
-    obstacles: &[BezPath],
-    spec: &ElevationSpec,
-    scale_cfg: Option<&ScaleConfig>,
-) -> ElevationOutput {
+pub fn generate_elevation(ground_profile: &BezPath, obstacles: &[BezPath], spec: &ElevationSpec, scale_cfg: Option<&ScaleConfig>) -> ElevationOutput {
     let profile_bounds = ground_profile.bounding_box();
     if profile_bounds.width() < 1e-4 || profile_bounds.height() < 1e-4 {
         return ElevationOutput::default();
@@ -250,9 +238,7 @@ pub fn generate_elevation(
             let max_m = (highest_elevation_m / major).ceil() * major;
             (min_m, max_m)
         }
-        ElevationRangeMode::Explicit { min_elevation_m, max_elevation_m } => {
-            (min_elevation_m, max_elevation_m)
-        }
+        ElevationRangeMode::Explicit { min_elevation_m, max_elevation_m } => (min_elevation_m, max_elevation_m),
     };
 
     if max_elev < min_elev {
@@ -287,23 +273,11 @@ pub fn generate_elevation(
             let text = spec.label_format.format(elev);
             match spec.label_placement {
                 ElevationLabelPlacement::LeftEnd => {
-                    labels.push(ElevationLabel {
-                        text,
-                        at: Point::new(intervals[0].0, y),
-                        anchor_left: true,
-                    });
+                    labels.push(ElevationLabel { text, at: Point::new(intervals[0].0, y), anchor_left: true });
                 }
                 ElevationLabelPlacement::BothEnds => {
-                    labels.push(ElevationLabel {
-                        text: text.clone(),
-                        at: Point::new(intervals[0].0, y),
-                        anchor_left: true,
-                    });
-                    labels.push(ElevationLabel {
-                        text,
-                        at: Point::new(intervals.last().unwrap_or(&intervals[0]).1, y),
-                        anchor_left: false,
-                    });
+                    labels.push(ElevationLabel { text: text.clone(), at: Point::new(intervals[0].0, y), anchor_left: true });
+                    labels.push(ElevationLabel { text, at: Point::new(intervals.last().unwrap_or(&intervals[0]).1, y), anchor_left: false });
                 }
             }
         }

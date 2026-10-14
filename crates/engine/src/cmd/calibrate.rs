@@ -8,10 +8,7 @@ use kurbo::{Affine, Point};
 use serde_json::{Value, json};
 use vectorcraft_doc::legend::MM;
 use vectorcraft_doc::{Document, Node, NodeId, NodeKind};
-use vectorcraft_geom::registration::{
-    AxisAlignment, PointPair, evaluate_residuals, fit_affine, fit_auto, fit_similarity,
-    fit_two_point,
-};
+use vectorcraft_geom::registration::{AxisAlignment, PointPair, evaluate_residuals, fit_affine, fit_auto, fit_similarity, fit_two_point};
 
 use super::super::*;
 use super::{bad, has_doc};
@@ -99,10 +96,10 @@ fn parse_affine_coeffs(v: &Value) -> Option<Affine> {
 
 /// Locates the target underlay image node in the document.
 fn find_underlay_image(doc: &Document, explicit_id: Option<NodeId>) -> Option<NodeId> {
-    if let Some(id) = explicit_id {
-        if matches!(doc.node(id).map(|n| &n.kind), Some(NodeKind::Image(_))) {
-            return Some(id);
-        }
+    if let Some(id) = explicit_id
+        && matches!(doc.node(id).map(|n| &n.kind), Some(NodeKind::Image(_)))
+    {
+        return Some(id);
     }
     // 1. Search layers for "밑그림" or starts with "밑그림 · " or is_template
     for layer in &doc.layers {
@@ -171,8 +168,7 @@ fn calibrate_two_point(s: &mut Session, p: &Value) -> Result<Value> {
         _ => AxisAlignment::Horizontal,
     };
 
-    let res = fit_two_point(p1, p2, target_dist, target_p1, target_p2, align_axis)
-        .map_err(|e| bad(C, e.to_string()))?;
+    let res = fit_two_point(p1, p2, target_dist, target_p1, target_p2, align_axis).map_err(|e| bad(C, e.to_string()))?;
 
     let apply = p.get("apply").and_then(|v| v.as_bool()).unwrap_or(false);
     let explicit_image_id = p.get("imageId").and_then(|v| v.as_u64()).map(NodeId);
@@ -183,8 +179,7 @@ fn calibrate_two_point(s: &mut Session, p: &Value) -> Result<Value> {
     if apply {
         let xf = res.transform;
         s.edit("Two-Point Scale Calibration", |doc, _| {
-            let img_id = find_underlay_image(doc, explicit_image_id)
-                .ok_or_else(|| bad(C, "no underlay image node found to calibrate"))?;
+            let img_id = find_underlay_image(doc, explicit_image_id).ok_or_else(|| bad(C, "no underlay image node found to calibrate"))?;
             bound_image_id = Some(img_id.0);
 
             if let Some(Node { kind: NodeKind::Image(im), .. }) = doc.node_mut(img_id) {
@@ -257,8 +252,7 @@ fn calibrate_control_points(s: &mut Session, p: &Value) -> Result<Value> {
     if apply {
         let xf = res.transform;
         s.edit("Control Point Registration", |doc, _| {
-            let img_id = find_underlay_image(doc, explicit_image_id)
-                .ok_or_else(|| bad(C, "no underlay image node found to calibrate"))?;
+            let img_id = find_underlay_image(doc, explicit_image_id).ok_or_else(|| bad(C, "no underlay image node found to calibrate"))?;
             bound_image_id = Some(img_id.0);
 
             if let Some(Node { kind: NodeKind::Image(im), .. }) = doc.node_mut(img_id) {
@@ -369,8 +363,7 @@ fn calibrate_apply(s: &mut Session, p: &Value) -> Result<Value> {
     let explicit_image_id = p.get("imageId").and_then(|v| v.as_u64()).map(NodeId);
 
     s.edit("Apply Calibration Transform", |doc, _| {
-        let img_id = find_underlay_image(doc, explicit_image_id)
-            .ok_or_else(|| bad(C, "no underlay image node found to calibrate"))?;
+        let img_id = find_underlay_image(doc, explicit_image_id).ok_or_else(|| bad(C, "no underlay image node found to calibrate"))?;
 
         if let Some(Node { kind: NodeKind::Image(im), .. }) = doc.node_mut(img_id) {
             if is_replace {
@@ -397,45 +390,49 @@ mod tests {
     fn setup_session_with_underlay() -> (Session, NodeId) {
         let mut s = Session::new();
         s.execute("file.new", &json!({"width": 800, "height": 600})).expect("new doc");
-        let img_id = s.edit("Add Underlay", |doc, _| {
-            let layer_id = doc.alloc_id();
-            let mut layer = Node::layer(layer_id, "밑그림", LayerColor::Preset(0));
-            if let NodeKind::Layer { template, .. } = &mut layer.kind {
-                *template = true;
-            }
-            layer.locked = true;
-            let img_id = doc.alloc_id();
-            let img = Node::new(
-                img_id,
-                NodeKind::Image(ImageObject {
-                    key: "test_img".to_string(),
-                    width: 1000,
-                    height: 1000,
-                    xf: Affine::IDENTITY,
-                    link: None,
-                    placement: Default::default(),
-                }),
-            );
-            doc.insert(None, usize::MAX, layer).unwrap();
-            doc.insert(Some(layer_id), usize::MAX, img).unwrap();
-            Ok(img_id)
-        }).unwrap();
+        let img_id = s
+            .edit("Add Underlay", |doc, _| {
+                let layer_id = doc.alloc_id();
+                let mut layer = Node::layer(layer_id, "밑그림", LayerColor::Preset(0));
+                if let NodeKind::Layer { template, .. } = &mut layer.kind {
+                    *template = true;
+                }
+                layer.locked = true;
+                let img_id = doc.alloc_id();
+                let img = Node::new(
+                    img_id,
+                    NodeKind::Image(ImageObject {
+                        key: "test_img".to_string(),
+                        width: 1000,
+                        height: 1000,
+                        xf: Affine::IDENTITY,
+                        link: None,
+                        placement: Default::default(),
+                    }),
+                );
+                doc.insert(None, usize::MAX, layer).unwrap();
+                doc.insert(Some(layer_id), usize::MAX, img).unwrap();
+                Ok(img_id)
+            })
+            .unwrap();
         (s, img_id)
     }
 
     #[test]
     fn test_two_point_calibration_cmd() {
         let (mut s, img_id) = setup_session_with_underlay();
-        let res = s.execute(
-            "calibrate.twoPoint",
-            &json!({
-                "p1": [10.0, 10.0],
-                "p2": [110.0, 10.0],
-                "targetDist": 200.0,
-                "alignAxis": "horizontal",
-                "apply": true
-            }),
-        ).expect("twoPoint cmd");
+        let res = s
+            .execute(
+                "calibrate.twoPoint",
+                &json!({
+                    "p1": [10.0, 10.0],
+                    "p2": [110.0, 10.0],
+                    "targetDist": 200.0,
+                    "alignAxis": "horizontal",
+                    "apply": true
+                }),
+            )
+            .expect("twoPoint cmd");
 
         assert_eq!(res["applied"], true);
         assert!((res["scale"].as_f64().unwrap() - 2.0).abs() < 1e-9);
@@ -460,12 +457,7 @@ mod tests {
     fn test_control_points_affine_cmd() {
         let (mut s, _img_id) = setup_session_with_underlay();
         let ground_truth = Affine::new([1.05, 0.02, -0.01, 0.98, 50.0, -30.0]);
-        let pts = [
-            Point::new(10.0, 10.0),
-            Point::new(200.0, 10.0),
-            Point::new(200.0, 150.0),
-            Point::new(10.0, 150.0),
-        ];
+        let pts = [Point::new(10.0, 10.0), Point::new(200.0, 10.0), Point::new(200.0, 150.0), Point::new(10.0, 150.0)];
         let pairs: Vec<Value> = pts
             .iter()
             .map(|&p| {
@@ -477,27 +469,31 @@ mod tests {
             })
             .collect();
 
-        let res = s.execute(
-            "calibrate.controlPoints",
-            &json!({
-                "pairs": pairs,
-                "mode": "affine",
-                "apply": true,
-            }),
-        ).expect("controlPoints cmd");
+        let res = s
+            .execute(
+                "calibrate.controlPoints",
+                &json!({
+                    "pairs": pairs,
+                    "mode": "affine",
+                    "apply": true,
+                }),
+            )
+            .expect("controlPoints cmd");
 
         assert_eq!(res["applied"], true);
         assert!(res["rmsePt"].as_f64().unwrap() < 1e-9);
         assert_eq!(res["residuals"].as_array().unwrap().len(), 4);
 
         // Test calibrate.residuals query
-        let query_res = s.execute(
-            "calibrate.residuals",
-            &json!({
-                "affineCoeffs": res["affineCoeffs"],
-                "pairs": pairs,
-            }),
-        ).expect("residuals query");
+        let query_res = s
+            .execute(
+                "calibrate.residuals",
+                &json!({
+                    "affineCoeffs": res["affineCoeffs"],
+                    "pairs": pairs,
+                }),
+            )
+            .expect("residuals query");
         assert!(query_res["rmsePt"].as_f64().unwrap() < 1e-9);
     }
 
@@ -505,13 +501,15 @@ mod tests {
     fn test_calibrate_apply_cmd() {
         let (mut s, img_id) = setup_session_with_underlay();
         let target_xf = [1.2, 0.0, 0.0, 1.2, 100.0, 50.0];
-        let res = s.execute(
-            "calibrate.apply",
-            &json!({
-                "affineCoeffs": target_xf,
-                "mode": "replace",
-            }),
-        ).expect("calibrate.apply");
+        let res = s
+            .execute(
+                "calibrate.apply",
+                &json!({
+                    "affineCoeffs": target_xf,
+                    "mode": "replace",
+                }),
+            )
+            .expect("calibrate.apply");
 
         assert_eq!(res["applied"], true);
         let im_xf = match &s.doc().unwrap().doc.node(img_id).unwrap().kind {

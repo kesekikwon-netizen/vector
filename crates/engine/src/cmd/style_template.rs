@@ -4,14 +4,12 @@
 use std::sync::Arc;
 
 use kurbo::Point;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use vectorcraft_color::{Color, Paint};
-use vectorcraft_doc::legend::{
-    LegendLayoutOptions, LegendSample, LegendTable,
-};
+use vectorcraft_doc::legend::{LegendLayoutOptions, LegendSample, LegendTable};
 use vectorcraft_doc::style_template::{
-    MergeAction, StyleCategory, StyleMergeResolution, TemplateLegendRow, TrowelStyleTemplate,
-    diff_template, TROWEL_STYLE_FORMAT, TROWEL_STYLE_VERSION,
+    MergeAction, StyleCategory, StyleMergeResolution, TROWEL_STYLE_FORMAT, TROWEL_STYLE_VERSION, TemplateLegendRow, TrowelStyleTemplate,
+    diff_template,
 };
 use vectorcraft_doc::{Appearance, CharStyle, Node, NodeId, NodeKind, TextObject};
 use vectorcraft_geom::{PathData, SubPath};
@@ -75,21 +73,14 @@ fn parse_template_param(p: &Value) -> Result<TrowelStyleTemplate> {
     let tmpl: TrowelStyleTemplate = if let Some(s) = tmpl_val.as_str() {
         serde_json::from_str(s).map_err(|e| bad("style", format!("invalid template JSON: {e}")))?
     } else {
-        serde_json::from_value(tmpl_val.clone())
-            .map_err(|e| bad("style", format!("invalid template object: {e}")))?
+        serde_json::from_value(tmpl_val.clone()).map_err(|e| bad("style", format!("invalid template object: {e}")))?
     };
 
     if tmpl.format != TROWEL_STYLE_FORMAT {
-        return Err(bad(
-            "style",
-            format!("unsupported format '{}', expected '{}'", tmpl.format, TROWEL_STYLE_FORMAT),
-        ));
+        return Err(bad("style", format!("unsupported format '{}', expected '{}'", tmpl.format, TROWEL_STYLE_FORMAT)));
     }
     if tmpl.version > TROWEL_STYLE_VERSION {
-        return Err(bad(
-            "style",
-            format!("unsupported template version {}, maximum supported is {}", tmpl.version, TROWEL_STYLE_VERSION),
-        ));
+        return Err(bad("style", format!("unsupported template version {}, maximum supported is {}", tmpl.version, TROWEL_STYLE_VERSION)));
     }
 
     Ok(tmpl)
@@ -131,12 +122,10 @@ fn export_template(s: &mut Session, p: &Value) -> Result<Value> {
         tmpl.legend_rows = rows;
     }
 
-    let json_str = serde_json::to_string_pretty(&tmpl)
-        .map_err(|e| EngineError::Other(format!("Failed to serialize template: {e}")))?;
+    let json_str = serde_json::to_string_pretty(&tmpl).map_err(|e| EngineError::Other(format!("Failed to serialize template: {e}")))?;
 
     if let Some(path_str) = p.get("path").and_then(Value::as_str) {
-        std::fs::write(path_str, &json_str)
-            .map_err(|e| EngineError::Other(format!("Failed to write template to {path_str}: {e}")))?;
+        std::fs::write(path_str, &json_str).map_err(|e| EngineError::Other(format!("Failed to write template to {path_str}: {e}")))?;
     }
 
     Ok(json!({
@@ -188,11 +177,7 @@ fn apply_template(s: &mut Session, p: &Value) -> Result<Value> {
                 "import_as_new_copy" => MergeAction::ImportAsNewCopy,
                 _ => MergeAction::Overwrite,
             };
-            resolutions.push(StyleMergeResolution {
-                category,
-                key,
-                action,
-            });
+            resolutions.push(StyleMergeResolution { category, key, action });
         }
     }
 
@@ -270,15 +255,8 @@ fn build_legend_vector_nodes(table: &LegendTable, alloc_id: &mut impl FnMut() ->
 
     // 1. Top bounding rule (0.7 pt)
     if opt.top_rule {
-        let top_path = PathData::single(SubPath::polyline(
-            &[Point::new(b.x0, b.y0), Point::new(b.x1, b.y0)],
-            false,
-        ));
-        nodes.push(Arc::new(Node::path(
-            alloc_id(),
-            top_path,
-            Appearance::basic(Paint::None, Paint::solid(Color::rgb(0.08, 0.08, 0.08)), 0.7),
-        )));
+        let top_path = PathData::single(SubPath::polyline(&[Point::new(b.x0, b.y0), Point::new(b.x1, b.y0)], false));
+        nodes.push(Arc::new(Node::path(alloc_id(), top_path, Appearance::basic(Paint::None, Paint::solid(Color::rgb(0.08, 0.08, 0.08)), 0.7))));
     }
 
     // 2. Entries
@@ -292,26 +270,26 @@ fn build_legend_vector_nodes(table: &LegendTable, alloc_id: &mut impl FnMut() ->
         match &entry.sample_kind {
             LegendSample::Line => {
                 let weight = entry.weight_pt.unwrap_or(0.5);
-                let swatch_line = PathData::single(SubPath::polyline(
-                    &[Point::new(swatch_x0, swatch_cy), Point::new(swatch_x1, swatch_cy)],
-                    false,
-                ));
+                let swatch_line = PathData::single(SubPath::polyline(&[Point::new(swatch_x0, swatch_cy), Point::new(swatch_x1, swatch_cy)], false));
                 let mut app = Appearance::basic(Paint::None, Paint::solid(Color::BLACK), weight);
-                if let Some(dashes) = entry.line_type.dash_pt() {
-                    if let Some(st) = app.stroke_mut() {
-                        st.dash = Some(vectorcraft_doc::Dash { pattern: dashes, ..Default::default() });
-                    }
+                if let Some(dashes) = entry.line_type.dash_pt()
+                    && let Some(st) = app.stroke_mut()
+                {
+                    st.dash = Some(vectorcraft_doc::Dash { pattern: dashes, ..Default::default() });
                 }
                 nodes.push(Arc::new(Node::path(alloc_id(), swatch_line, app)));
             }
             LegendSample::Area => {
                 let sh = opt.swatch_height_pt;
-                let swatch_rect = PathData::single(SubPath::polyline(&[
-                    Point::new(swatch_x0, swatch_cy - sh / 2.0),
-                    Point::new(swatch_x1, swatch_cy - sh / 2.0),
-                    Point::new(swatch_x1, swatch_cy + sh / 2.0),
-                    Point::new(swatch_x0, swatch_cy + sh / 2.0),
-                ], true));
+                let swatch_rect = PathData::single(SubPath::polyline(
+                    &[
+                        Point::new(swatch_x0, swatch_cy - sh / 2.0),
+                        Point::new(swatch_x1, swatch_cy - sh / 2.0),
+                        Point::new(swatch_x1, swatch_cy + sh / 2.0),
+                        Point::new(swatch_x0, swatch_cy + sh / 2.0),
+                    ],
+                    true,
+                ));
                 let app = Appearance::basic(Paint::solid(Color::rgb(0.92, 0.92, 0.90)), Paint::solid(Color::BLACK), 0.4);
                 nodes.push(Arc::new(Node::path(alloc_id(), swatch_rect, app)));
             }
@@ -343,15 +321,8 @@ fn build_legend_vector_nodes(table: &LegendTable, alloc_id: &mut impl FnMut() ->
 
     // 3. Bottom bounding rule (0.7 pt)
     if opt.bottom_rule {
-        let bottom_path = PathData::single(SubPath::polyline(
-            &[Point::new(b.x0, b.y1), Point::new(b.x1, b.y1)],
-            false,
-        ));
-        nodes.push(Arc::new(Node::path(
-            alloc_id(),
-            bottom_path,
-            Appearance::basic(Paint::None, Paint::solid(Color::rgb(0.08, 0.08, 0.08)), 0.7),
-        )));
+        let bottom_path = PathData::single(SubPath::polyline(&[Point::new(b.x0, b.y1), Point::new(b.x1, b.y1)], false));
+        nodes.push(Arc::new(Node::path(alloc_id(), bottom_path, Appearance::basic(Paint::None, Paint::solid(Color::rgb(0.08, 0.08, 0.08)), 0.7))));
     }
 
     nodes
@@ -360,10 +331,10 @@ fn build_legend_vector_nodes(table: &LegendTable, alloc_id: &mut impl FnMut() ->
 fn generate_legend(s: &mut Session, p: &Value) -> Result<Value> {
     let mut opts = LegendLayoutOptions::default();
 
-    if let Some(arr) = p.get("at").and_then(Value::as_array) {
-        if arr.len() >= 2 {
-            opts.origin = Point::new(arr[0].as_f64().unwrap_or(0.0), arr[1].as_f64().unwrap_or(0.0));
-        }
+    if let Some(arr) = p.get("at").and_then(Value::as_array)
+        && arr.len() >= 2
+    {
+        opts.origin = Point::new(arr[0].as_f64().unwrap_or(0.0), arr[1].as_f64().unwrap_or(0.0));
     }
     if let Some(w) = p.get("width").and_then(Value::as_f64) {
         opts.table_width_pt = w;
@@ -404,10 +375,10 @@ fn generate_legend(s: &mut Session, p: &Value) -> Result<Value> {
 
         // Place into active layer or topmost layer
         let target_layer = doc.layers.last_mut();
-        if let Some(layer) = target_layer {
-            if let Some(children) = Arc::make_mut(layer).children_mut() {
-                children.push(Arc::new(group_node));
-            }
+        if let Some(layer) = target_layer
+            && let Some(children) = Arc::make_mut(layer).children_mut()
+        {
+            children.push(Arc::new(group_node));
         }
 
         sel.objects = vec![group_id];
@@ -431,11 +402,11 @@ fn update_legend(s: &mut Session, p: &Value) -> Result<Value> {
     for layer in &doc_st.doc.layers {
         if let Some(ch) = layer.children() {
             for c in ch {
-                if target_id == Some(c.id) || (target_id.is_none() && c.name.as_deref() == Some(LEGEND_TABLE_TAG)) {
-                    if let Some(b) = c.geometric_bounds() {
-                        found_pos = Some((c.id, Point::new(b.x0, b.y0), b.width()));
-                        break;
-                    }
+                if (target_id == Some(c.id) || (target_id.is_none() && c.name.as_deref() == Some(LEGEND_TABLE_TAG)))
+                    && let Some(b) = c.geometric_bounds()
+                {
+                    found_pos = Some((c.id, Point::new(b.x0, b.y0), b.width()));
+                    break;
                 }
             }
         }
@@ -445,11 +416,7 @@ fn update_legend(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad("style.updateLegend", "no existing legend table found on canvas"));
     };
 
-    let opts = LegendLayoutOptions {
-        origin,
-        table_width_pt: width,
-        ..Default::default()
-    };
+    let opts = LegendLayoutOptions { origin, table_width_pt: width, ..Default::default() };
 
     let table = LegendTable::build_from_document(&doc_st.doc, &opts);
     let entry_count = table.entries.len();
@@ -468,10 +435,10 @@ fn update_legend(s: &mut Session, p: &Value) -> Result<Value> {
         let mut group_node = Node::group(group_id, child_nodes);
         group_node.name = Some(LEGEND_TABLE_TAG.to_string());
 
-        if let Some(layer) = doc.layers.last_mut() {
-            if let Some(children) = Arc::make_mut(layer).children_mut() {
-                children.push(Arc::new(group_node));
-            }
+        if let Some(layer) = doc.layers.last_mut()
+            && let Some(children) = Arc::make_mut(layer).children_mut()
+        {
+            children.push(Arc::new(group_node));
         }
 
         sel.objects = vec![group_id];

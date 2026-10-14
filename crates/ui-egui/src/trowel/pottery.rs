@@ -63,12 +63,7 @@ pub fn show_panel(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let prop_label_w = 60.0;
     let prop_val_w = r.width() - 24.0 - prop_label_w;
 
-    let props = [
-        ("기종", "심발"),
-        ("문양", "공열문 · 구연부 아래 한 줄"),
-        ("출토", feature.as_str()),
-        ("남은 정도", preservation_note.as_str()),
-    ];
+    let props = [("기종", "심발"), ("문양", "공열문 · 구연부 아래 한 줄"), ("출토", feature.as_str()), ("남은 정도", preservation_note.as_str())];
 
     for (label, val) in props {
         text(ui, pos2(r.left() + 14.0, cy + 10.0), Align2::LEFT_CENTER, label, font(11.0), t.text_dim);
@@ -87,22 +82,22 @@ pub fn show_panel(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let b2 = Rect::from_min_size(pos2(r.left() + 14.0 + btn_w + 6.0, cy), vec2(btn_w, 28.0));
     let b3 = Rect::from_min_size(pos2(r.left() + 14.0 + (btn_w + 6.0) * 2.0, cy), vec2(btn_w, 28.0));
 
-    if small_button(ui, wid("pottery-reflect-btn", ()), b1.left_center(), 28.0, "반쪽 대칭", true, &t).clicked() {
-        if let Some(ref vid) = vessel_id {
-            let _ = app.run("pottery.reflectExterior", json!({ "vesselId": vid }));
-        }
+    if small_button(ui, wid("pottery-reflect-btn", ()), b1.left_center(), 28.0, "반쪽 대칭", true, &t).clicked()
+        && let Some(ref vid) = vessel_id
+    {
+        let _ = app.run("pottery.reflectExterior", json!({ "vesselId": vid }));
     }
 
-    if small_button(ui, wid("pottery-hatch-btn", ()), b2.left_center(), 28.0, "단면 빗금", true, &t).clicked() {
-        if let Some(ref vid) = vessel_id {
-            let _ = app.run("pottery.wallHatch", json!({ "vesselId": vid, "fillMode": "hatch" }));
-        }
+    if small_button(ui, wid("pottery-hatch-btn", ()), b2.left_center(), 28.0, "단면 빗금", true, &t).clicked()
+        && let Some(ref vid) = vessel_id
+    {
+        let _ = app.run("pottery.wallHatch", json!({ "vesselId": vid, "fillMode": "hatch" }));
     }
 
-    if small_button(ui, wid("pottery-annot-btn", ()), b3.left_center(), 28.0, "계측선", true, &t).clicked() {
-        if let Some(ref vid) = vessel_id {
-            let _ = app.run("pottery.measurements", json!({ "vesselId": vid, "emitAnnotations": true }));
-        }
+    if small_button(ui, wid("pottery-annot-btn", ()), b3.left_center(), 28.0, "계측선", true, &t).clicked()
+        && let Some(ref vid) = vessel_id
+    {
+        let _ = app.run("pottery.measurements", json!({ "vesselId": vid, "emitAnnotations": true }));
     }
 }
 
@@ -114,11 +109,7 @@ pub fn show_control_bar(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
 
     x = text(ui, pos2(x, cy), Align2::LEFT_CENTER, "유물 실측 ›", bold(12.0), t.text).right() + 12.0;
 
-    let look = SegLook {
-        h: 24.0,
-        pad: 8.0,
-        font: font(11.0),
-    };
+    let look = SegLook { h: 24.0, pad: 8.0, font: font(11.0) };
 
     // Fill mode selector: [없음 | 검정 | 빗금]
     let fill_parts = [
@@ -134,10 +125,8 @@ pub fn show_control_bar(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     }
 
     // Section side selector: [오른쪽 | 왼쪽] per §14(3) default 오른쪽
-    let side_parts = [
-        Seg { key: "right", label: "단면: 오른쪽", on: true, soon: None },
-        Seg { key: "left", label: "단면: 왼쪽", on: false, soon: None },
-    ];
+    let side_parts =
+        [Seg { key: "right", label: "단면: 오른쪽", on: true, soon: None }, Seg { key: "left", label: "단면: 왼쪽", on: false, soon: None }];
     let (_, next_x) = segments(ui, "pottery-side-mode", pos2(x, cy), &look, &side_parts, &t);
     x = next_x + 16.0;
 

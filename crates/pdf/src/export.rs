@@ -1063,12 +1063,7 @@ impl Exporter<'_> {
                 if let Some(hpath) = to_path(&lines) {
                     s.set_fill(None);
                     let stroke_paint = rgb::Color::new(0, 0, 0).into();
-                    s.set_stroke(Some(Stroke {
-                        paint: stroke_paint,
-                        width: hatch.weight_pt as f32,
-                        opacity: norm(1.0),
-                        ..Default::default()
-                    }));
+                    s.set_stroke(Some(Stroke { paint: stroke_paint, width: hatch.weight_pt as f32, opacity: norm(1.0), ..Default::default() }));
                     s.draw_path(&hpath);
                 }
             }

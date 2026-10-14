@@ -7,9 +7,7 @@
 //! - `doc.graticuleTicks`: compute graticule border ticks at given meter intervals.
 
 use serde_json::{Value, json};
-use vectorcraft_doc::scale::{
-    CoordOrder, CoordSystem, ScaleConfig, ScaleRatio, compute_graticule_ticks,
-};
+use vectorcraft_doc::scale::{CoordOrder, CoordSystem, ScaleConfig, ScaleRatio, compute_graticule_ticks};
 use vectorcraft_geom::{Point, Rect};
 
 use super::*;
@@ -35,15 +33,7 @@ pub fn specs() -> Vec<CommandSpec> {
             has_doc,
             set_origin
         ),
-        cmd!(
-            "doc.getScale",
-            "Get Drawing Scale",
-            [],
-            None,
-            "{} get current drawing scale and coordinate system",
-            has_doc,
-            get_scale
-        ),
+        cmd!("doc.getScale", "Get Drawing Scale", [], None, "{} get current drawing scale and coordinate system", has_doc, get_scale),
         cmd!(
             "doc.coordToWorld",
             "Canvas To World Coordinates",
@@ -122,10 +112,7 @@ fn parse_world_coords(v: &Value) -> Option<(f64, f64)> {
 
 fn set_scale(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "doc.setScale";
-    let denom = p
-        .get("scale")
-        .and_then(parse_scale_denom)
-        .ok_or_else(|| bad(C, "missing or invalid `scale` (expected number or \"1:20\")"))?;
+    let denom = p.get("scale").and_then(parse_scale_denom).ok_or_else(|| bad(C, "missing or invalid `scale` (expected number or \"1:20\")"))?;
 
     let epsg = p.get("epsg").and_then(Value::as_u64).unwrap_or(5186) as u32;
     let order_str = p.get("order").and_then(Value::as_str).unwrap_or("eastnorth");
@@ -137,11 +124,7 @@ fn set_scale(s: &mut Session, p: &Value) -> Result<Value> {
     let doc = s.doc_mut()?;
     let mut config = doc.doc.scale.clone().unwrap_or_else(|| ScaleConfig::new(denom));
     config.scale = ScaleRatio::new(denom);
-    config.crs = CoordSystem {
-        epsg,
-        name: format!("EPSG:{epsg}"),
-        order,
-    };
+    config.crs = CoordSystem { epsg, name: format!("EPSG:{epsg}"), order };
     let label = config.scale.label();
     std::sync::Arc::make_mut(&mut doc.doc).scale = Some(config);
 
@@ -155,10 +138,7 @@ fn set_scale(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn set_origin(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "doc.setOrigin";
-    let canvas_pt = p
-        .get("canvas")
-        .and_then(parse_point)
-        .ok_or_else(|| bad(C, "missing or invalid `canvas` point ([x, y] or {x, y})"))?;
+    let canvas_pt = p.get("canvas").and_then(parse_point).ok_or_else(|| bad(C, "missing or invalid `canvas` point ([x, y] or {x, y})"))?;
 
     let world_coords = p
         .get("world")
@@ -227,16 +207,8 @@ fn coord_to_world(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn coord_to_canvas(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "doc.coordToCanvas";
-    let east = p
-        .get("east")
-        .or_else(|| p.get("x"))
-        .and_then(Value::as_f64)
-        .ok_or_else(|| bad(C, "missing `east` or `x`"))?;
-    let north = p
-        .get("north")
-        .or_else(|| p.get("y"))
-        .and_then(Value::as_f64)
-        .ok_or_else(|| bad(C, "missing `north` or `y`"))?;
+    let east = p.get("east").or_else(|| p.get("x")).and_then(Value::as_f64).ok_or_else(|| bad(C, "missing `east` or `x`"))?;
+    let north = p.get("north").or_else(|| p.get("y")).and_then(Value::as_f64).ok_or_else(|| bad(C, "missing `north` or `y`"))?;
 
     let doc = s.doc()?;
     let config = doc.doc.scale.as_ref().ok_or_else(|| bad(C, "document scale is not set"))?;

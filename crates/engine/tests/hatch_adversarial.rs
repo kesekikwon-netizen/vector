@@ -6,13 +6,11 @@
 
 use kurbo::{BezPath, PathEl, Point, Rect};
 use serde_json::json;
+use vectorcraft_doc::NodeId;
 use vectorcraft_doc::hatch::{HatchDirection, HatchStyle};
 use vectorcraft_doc::legend::MM;
-use vectorcraft_doc::NodeId;
 use vectorcraft_engine::Session;
-use vectorcraft_pathops::hatch::{
-    bipartite_2color, build_adjacency_graph, emit_hatch_lines, solve_face_hatching,
-};
+use vectorcraft_pathops::hatch::{bipartite_2color, build_adjacency_graph, emit_hatch_lines, solve_face_hatching};
 
 fn test_session() -> Session {
     let mut s = Session::new();
@@ -89,28 +87,48 @@ fn test_stress_k3_odd_cycle_detection_and_badge() {
 
     // 4. Verify through engine Session
     let mut s = test_session();
-    let r0 = s.execute("path.create", &json!({
-        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 50.0, "y": 0.0}, {"x": 100.0, "y": 50.0}],
-        "closed": true
-    })).unwrap();
+    let r0 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 50.0, "y": 50.0}, {"x": 50.0, "y": 0.0}, {"x": 100.0, "y": 50.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id0 = r0["id"].as_u64().unwrap();
 
-    let r1 = s.execute("path.create", &json!({
-        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 100.0, "y": 50.0}, {"x": 0.0, "y": 100.0}],
-        "closed": true
-    })).unwrap();
+    let r1 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 50.0, "y": 50.0}, {"x": 100.0, "y": 50.0}, {"x": 0.0, "y": 100.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id1 = r1["id"].as_u64().unwrap();
 
-    let r2 = s.execute("path.create", &json!({
-        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 0.0, "y": 100.0}, {"x": 50.0, "y": 0.0}],
-        "closed": true
-    })).unwrap();
+    let r2 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 50.0, "y": 50.0}, {"x": 0.0, "y": 100.0}, {"x": 50.0, "y": 0.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id2 = r2["id"].as_u64().unwrap();
 
-    let set_res = s.execute("hatch.set", &json!({
-        "direction": "alt",
-        "ids": [id0, id1, id2]
-    })).unwrap();
+    let set_res = s
+        .execute(
+            "hatch.set",
+            &json!({
+                "direction": "alt",
+                "ids": [id0, id1, id2]
+            }),
+        )
+        .unwrap();
 
     let conflicts = set_res["conflicts"].as_array().unwrap();
     assert!(!conflicts.is_empty(), "Engine hatch.set must return conflict ids for K3");
@@ -146,10 +164,15 @@ fn test_stress_p3_line_no_conflict() {
     let r2 = s.execute("shape.rectangle", &json!({"x": 100.0, "y": 0.0, "width": 50.0, "height": 50.0})).unwrap();
     let id2 = r2["id"].as_u64().unwrap();
 
-    let set_res = s.execute("hatch.set", &json!({
-        "direction": "alt",
-        "ids": [id0, id1, id2]
-    })).unwrap();
+    let set_res = s
+        .execute(
+            "hatch.set",
+            &json!({
+                "direction": "alt",
+                "ids": [id0, id1, id2]
+            }),
+        )
+        .unwrap();
 
     let conflicts = set_res["conflicts"].as_array().unwrap();
     assert!(conflicts.is_empty(), "P3 line has no odd cycles and must NOT have conflicts");
@@ -276,11 +299,7 @@ fn test_stress_island_holes_scanline_clipping() {
         for step in 0..=10 {
             let t = step as f64 / 10.0;
             let pt = Point::new(p1.x + t * (p2.x - p1.x), p1.y + t * (p2.y - p1.y));
-            assert!(
-                !hole.contains(pt),
-                "Hatch line segment ({:?} -> {:?}) penetrated interior of hole at {:?}",
-                p1, p2, pt
-            );
+            assert!(!hole.contains(pt), "Hatch line segment ({:?} -> {:?}) penetrated interior of hole at {:?}", p1, p2, pt);
         }
     }
 }
@@ -347,10 +366,7 @@ fn test_stress_line_emission_spacing_accuracy() {
     let normal_x = -1.0 / std::f64::consts::SQRT_2;
     let normal_y = 1.0 / std::f64::consts::SQRT_2;
 
-    let mut offsets: Vec<f64> = segs
-        .iter()
-        .map(|(p1, _)| p1.x * normal_x + p1.y * normal_y)
-        .collect();
+    let mut offsets: Vec<f64> = segs.iter().map(|(p1, _)| p1.x * normal_x + p1.y * normal_y).collect();
     offsets.sort_by(|a, b| a.total_cmp(b));
 
     // Remove duplicates (each line has 1 segment here)
@@ -391,22 +407,37 @@ fn test_stress_svg_and_pdf_real_vector_line_output() {
 fn test_challenge_multi_selection_conflict_suppression() {
     // 3 faces forming K3: A, B, C
     let mut s = test_session();
-    let r0 = s.execute("path.create", &json!({
-        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 50.0, "y": 0.0}, {"x": 100.0, "y": 50.0}],
-        "closed": true
-    })).unwrap();
+    let r0 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 50.0, "y": 50.0}, {"x": 50.0, "y": 0.0}, {"x": 100.0, "y": 50.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id0 = r0["id"].as_u64().unwrap();
 
-    let r1 = s.execute("path.create", &json!({
-        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 100.0, "y": 50.0}, {"x": 0.0, "y": 100.0}],
-        "closed": true
-    })).unwrap();
+    let r1 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 50.0, "y": 50.0}, {"x": 100.0, "y": 50.0}, {"x": 0.0, "y": 100.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id1 = r1["id"].as_u64().unwrap();
 
-    let r2 = s.execute("path.create", &json!({
-        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 0.0, "y": 100.0}, {"x": 50.0, "y": 0.0}],
-        "closed": true
-    })).unwrap();
+    let r2 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 50.0, "y": 50.0}, {"x": 0.0, "y": 100.0}, {"x": 50.0, "y": 0.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id2 = r2["id"].as_u64().unwrap();
 
     // 1. Set face A to Alternate
@@ -525,8 +556,8 @@ fn test_adversarial_empirical_svg_pdf_alternating_angles() {
     }
 
     // Verify alternation: one is 45° and the other is 135°
-    let is_45_135 = ((b1_first - 45.0).abs() < 1.0 && (b2_first - 135.0).abs() < 1.0)
-        || ((b1_first - 135.0).abs() < 1.0 && (b2_first - 45.0).abs() < 1.0);
+    let is_45_135 =
+        ((b1_first - 45.0).abs() < 1.0 && (b2_first - 135.0).abs() < 1.0) || ((b1_first - 135.0).abs() < 1.0 && (b2_first - 45.0).abs() < 1.0);
     assert!(is_45_135, "Box 1 ({b1_first}°) and Box 2 ({b2_first}°) must alternate between 45° and 135°!");
 
     // PDF verification
@@ -543,20 +574,35 @@ fn test_adversarial_empirical_svg_pdf_alternating_angles() {
 fn test_adversarial_disconnected_component_conflict_isolation() {
     let mut s = test_session();
     // Component 1: K3 (3 mutually touching triangles: A, B, C)
-    let r0 = s.execute("path.create", &json!({
-        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 50.0, "y": 0.0}, {"x": 100.0, "y": 50.0}],
-        "closed": true
-    })).unwrap();
+    let r0 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 50.0, "y": 50.0}, {"x": 50.0, "y": 0.0}, {"x": 100.0, "y": 50.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id0 = r0["id"].as_u64().unwrap();
-    let r1 = s.execute("path.create", &json!({
-        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 100.0, "y": 50.0}, {"x": 0.0, "y": 100.0}],
-        "closed": true
-    })).unwrap();
+    let r1 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 50.0, "y": 50.0}, {"x": 100.0, "y": 50.0}, {"x": 0.0, "y": 100.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id1 = r1["id"].as_u64().unwrap();
-    let r2 = s.execute("path.create", &json!({
-        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 0.0, "y": 100.0}, {"x": 50.0, "y": 0.0}],
-        "closed": true
-    })).unwrap();
+    let r2 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 50.0, "y": 50.0}, {"x": 0.0, "y": 100.0}, {"x": 50.0, "y": 0.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id2 = r2["id"].as_u64().unwrap();
 
     // Component 2: 2 adjacent squares (D and E), completely separate at (500, 500)
@@ -636,22 +682,37 @@ fn test_adversarial_multi_component_k3_c4_isolated_stress() {
     let mut s = test_session();
 
     // --- Component A: K3 (3 mutually touching triangles meeting at (50, 50)) ---
-    let ra0 = s.execute("path.create", &json!({
-        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 50.0, "y": 0.0}, {"x": 100.0, "y": 50.0}],
-        "closed": true
-    })).unwrap();
+    let ra0 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 50.0, "y": 50.0}, {"x": 50.0, "y": 0.0}, {"x": 100.0, "y": 50.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id_a0 = ra0["id"].as_u64().unwrap();
 
-    let ra1 = s.execute("path.create", &json!({
-        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 100.0, "y": 50.0}, {"x": 0.0, "y": 100.0}],
-        "closed": true
-    })).unwrap();
+    let ra1 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 50.0, "y": 50.0}, {"x": 100.0, "y": 50.0}, {"x": 0.0, "y": 100.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id_a1 = ra1["id"].as_u64().unwrap();
 
-    let ra2 = s.execute("path.create", &json!({
-        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 0.0, "y": 100.0}, {"x": 50.0, "y": 0.0}],
-        "closed": true
-    })).unwrap();
+    let ra2 = s
+        .execute(
+            "path.create",
+            &json!({
+                "anchors": [{"x": 50.0, "y": 50.0}, {"x": 0.0, "y": 100.0}, {"x": 50.0, "y": 0.0}],
+                "closed": true
+            }),
+        )
+        .unwrap();
     let id_a2 = ra2["id"].as_u64().unwrap();
 
     // --- Component B: C4 (4 adjacent squares in an even cycle at (300, 300)) ---
@@ -674,10 +735,15 @@ fn test_adversarial_multi_component_k3_c4_isolated_stress() {
     let id_c0 = rc0["id"].as_u64().unwrap();
 
     // Set ALL 8 faces to Alternate hatch mode
-    let set_res = s.execute("hatch.set", &json!({
-        "direction": "alt",
-        "ids": [id_a0, id_a1, id_a2, id_b0, id_b1, id_b2, id_b3, id_c0]
-    })).unwrap();
+    let set_res = s
+        .execute(
+            "hatch.set",
+            &json!({
+                "direction": "alt",
+                "ids": [id_a0, id_a1, id_a2, id_b0, id_b1, id_b2, id_b3, id_c0]
+            }),
+        )
+        .unwrap();
 
     let conflicts = set_res["conflicts"].as_array().unwrap();
     let conflict_ids: Vec<u64> = conflicts.iter().filter_map(|v| v.as_u64()).collect();
@@ -752,6 +818,3 @@ fn test_adversarial_multi_component_k3_c4_isolated_stress() {
     let pdf = vectorcraft_pdf::export(&doc.doc, &vectorcraft_pdf::PdfOptions::default()).unwrap();
     assert!(pdf.starts_with(b"%PDF-"), "PDF must have valid header");
 }
-
-
-

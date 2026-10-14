@@ -543,16 +543,7 @@ impl Renderer {
         let visible = inv.transform_rect_bbox(Rect::new(0.0, 0.0, w as f64, h as f64));
         let px = 1.0 / view.determinant().abs().sqrt().max(1e-12);
         let hatch_res = vectorcraft_pathops::hatch::resolve_document_hatching(doc);
-        let frame = Frame {
-            mt: threads > 0,
-            doc,
-            view,
-            visible,
-            px,
-            opts,
-            ink: Ink::Display,
-            hatch_dirs: Some(&hatch_res.effective_dirs),
-        };
+        let frame = Frame { mt: threads > 0, doc, view, visible, px, opts, ink: Ink::Display, hatch_dirs: Some(&hatch_res.effective_dirs) };
         self.stamp += 1;
         // View Opacity Mask: the mask's coverage in greyscale instead of the artwork.
         if let Some(m) = opts.mask_view.and_then(|id| doc.node(id)).and_then(|n| n.mask.as_deref()) {
@@ -731,7 +722,16 @@ impl Renderer {
             ctx.fill_rect(&kurbo::Rect::new(0.0, 0.0, w as f64, w as f64));
         }
         let hatch_res = vectorcraft_pathops::hatch::resolve_document_hatching(doc);
-        let frame = Frame { mt: false, doc, view, visible: b.inflate(1.0, 1.0), px: 1.0 / s, opts: &RenderOptions::default(), ink: Ink::Display, hatch_dirs: Some(&hatch_res.effective_dirs) };
+        let frame = Frame {
+            mt: false,
+            doc,
+            view,
+            visible: b.inflate(1.0, 1.0),
+            px: 1.0 / s,
+            opts: &RenderOptions::default(),
+            ink: Ink::Display,
+            hatch_dirs: Some(&hatch_res.effective_dirs),
+        };
         (self.knockout, self.nested, self.backdrop) = (false, 0, None);
         self.clip_paths.clear();
         self.draw_node(&mut ctx, &frame, n, true);

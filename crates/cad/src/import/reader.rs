@@ -91,22 +91,14 @@ pub(crate) fn decode(bytes: &[u8], enc: CadEncoding) -> Cow<'_, str> {
             let (cow, _, _) = encoding_rs::EUC_KR.decode(bytes);
             Cow::Owned(cow.into_owned())
         }
-        CadEncoding::Windows1252 => {
-            Cow::Owned(bytes.iter().map(|b| windows_1252(*b)).collect())
-        }
-        CadEncoding::Auto => {
-            match std::str::from_utf8(bytes) {
-                Ok(s) => Cow::Borrowed(s),
-                Err(_) => {
-                    let (cow, _, had_errors) = encoding_rs::EUC_KR.decode(bytes);
-                    if !had_errors {
-                        Cow::Owned(cow.into_owned())
-                    } else {
-                        Cow::Owned(bytes.iter().map(|b| windows_1252(*b)).collect())
-                    }
-                }
+        CadEncoding::Windows1252 => Cow::Owned(bytes.iter().map(|b| windows_1252(*b)).collect()),
+        CadEncoding::Auto => match std::str::from_utf8(bytes) {
+            Ok(s) => Cow::Borrowed(s),
+            Err(_) => {
+                let (cow, _, had_errors) = encoding_rs::EUC_KR.decode(bytes);
+                if !had_errors { Cow::Owned(cow.into_owned()) } else { Cow::Owned(bytes.iter().map(|b| windows_1252(*b)).collect()) }
             }
-        }
+        },
     }
 }
 
@@ -322,15 +314,7 @@ impl<'a> Drawing<'a> {
                 let path = r.g.name(1).unwrap_or("").to_string();
                 let width = r.g.int_or(10, 0).max(0) as u32;
                 let height = r.g.int_or(20, 0).max(0) as u32;
-                d.imagedefs.insert(
-                    h.to_uppercase(),
-                    ImageDef {
-                        handle: h.to_string(),
-                        path,
-                        width,
-                        height,
-                    },
-                );
+                d.imagedefs.insert(h.to_uppercase(), ImageDef { handle: h.to_string(), path, width, height });
             }
         }
         d.read_blocks(&blocks, &mut block_records);

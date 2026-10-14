@@ -40,10 +40,8 @@ impl ScaleRatio {
     pub const S1_500: Self = Self { denom: 500.0 };
     pub const S1_1000: Self = Self { denom: 1000.0 };
 
-    pub const PRESETS: [Self; 10] = [
-        Self::S1_1, Self::S1_2, Self::S1_5, Self::S1_10, Self::S1_20,
-        Self::S1_50, Self::S1_100, Self::S1_200, Self::S1_500, Self::S1_1000,
-    ];
+    pub const PRESETS: [Self; 10] =
+        [Self::S1_1, Self::S1_2, Self::S1_5, Self::S1_10, Self::S1_20, Self::S1_50, Self::S1_100, Self::S1_200, Self::S1_500, Self::S1_1000];
 
     pub fn new(denom: f64) -> Self {
         Self { denom: denom.max(0.001) }
@@ -51,11 +49,7 @@ impl ScaleRatio {
 
     /// Label formatted as "1:20".
     pub fn label(self) -> String {
-        if (self.denom.fract()).abs() < 1e-4 {
-            format!("1:{:.0}", self.denom)
-        } else {
-            format!("1:{:.2}", self.denom)
-        }
+        if (self.denom.fract()).abs() < 1e-4 { format!("1:{:.0}", self.denom) } else { format!("1:{:.2}", self.denom) }
     }
 
     /// Points per world meter on the paper.
@@ -97,11 +91,7 @@ pub struct CoordSystem {
 
 impl Default for CoordSystem {
     fn default() -> Self {
-        Self {
-            epsg: 5186,
-            name: "EPSG:5186 (중부원점 2010)".to_string(),
-            order: CoordOrder::EastNorth,
-        }
+        Self { epsg: 5186, name: "EPSG:5186 (중부원점 2010)".to_string(), order: CoordOrder::EastNorth }
     }
 }
 
@@ -124,23 +114,13 @@ pub struct ScaleConfig {
 
 impl Default for ScaleConfig {
     fn default() -> Self {
-        Self {
-            scale: ScaleRatio::default(),
-            crs: CoordSystem::default(),
-            canvas_origin: Point::new(0.0, 0.0),
-            world_origin: (0.0, 0.0),
-        }
+        Self { scale: ScaleRatio::default(), crs: CoordSystem::default(), canvas_origin: Point::new(0.0, 0.0), world_origin: (0.0, 0.0) }
     }
 }
 
 impl ScaleConfig {
     pub fn new(scale_denom: f64) -> Self {
-        Self {
-            scale: ScaleRatio::new(scale_denom),
-            crs: CoordSystem::default(),
-            canvas_origin: Point::new(0.0, 0.0),
-            world_origin: (0.0, 0.0),
-        }
+        Self { scale: ScaleRatio::new(scale_denom), crs: CoordSystem::default(), canvas_origin: Point::new(0.0, 0.0), world_origin: (0.0, 0.0) }
     }
 
     /// Sets the real-world control origin: maps `canvas_pt` to world `(east_m, north_m)`.

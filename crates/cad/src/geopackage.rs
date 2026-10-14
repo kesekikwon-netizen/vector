@@ -9,15 +9,19 @@ use vectorcraft_doc::hatch::{HatchDirection, HatchStyle};
 use vectorcraft_doc::scale::ScaleConfig;
 use vectorcraft_doc::{Legend, LegendGroup, LegendSample, LineType};
 
+pub type GpkgPoint3 = (f64, f64, Option<f64>);
+pub type GpkgRing = Vec<GpkgPoint3>;
+pub type GpkgPolygonRings = Vec<GpkgRing>;
+
 /// Supported geometry types in GeoPackage feature tables.
 #[derive(Clone, Debug, PartialEq)]
 pub enum GpkgGeometry {
     Point { x: f64, y: f64, z: Option<f64> },
-    LineString { points: Vec<(f64, f64, Option<f64>)> },
-    Polygon { rings: Vec<Vec<(f64, f64, Option<f64>)>> },
-    MultiPoint { points: Vec<(f64, f64, Option<f64>)> },
-    MultiLineString { lines: Vec<Vec<(f64, f64, Option<f64>)>> },
-    MultiPolygon { polygons: Vec<Vec<Vec<(f64, f64, Option<f64>)>>> },
+    LineString { points: Vec<GpkgPoint3> },
+    Polygon { rings: GpkgPolygonRings },
+    MultiPoint { points: Vec<GpkgPoint3> },
+    MultiLineString { lines: Vec<GpkgRing> },
+    MultiPolygon { polygons: Vec<GpkgPolygonRings> },
 }
 
 impl GpkgGeometry {
@@ -75,11 +79,7 @@ impl GpkgGeometry {
             }
         }
 
-        if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite() {
-            Some([min_x, min_y, max_x, max_y])
-        } else {
-            None
-        }
+        if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite() { Some([min_x, min_y, max_x, max_y]) } else { None }
     }
 
     /// Converts world geometry to a `BezPath` in document points using the given `ScaleConfig`.
@@ -178,9 +178,7 @@ impl StrataLayerKind {
     pub fn classify(table_name: &str) -> Self {
         let lower = table_name.trim().to_ascii_lowercase();
         match lower.as_str() {
-            "tr_investigation_boundary" | "survey_area" | "조사구역" | "조사구역경계" => {
-                Self::InvestigationBoundary
-            }
+            "tr_investigation_boundary" | "survey_area" | "조사구역" | "조사구역경계" => Self::InvestigationBoundary,
             "tr_grid" | "trial_trench" | "grid" | "grids" | "시굴격자" | "격자" => Self::Grid,
             "tr_remains_polygon"
             | "feature_poly"
@@ -197,35 +195,14 @@ impl StrataLayerKind {
             | "주거지_외곽선"
             | "주거지외곽선"
             | "수혈유구" => Self::RemainsPolygon,
-            "tr_remains_center"
-            | "remains_center"
-            | "feature_center"
-            | "유구_중심점"
-            | "유구중심점" => Self::RemainsCenter,
-            "tr_elevation_point"
-            | "elevation_point"
-            | "elevation_points"
-            | "spot_elevation"
-            | "spot_elevations"
-            | "표고점"
-            | "표고실측점" => Self::ElevationPoint,
-            "tr_strata_section"
-            | "section_line"
-            | "section_lines"
-            | "단면선"
-            | "단면위치선"
-            | "토층단면선" => Self::StrataSection,
-            "tr_artifact_point"
-            | "artifact_point"
-            | "artifact_points"
-            | "finds_point"
-            | "finds_points"
-            | "artifact_finds"
-            | "유물"
-            | "유물출토위치" => Self::ArtifactPoint,
-            "control_points" | "control_point" | "tr_control_point" | "기준점" => {
-                Self::ControlPoint
+            "tr_remains_center" | "remains_center" | "feature_center" | "유구_중심점" | "유구중심점" => Self::RemainsCenter,
+            "tr_elevation_point" | "elevation_point" | "elevation_points" | "spot_elevation" | "spot_elevations" | "표고점" | "표고실측점" => {
+                Self::ElevationPoint
             }
+            "tr_strata_section" | "section_line" | "section_lines" | "단면선" | "단면위치선" | "토층단면선" => Self::StrataSection,
+            "tr_artifact_point" | "artifact_point" | "artifact_points" | "finds_point" | "finds_points" | "artifact_finds" | "유물"
+            | "유물출토위치" => Self::ArtifactPoint,
+            "control_points" | "control_point" | "tr_control_point" | "기준점" => Self::ControlPoint,
             _ => Self::Other,
         }
     }
@@ -326,49 +303,25 @@ pub fn resolve_feature_hatch(feature_type: &str) -> Option<HatchStyle> {
         None
     } else if lower.contains("수혈") || lower.contains("pit") {
         // 수혈: ╱ 45°
-        Some(HatchStyle {
-            direction: HatchDirection::Deg45,
-            spacing_mm: 1.0,
-            weight_pt: 0.1,
-            flipped: false,
-            resolved_direction: None,
-        })
-    } else if lower.contains("분묘") || lower.contains("석관묘") || lower.contains("목관묘") || lower.contains("고분") || lower.contains("tomb") || lower.contains("grave") {
+        Some(HatchStyle { direction: HatchDirection::Deg45, spacing_mm: 1.0, weight_pt: 0.1, flipped: false, resolved_direction: None })
+    } else if lower.contains("분묘")
+        || lower.contains("석관묘")
+        || lower.contains("목관묘")
+        || lower.contains("고분")
+        || lower.contains("tomb")
+        || lower.contains("grave")
+    {
         // 분묘: ╲ 135°
-        Some(HatchStyle {
-            direction: HatchDirection::Deg135,
-            spacing_mm: 1.0,
-            weight_pt: 0.1,
-            flipped: false,
-            resolved_direction: None,
-        })
+        Some(HatchStyle { direction: HatchDirection::Deg135, spacing_mm: 1.0, weight_pt: 0.1, flipped: false, resolved_direction: None })
     } else if (lower.contains("구") && !lower.contains("유구")) || lower.contains("furrow") {
         // 구: ─ 0° (guard against generic '유구')
-        Some(HatchStyle {
-            direction: HatchDirection::Deg0,
-            spacing_mm: 1.0,
-            weight_pt: 0.1,
-            flipped: false,
-            resolved_direction: None,
-        })
+        Some(HatchStyle { direction: HatchDirection::Deg0, spacing_mm: 1.0, weight_pt: 0.1, flipped: false, resolved_direction: None })
     } else if lower.contains("도랑") || lower.contains("ditch") || lower.contains("channel") {
         // 도랑: │ 90°
-        Some(HatchStyle {
-            direction: HatchDirection::Deg90,
-            spacing_mm: 1.0,
-            weight_pt: 0.1,
-            flipped: false,
-            resolved_direction: None,
-        })
+        Some(HatchStyle { direction: HatchDirection::Deg90, spacing_mm: 1.0, weight_pt: 0.1, flipped: false, resolved_direction: None })
     } else if lower.contains("가마") || lower.contains("kiln") || lower.contains("furnace") {
         // 가마: ┼
-        Some(HatchStyle {
-            direction: HatchDirection::Cross,
-            spacing_mm: 1.0,
-            weight_pt: 0.1,
-            flipped: false,
-            resolved_direction: None,
-        })
+        Some(HatchStyle { direction: HatchDirection::Cross, spacing_mm: 1.0, weight_pt: 0.1, flipped: false, resolved_direction: None })
     } else {
         None
     }
@@ -446,9 +399,9 @@ pub fn parse_gpkg_header(bytes: &[u8]) -> Option<(i32, bool, &[u8])> {
 
     let env_len = match env_indicator {
         0 => 0,
-        1 => 32, // min_x, max_x, min_y, max_y (4 * f64)
+        1 => 32,     // min_x, max_x, min_y, max_y (4 * f64)
         2 | 3 => 48, // with z or m (6 * f64)
-        4 => 64, // with z and m (8 * f64)
+        4 => 64,     // with z and m (8 * f64)
         _ => return None,
     };
 
@@ -478,13 +431,8 @@ fn parse_wkb_element(bytes: &[u8], cursor: &mut usize) -> Option<GpkgGeometry> {
     *cursor += 4;
 
     // Check for 3D indicators: ISO 1000..1999 or EWKB 0x80000000 bit
-    let has_z = (raw_geom_type >= 1000 && raw_geom_type < 2000)
-        || ((raw_geom_type & 0x8000_0000) != 0);
-    let base_type = if raw_geom_type >= 1000 && raw_geom_type < 2000 {
-        raw_geom_type - 1000
-    } else {
-        raw_geom_type & 0x0FFF
-    };
+    let has_z = (1000..2000).contains(&raw_geom_type) || ((raw_geom_type & 0x8000_0000) != 0);
+    let base_type = if (1000..2000).contains(&raw_geom_type) { raw_geom_type - 1000 } else { raw_geom_type & 0x0FFF };
 
     match base_type {
         1 => {
@@ -609,23 +557,16 @@ impl GpkgReader {
     /// Open a GeoPackage file strictly read-only.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, String> {
         let p = path.as_ref().to_path_buf();
-        let conn = rusqlite::Connection::open_with_flags(
-            &p,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-        )
-        .map_err(|e| format!("Failed to open GeoPackage at {}: {e}", p.display()))?;
+        let conn = rusqlite::Connection::open_with_flags(&p, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| format!("Failed to open GeoPackage at {}: {e}", p.display()))?;
 
         Ok(Self { conn, path: p })
     }
 
     /// Open an in-memory database for testing.
     pub fn open_in_memory() -> Result<Self, String> {
-        let conn = rusqlite::Connection::open_in_memory()
-            .map_err(|e| format!("Failed to create in-memory sqlite: {e}"))?;
-        Ok(Self {
-            conn,
-            path: PathBuf::from(":memory:"),
-        })
+        let conn = rusqlite::Connection::open_in_memory().map_err(|e| format!("Failed to create in-memory sqlite: {e}"))?;
+        Ok(Self { conn, path: PathBuf::from(":memory:") })
     }
 
     /// Access reference to underlying SQLite connection (for test seeding).
@@ -638,18 +579,14 @@ impl GpkgReader {
         let mut srs_id = 5186;
         let mut srs_name = "EPSG:5186 (중부원점 2010)".to_string();
 
-        if let Ok(mut stmt) = self
-            .conn
-            .prepare("SELECT srs_id, srs_name FROM gpkg_spatial_ref_sys WHERE srs_id != 0 AND srs_id != -1 LIMIT 1")
+        if let Ok(mut stmt) = self.conn.prepare("SELECT srs_id, srs_name FROM gpkg_spatial_ref_sys WHERE srs_id != 0 AND srs_id != -1 LIMIT 1")
+            && let Ok(mut rows) = stmt.query([])
+            && let Ok(Some(row)) = rows.next()
         {
-            if let Ok(mut rows) = stmt.query([]) {
-                if let Ok(Some(row)) = rows.next() {
-                    let id: i32 = row.get(0).unwrap_or(5186);
-                    let name: String = row.get(1).unwrap_or_else(|_| "EPSG:5186".to_string());
-                    srs_id = id;
-                    srs_name = name;
-                }
-            }
+            let id: i32 = row.get(0).unwrap_or(5186);
+            let name: String = row.get(1).unwrap_or_else(|_| "EPSG:5186".to_string());
+            srs_id = id;
+            srs_name = name;
         }
 
         let mut layers = Vec::new();
@@ -677,10 +614,7 @@ impl GpkgReader {
                     let (table_name, min_x, min_y, max_x, max_y, layer_srs, geom_type) = item;
 
                     let count_query = format!("SELECT COUNT(*) FROM \"{}\"", table_name);
-                    let count: usize = self
-                        .conn
-                        .query_row(&count_query, [], |r| r.get(0))
-                        .unwrap_or(0);
+                    let count: usize = self.conn.query_row(&count_query, [], |r| r.get(0)).unwrap_or(0);
 
                     total_features += count;
                     let kind = StrataLayerKind::classify(&table_name);
@@ -704,44 +638,23 @@ impl GpkgReader {
             }
         }
 
-        let survey_name = self
-            .path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Strata Survey")
-            .to_string();
+        let survey_name = self.path.file_stem().and_then(|s| s.to_str()).unwrap_or("Strata Survey").to_string();
 
-        Ok(GpkgSurveyInfo {
-            name: survey_name,
-            path: self.path.clone(),
-            srs_id,
-            srs_name,
-            layers,
-            total_features,
-            read_only: true,
-        })
+        Ok(GpkgSurveyInfo { name: survey_name, path: self.path.clone(), srs_id, srs_name, layers, total_features, read_only: true })
     }
 
     /// Read all features from a table.
     pub fn read_layer_features(&self, table_name: &str) -> Result<Vec<GpkgFeature>, String> {
         let geom_col_query = "SELECT column_name FROM gpkg_geometry_columns WHERE table_name = ?1";
-        let geom_col: String = self
-            .conn
-            .query_row(geom_col_query, [&table_name], |r| r.get(0))
-            .unwrap_or_else(|_| "geom".to_string());
+        let geom_col: String = self.conn.query_row(geom_col_query, [&table_name], |r| r.get(0)).unwrap_or_else(|_| "geom".to_string());
 
         let query = format!("SELECT * FROM \"{}\"", table_name);
-        let mut stmt = self
-            .conn
-            .prepare(&query)
-            .map_err(|e| format!("Failed to prepare query on {table_name}: {e}"))?;
+        let mut stmt = self.conn.prepare(&query).map_err(|e| format!("Failed to prepare query on {table_name}: {e}"))?;
 
         let col_count = stmt.column_count();
         let col_names: Vec<String> = stmt.column_names().into_iter().map(String::from).collect();
 
-        let mut rows = stmt
-            .query([])
-            .map_err(|e| format!("Query failed on {table_name}: {e}"))?;
+        let mut rows = stmt.query([]).map_err(|e| format!("Query failed on {table_name}: {e}"))?;
 
         let mut features = Vec::new();
 
@@ -769,24 +682,16 @@ impl GpkgReader {
                             attrs.insert(col_name.to_string(), serde_json::Value::Number(num));
                         }
                     } else if let Ok(val_i64) = row.get::<_, i64>(i) {
-                        attrs.insert(
-                            col_name.to_string(),
-                            serde_json::Value::Number(val_i64.into()),
-                        );
+                        attrs.insert(col_name.to_string(), serde_json::Value::Number(val_i64.into()));
                     }
                 }
             }
 
-            if let Some(blob) = geometry_blob {
-                if let Some((_srs, _is_empty, wkb)) = parse_gpkg_header(&blob) {
-                    if let Some(geom) = parse_wkb(wkb) {
-                        features.push(GpkgFeature {
-                            id: feature_id,
-                            geometry: geom,
-                            attributes: attrs,
-                        });
-                    }
-                }
+            if let Some(blob) = geometry_blob
+                && let Some((_srs, _is_empty, wkb)) = parse_gpkg_header(&blob)
+                && let Some(geom) = parse_wkb(wkb)
+            {
+                features.push(GpkgFeature { id: feature_id, geometry: geom, attributes: attrs });
             }
         }
 
@@ -863,10 +768,8 @@ pub fn create_sample_gpkg(path: &Path) -> Result<(), String> {
         poly_blob.extend_from_slice(&y.to_le_bytes());
     }
 
-    conn.execute(
-        "INSERT INTO dwelling_perimeter (geom, feature_name) VALUES (?1, ?2)",
-        rusqlite::params![poly_blob, "1호 주거지"],
-    ).map_err(|e| e.to_string())?;
+    conn.execute("INSERT INTO dwelling_perimeter (geom, feature_name) VALUES (?1, ?2)", rusqlite::params![poly_blob, "1호 주거지"])
+        .map_err(|e| e.to_string())?;
 
     let mut pt_blob = vec![0x47, 0x50, 0x00, 0x01];
     pt_blob.extend_from_slice(&5186i32.to_le_bytes());
@@ -875,10 +778,8 @@ pub fn create_sample_gpkg(path: &Path) -> Result<(), String> {
     pt_blob.extend_from_slice(&105.0f64.to_le_bytes());
     pt_blob.extend_from_slice(&205.0f64.to_le_bytes());
 
-    conn.execute(
-        "INSERT INTO elevation_points (geom, elevation) VALUES (?1, ?2)",
-        rusqlite::params![pt_blob, 152.45f64],
-    ).map_err(|e| e.to_string())?;
+    conn.execute("INSERT INTO elevation_points (geom, elevation) VALUES (?1, ?2)", rusqlite::params![pt_blob, 152.45f64])
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -955,7 +856,8 @@ pub fn create_7layers_sample_gpkg(path: &Path) -> Result<(), String> {
         INSERT INTO gpkg_geometry_columns VALUES ('tr_artifact_point', 'geom', 'POINT', 5186, 0, 0);
         CREATE TABLE tr_artifact_point (id INTEGER PRIMARY KEY, geom BLOB, find_number TEXT);
         ",
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     // Insert a pit polygon ("1호 수혈") into tr_remains_polygon
     let mut pit_blob = vec![0x47, 0x50, 0x00, 0x01];
@@ -971,7 +873,8 @@ pub fn create_7layers_sample_gpkg(path: &Path) -> Result<(), String> {
     conn.execute(
         "INSERT INTO tr_remains_polygon (geom, feature_name, feature_type) VALUES (?1, ?2, ?3)",
         rusqlite::params![pit_blob, "1호 수혈", "수혈"],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     // Insert a dwelling polygon ("1호 주거지") into tr_remains_polygon
     let mut house_blob = vec![0x47, 0x50, 0x00, 0x01];
@@ -987,11 +890,11 @@ pub fn create_7layers_sample_gpkg(path: &Path) -> Result<(), String> {
     conn.execute(
         "INSERT INTO tr_remains_polygon (geom, feature_name, feature_type) VALUES (?1, ?2, ?3)",
         rusqlite::params![house_blob, "1호 주거지", "주거지"],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
-
 
 #[cfg(target_arch = "wasm32")]
 impl GpkgReader {
@@ -1084,34 +987,13 @@ mod tests {
 
     #[test]
     fn test_strata_layer_classification() {
-        assert_eq!(
-            StrataLayerKind::classify("tr_remains_polygon"),
-            StrataLayerKind::RemainsPolygon
-        );
-        assert_eq!(
-            StrataLayerKind::classify("tr_investigation_boundary"),
-            StrataLayerKind::InvestigationBoundary
-        );
-        assert_eq!(
-            StrataLayerKind::classify("tr_strata_section"),
-            StrataLayerKind::StrataSection
-        );
-        assert_eq!(
-            StrataLayerKind::classify("tr_artifact_point"),
-            StrataLayerKind::ArtifactPoint
-        );
-        assert_eq!(
-            StrataLayerKind::classify("tr_elevation_point"),
-            StrataLayerKind::ElevationPoint
-        );
-        assert_eq!(
-            StrataLayerKind::classify("dwelling_perimeter"),
-            StrataLayerKind::RemainsPolygon
-        );
-        assert_eq!(
-            StrataLayerKind::classify("elevation_points"),
-            StrataLayerKind::ElevationPoint
-        );
+        assert_eq!(StrataLayerKind::classify("tr_remains_polygon"), StrataLayerKind::RemainsPolygon);
+        assert_eq!(StrataLayerKind::classify("tr_investigation_boundary"), StrataLayerKind::InvestigationBoundary);
+        assert_eq!(StrataLayerKind::classify("tr_strata_section"), StrataLayerKind::StrataSection);
+        assert_eq!(StrataLayerKind::classify("tr_artifact_point"), StrataLayerKind::ArtifactPoint);
+        assert_eq!(StrataLayerKind::classify("tr_elevation_point"), StrataLayerKind::ElevationPoint);
+        assert_eq!(StrataLayerKind::classify("dwelling_perimeter"), StrataLayerKind::RemainsPolygon);
+        assert_eq!(StrataLayerKind::classify("elevation_points"), StrataLayerKind::ElevationPoint);
     }
 
     #[test]
@@ -1156,12 +1038,7 @@ mod tests {
         }
 
         // Malformed magic
-        let bad_magics = [
-            [0x00, 0x00],
-            [0x47, 0x00],
-            [0x00, 0x50],
-            [0xFF, 0xFF],
-        ];
+        let bad_magics = [[0x00, 0x00], [0x47, 0x00], [0x00, 0x50], [0xFF, 0xFF]];
         for magic in bad_magics {
             let mut bad_buf = buf_le.clone();
             bad_buf[0] = magic[0];
@@ -1189,19 +1066,13 @@ mod tests {
         pt_le.extend_from_slice(&1u32.to_le_bytes());
         pt_le.extend_from_slice(&123.456_f64.to_le_bytes());
         pt_le.extend_from_slice(&789.012_f64.to_le_bytes());
-        assert_eq!(
-            parse_wkb(&pt_le),
-            Some(GpkgGeometry::Point { x: 123.456, y: 789.012, z: None })
-        );
+        assert_eq!(parse_wkb(&pt_le), Some(GpkgGeometry::Point { x: 123.456, y: 789.012, z: None }));
 
         let mut pt_be = vec![0x00];
         pt_be.extend_from_slice(&1u32.to_be_bytes());
         pt_be.extend_from_slice(&123.456_f64.to_be_bytes());
         pt_be.extend_from_slice(&789.012_f64.to_be_bytes());
-        assert_eq!(
-            parse_wkb(&pt_be),
-            Some(GpkgGeometry::Point { x: 123.456, y: 789.012, z: None })
-        );
+        assert_eq!(parse_wkb(&pt_be), Some(GpkgGeometry::Point { x: 123.456, y: 789.012, z: None }));
 
         // 2. LineString Big-Endian and Little-Endian
         let mut line_be = vec![0x00];
@@ -1211,12 +1082,7 @@ mod tests {
         line_be.extend_from_slice(&20.0_f64.to_be_bytes());
         line_be.extend_from_slice(&30.0_f64.to_be_bytes());
         line_be.extend_from_slice(&40.0_f64.to_be_bytes());
-        assert_eq!(
-            parse_wkb(&line_be),
-            Some(GpkgGeometry::LineString {
-                points: vec![(10.0, 20.0, None), (30.0, 40.0, None)]
-            })
-        );
+        assert_eq!(parse_wkb(&line_be), Some(GpkgGeometry::LineString { points: vec![(10.0, 20.0, None), (30.0, 40.0, None)] }));
 
         // 3. Polygon with Outer and Inner Rings (Big-Endian & Little-Endian)
         let mut poly_le = vec![0x01];
@@ -1376,19 +1242,13 @@ mod tests {
             _ => panic!("Expected Polygon"),
         };
 
-        assert!(
-            (area - 32.91).abs() < 0.01,
-            "House 1 12-vertex area must equal 32.91 ㎡ ± 0.01 ㎡, got {area:.4} ㎡"
-        );
+        assert!((area - 32.91).abs() < 0.01, "House 1 12-vertex area must equal 32.91 ㎡ ± 0.01 ㎡, got {area:.4} ㎡");
     }
 
     #[test]
     #[cfg(not(target_arch = "wasm32"))]
     fn test_stress_readonly_sqlite_guarantees() {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
         let db_path = std::env::temp_dir().join(format!("test_readonly_gpkg_{}.gpkg", now));
         create_sample_gpkg(&db_path).unwrap();
 
@@ -1400,16 +1260,10 @@ mod tests {
 
         // 2. Attempt mutation: open separate connection or try to mutate
         // With SQLITE_OPEN_READ_ONLY, trying to execute write statements fails
-        let write_res = reader.conn.execute(
-            "INSERT INTO dwelling_perimeter (feature_name) VALUES ('mutation_attempt')",
-            [],
-        );
+        let write_res = reader.conn.execute("INSERT INTO dwelling_perimeter (feature_name) VALUES ('mutation_attempt')", []);
         assert!(write_res.is_err(), "Write on read-only connection must fail");
         let err_msg = write_res.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("readonly") || err_msg.contains("read-only"),
-            "Error must specify readonly database, got: {err_msg}"
-        );
+        assert!(err_msg.contains("readonly") || err_msg.contains("read-only"), "Error must specify readonly database, got: {err_msg}");
 
         // 3. Opening non-existent file in read-only mode must fail and NOT create a new file
         let bogus_path = std::env::temp_dir().join(format!("non_existent_{}.gpkg", now));

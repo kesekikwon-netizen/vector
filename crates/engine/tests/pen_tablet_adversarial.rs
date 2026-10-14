@@ -13,16 +13,9 @@ use serde_json::json;
 use vectorcraft_doc::{Document, Selection, Unit};
 use vectorcraft_engine::{Session, ViewInfo};
 use vectorcraft_tools::pen::PenTool;
-use vectorcraft_tools::{
-    Action, PaintDefaults, PointerEvent, PointerKind, Tool, ToolContext,
-};
+use vectorcraft_tools::{Action, PaintDefaults, PointerEvent, PointerKind, Tool, ToolContext};
 
-fn make_tool_context<'a>(
-    doc: &'a Document,
-    selection: &'a Selection,
-    paint: &'a PaintDefaults,
-    zoom: f64,
-) -> ToolContext<'a> {
+fn make_tool_context<'a>(doc: &'a Document, selection: &'a Selection, paint: &'a PaintDefaults, zoom: f64) -> ToolContext<'a> {
     ToolContext {
         doc,
         revision: (1, 1),
@@ -325,4 +318,3 @@ fn test_barrel_button_1_in_idle_or_non_drawing_state() {
     assert!(res.is_ok() || res.is_err());
     assert_eq!(s.tool_id(), "zoom");
 }
-

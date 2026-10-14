@@ -6,19 +6,14 @@
 #![allow(clippy::all)]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use std::path::{Path, PathBuf};
 use kurbo::Shape;
 use serde_json::json;
+use std::path::{Path, PathBuf};
 
 use super::common::*;
 
 fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf()
+    Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap().to_path_buf()
 }
 
 // =========================================================================
@@ -365,7 +360,7 @@ fn test_j006_b5_graticule_ticks_zero_interval() {
 
 #[test]
 fn test_j007_b1_corrupted_dxf_header() {
-    use vectorcraft_cad::{import, ImportOptions};
+    use vectorcraft_cad::{ImportOptions, import};
     let truncated = "0\nSECTION\n2\nHEA";
     let opts = ImportOptions::default();
     let res = import(truncated.as_bytes(), &opts);
@@ -374,7 +369,7 @@ fn test_j007_b1_corrupted_dxf_header() {
 
 #[test]
 fn test_j007_b2_binary_dxf_sentinel_rejection() {
-    use vectorcraft_cad::{import, ImportOptions};
+    use vectorcraft_cad::{ImportOptions, import};
     let binary_sentinel = b"AutoCAD Binary DXF\r\n\x1a\x00corrupt";
     let opts = ImportOptions::default();
     let res = import(binary_sentinel, &opts);
@@ -390,7 +385,7 @@ fn test_j007_b3_non_cp949_encoding_garbage() {
 
 #[test]
 fn test_j007_b4_degenerate_entities_nan_coordinates() {
-    use vectorcraft_cad::{import, ImportOptions};
+    use vectorcraft_cad::{ImportOptions, import};
     let dxf = "  0\nSECTION\n  2\nENTITIES\n  0\nLINE\n  8\n0\n 10\nNaN\n 20\n100.0\n 11\n200.0\n 21\n100.0\n  0\nENDSEC\n  0\nEOF\n";
     let opts = ImportOptions::default();
     let res = import(dxf.as_bytes(), &opts);
@@ -399,7 +394,7 @@ fn test_j007_b4_degenerate_entities_nan_coordinates() {
 
 #[test]
 fn test_j007_b5_zero_length_lines() {
-    use vectorcraft_cad::{import, ImportOptions};
+    use vectorcraft_cad::{ImportOptions, import};
     let dxf = "  0\nSECTION\n  2\nENTITIES\n  0\nLINE\n  8\n0\n 10\n250.0\n 20\n150.0\n 11\n250.0\n 21\n150.0\n  0\nENDSEC\n  0\nEOF\n";
     let opts = ImportOptions::default();
     let res = import(dxf.as_bytes(), &opts);
@@ -463,11 +458,15 @@ fn test_j008_b1_collinear_control_points_det_zero() {
 #[test]
 fn test_j008_b2_coincident_points_two_point() {
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "calibrate.twoPoint", json!({
-        "p1": [100.0, 100.0],
-        "p2": [100.0, 100.0],
-        "realDistanceM": 4.0
-    }));
+    let res = try_exec(
+        &mut s,
+        "calibrate.twoPoint",
+        json!({
+            "p1": [100.0, 100.0],
+            "p2": [100.0, 100.0],
+            "realDistanceM": 4.0
+        }),
+    );
     assert!(res.is_err(), "Coincident points must return BadParams");
 }
 
@@ -492,11 +491,15 @@ fn test_j008_b4_extreme_residuals_tracking() {
 #[test]
 fn test_j008_b5_non_finite_coordinates() {
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "calibrate.twoPoint", json!({
-        "p1": [f64::NAN, 100.0],
-        "p2": [200.0, 100.0],
-        "realDistanceM": 4.0
-    }));
+    let res = try_exec(
+        &mut s,
+        "calibrate.twoPoint",
+        json!({
+            "p1": [f64::NAN, 100.0],
+            "p2": [200.0, 100.0],
+            "realDistanceM": 4.0
+        }),
+    );
     assert!(res.is_err());
 }
 
@@ -521,10 +524,14 @@ fn test_j009_b2_two_vertex_degenerate_polygon() {
 #[test]
 fn test_j009_b3_zero_length_section_line() {
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "trowel.sectionLine", json!({
-        "p0": [200.0, 200.0],
-        "p1": [200.0, 200.0]
-    }));
+    let res = try_exec(
+        &mut s,
+        "trowel.sectionLine",
+        json!({
+            "p0": [200.0, 200.0],
+            "p1": [200.0, 200.0]
+        }),
+    );
     assert!(res.is_ok(), "Zero length section line must normalize direction safely");
 }
 
@@ -539,10 +546,14 @@ fn test_j009_b4_slope_hachures_zero_spacing() {
 #[test]
 fn test_j009_b5_spot_elevation_nan_value() {
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "trowel.spotElevation", json!({
-        "at": [100.0, 100.0],
-        "elevation": f64::NAN
-    }));
+    let res = try_exec(
+        &mut s,
+        "trowel.spotElevation",
+        json!({
+            "at": [100.0, 100.0],
+            "elevation": f64::NAN
+        }),
+    );
     assert!(res.is_err(), "NaN elevation must return BadParams");
 }
 
@@ -768,25 +779,33 @@ fn test_j018_b1_malformed_template_json() {
 #[test]
 fn test_j018_b2_unknown_template_version() {
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "style.diffTemplate", json!({
-        "template": {
-            "format": "trowel-style",
-            "version": 99,
-            "name": "future"
-        }
-    }));
+    let res = try_exec(
+        &mut s,
+        "style.diffTemplate",
+        json!({
+            "template": {
+                "format": "trowel-style",
+                "version": 99,
+                "name": "future"
+            }
+        }),
+    );
     assert!(res.is_err(), "Unsupported version 99 must return BadParams");
 }
 
 #[test]
 fn test_j018_b3_unsupported_template_format_identifier() {
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "style.diffTemplate", json!({
-        "template": {
-            "format": "generic-style",
-            "version": 1
-        }
-    }));
+    let res = try_exec(
+        &mut s,
+        "style.diffTemplate",
+        json!({
+            "template": {
+                "format": "generic-style",
+                "version": 1
+            }
+        }),
+    );
     assert!(res.is_err(), "Invalid format must return BadParams");
 }
 

@@ -36,12 +36,12 @@ pub enum SectionFillMode {
 pub enum VesselType {
     #[default]
     DeepBowl, // 심발 / 바리
-    Bowl,     // 발
-    Jar,      // 호 / 항아리
-    Cup,      // 배 / 잔
-    Pot,      // 옹 / 독
-    Plate,    // 반 / 접시
-    Lid,      // 개 / 뚜껑
+    Bowl,  // 발
+    Jar,   // 호 / 항아리
+    Cup,   // 배 / 잔
+    Pot,   // 옹 / 독
+    Plate, // 반 / 접시
+    Lid,   // 개 / 뚜껑
     Other(String),
 }
 

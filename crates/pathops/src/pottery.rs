@@ -18,14 +18,9 @@ pub fn reflect_path_across_centerline(path: &PathData, centerline_x: f64) -> Pat
                 kind: a.kind,
             });
         }
-        new_subpaths.push(SubPath {
-            anchors: new_anchors,
-            closed: sp.closed,
-        });
+        new_subpaths.push(SubPath { anchors: new_anchors, closed: sp.closed });
     }
-    PathData {
-        subpaths: new_subpaths,
-    }
+    PathData { subpaths: new_subpaths }
 }
 
 /// Computes inward wall profile offset by `thickness_pt` towards the centerline.
@@ -57,11 +52,7 @@ pub fn offset_wall_profile(profile: &PathData, thickness_pt: f64, centerline_x: 
             };
 
             let tan_len = (tan_x * tan_x + tan_y * tan_y).sqrt();
-            let (unit_tan_x, unit_tan_y) = if tan_len > 1e-9 {
-                (tan_x / tan_len, tan_y / tan_len)
-            } else {
-                (0.0, 1.0)
-            };
+            let (unit_tan_x, unit_tan_y) = if tan_len > 1e-9 { (tan_x / tan_len, tan_y / tan_len) } else { (0.0, 1.0) };
 
             // Normal (-tan_y, tan_x)
             let mut norm_x = -unit_tan_y;
@@ -105,23 +96,13 @@ pub fn offset_wall_profile(profile: &PathData, thickness_pt: f64, centerline_x: 
                 }
             }
 
-            new_anchors.push(Anchor {
-                p: new_p,
-                h_in: new_h_in,
-                h_out: new_h_out,
-                kind: a.kind,
-            });
+            new_anchors.push(Anchor { p: new_p, h_in: new_h_in, h_out: new_h_out, kind: a.kind });
         }
 
-        new_subpaths.push(SubPath {
-            anchors: new_anchors,
-            closed: sp.closed,
-        });
+        new_subpaths.push(SubPath { anchors: new_anchors, closed: sp.closed });
     }
 
-    PathData {
-        subpaths: new_subpaths,
-    }
+    PathData { subpaths: new_subpaths }
 }
 
 /// Builds a closed wall section polygon on the right side of the centerline.
@@ -132,21 +113,11 @@ pub fn build_section_polygon(outer: &PathData, inner: &PathData, centerline_x: f
     }
 
     // Ensure outer anchors are ordered from top (rim) to bottom (base)
-    let outer_runs_down = if outer_anchors.len() >= 2 {
-        outer_anchors.first().map_or(0.0, |a| a.p.y) <= outer_anchors.last().map_or(0.0, |a| a.p.y)
-    } else {
-        true
-    };
+    let outer_runs_down =
+        if outer_anchors.len() >= 2 { outer_anchors.first().map_or(0.0, |a| a.p.y) <= outer_anchors.last().map_or(0.0, |a| a.p.y) } else { true };
 
-    let ordered_outer: Vec<Anchor> = if outer_runs_down {
-        outer_anchors.to_vec()
-    } else {
-        outer_anchors
-            .iter()
-            .rev()
-            .map(|a| a.reversed())
-            .collect()
-    };
+    let ordered_outer: Vec<Anchor> =
+        if outer_runs_down { outer_anchors.to_vec() } else { outer_anchors.iter().rev().map(|a| a.reversed()).collect() };
 
     let inner_computed;
     let inner_anchors = if let Some(sp) = inner.subpaths.first().filter(|s| !s.anchors.is_empty()) {
@@ -156,21 +127,11 @@ pub fn build_section_polygon(outer: &PathData, inner: &PathData, centerline_x: f
         inner_computed.subpaths.first().map(|s| &s.anchors[..]).unwrap_or(&[])
     };
 
-    let inner_runs_down = if inner_anchors.len() >= 2 {
-        inner_anchors.first().map_or(0.0, |a| a.p.y) <= inner_anchors.last().map_or(0.0, |a| a.p.y)
-    } else {
-        true
-    };
+    let inner_runs_down =
+        if inner_anchors.len() >= 2 { inner_anchors.first().map_or(0.0, |a| a.p.y) <= inner_anchors.last().map_or(0.0, |a| a.p.y) } else { true };
 
-    let ordered_inner: Vec<Anchor> = if inner_runs_down {
-        inner_anchors.to_vec()
-    } else {
-        inner_anchors
-            .iter()
-            .rev()
-            .map(|a| a.reversed())
-            .collect()
-    };
+    let ordered_inner: Vec<Anchor> =
+        if inner_runs_down { inner_anchors.to_vec() } else { inner_anchors.iter().rev().map(|a| a.reversed()).collect() };
 
     let mut poly_anchors = Vec::new();
 
@@ -190,14 +151,9 @@ pub fn build_section_polygon(outer: &PathData, inner: &PathData, centerline_x: f
     }
 
     // 4. Close lip back to outer rim
-    let subpath = SubPath {
-        anchors: poly_anchors,
-        closed: true,
-    };
+    let subpath = SubPath { anchors: poly_anchors, closed: true };
 
-    PathData {
-        subpaths: vec![subpath],
-    }
+    PathData { subpaths: vec![subpath] }
 }
 
 /// Emits vector hatch lines at 45° within the section polygon.
@@ -205,11 +161,7 @@ pub fn generate_section_hatch(section_poly: &PathData, spacing_mm: f64, _weight_
     let bez = section_poly.to_bezpath();
     let spacing_pt = (spacing_mm * (72.0 / 25.4)).max(0.5);
 
-    let dir = if (angle_deg - 135.0).abs() < 40.0 {
-        HatchDirection::Deg135
-    } else {
-        HatchDirection::Deg45
-    };
+    let dir = if (angle_deg - 135.0).abs() < 40.0 { HatchDirection::Deg135 } else { HatchDirection::Deg45 };
 
     crate::hatch::emit_hatch_lines(&bez, dir, spacing_pt)
 }
@@ -256,11 +208,7 @@ pub fn compute_vessel_measurements(
     let height_pt = (max_y - min_y).max(0.0);
     let height_mm = height_pt * (25.4 / 72.0);
 
-    let rim_diameter_pt = if let Some(d_fit) = rim_fit_diameter_pt {
-        d_fit
-    } else {
-        2.0 * (rim_anchor_x - centerline_x).abs()
-    };
+    let rim_diameter_pt = if let Some(d_fit) = rim_fit_diameter_pt { d_fit } else { 2.0 * (rim_anchor_x - centerline_x).abs() };
     let rim_diameter_mm = rim_diameter_pt * (25.4 / 72.0);
 
     let base_diameter_pt = 2.0 * (base_anchor_x - centerline_x).abs();
@@ -296,12 +244,7 @@ mod tests {
         let a2 = Anchor::corner(Point::new(380.0, 150.0));
         let a3 = Anchor::corner(Point::new(330.0, 200.0));
 
-        let path = PathData {
-            subpaths: vec![SubPath {
-                anchors: vec![a1, a2, a3],
-                closed: false,
-            }],
-        };
+        let path = PathData { subpaths: vec![SubPath { anchors: vec![a1, a2, a3], closed: false }] };
 
         let reflected = reflect_path_across_centerline(&path, 300.0);
         let sp = &reflected.subpaths[0];
@@ -316,12 +259,7 @@ mod tests {
     fn test_offset_wall_profile() {
         let a1 = Anchor::corner(Point::new(350.0, 100.0));
         let a2 = Anchor::corner(Point::new(350.0, 200.0));
-        let path = PathData {
-            subpaths: vec![SubPath {
-                anchors: vec![a1, a2],
-                closed: false,
-            }],
-        };
+        let path = PathData { subpaths: vec![SubPath { anchors: vec![a1, a2], closed: false }] };
 
         // Offset 10pt inward towards centerline at 300
         let offset = offset_wall_profile(&path, 10.0, 300.0, SectionSide::Right);

@@ -175,15 +175,7 @@ pub struct SpotElevationSpec {
 
 impl Default for SpotElevationSpec {
     fn default() -> Self {
-        Self {
-            at: Point::ZERO,
-            elevation_m: 0.0,
-            marker: SpotMarkerKind::Dot,
-            font_size_pt: 7.0,
-            halo: true,
-            prefix_plus: true,
-            suffix_m: true,
-        }
+        Self { at: Point::ZERO, elevation_m: 0.0, marker: SpotMarkerKind::Dot, font_size_pt: 7.0, halo: true, prefix_plus: true, suffix_m: true }
     }
 }
 
@@ -239,14 +231,7 @@ pub fn generate_spot_elevation_geometry(spec: &SpotElevationSpec) -> SpotElevati
     let text = format!("{}{:.2}{}", sign, spec.elevation_m, unit);
     let label_pos = Point::new(spec.at.x + 5.0, spec.at.y - 4.0);
 
-    SpotElevationGeometry {
-        marker_path,
-        marker_fill,
-        label_pos,
-        text,
-        font_size_pt: spec.font_size_pt,
-        halo: spec.halo,
-    }
+    SpotElevationGeometry { marker_path, marker_fill, label_pos, text, font_size_pt: spec.font_size_pt, halo: spec.halo }
 }
 
 /// Kind of depth marker symbol.
@@ -271,14 +256,7 @@ pub struct DepthMarkerSpec {
 
 impl Default for DepthMarkerSpec {
     fn default() -> Self {
-        Self {
-            at: Point::ZERO,
-            depth_val: -32.0,
-            is_cm: true,
-            symbol: DepthMarkerKind::PostholeConcentric,
-            font_size_pt: 7.0,
-            outer_radius_pt: 7.0,
-        }
+        Self { at: Point::ZERO, depth_val: -32.0, is_cm: true, symbol: DepthMarkerKind::PostholeConcentric, font_size_pt: 7.0, outer_radius_pt: 7.0 }
     }
 }
 
@@ -314,26 +292,14 @@ pub fn generate_depth_marker_geometry(spec: &DepthMarkerSpec) -> DepthMarkerGeom
         DepthMarkerKind::None => {}
     }
 
-    let text = if spec.is_cm {
-        format!("{:.0}", spec.depth_val)
-    } else {
-        format!("{:.2}m", spec.depth_val)
-    };
+    let text = if spec.is_cm { format!("{:.0}", spec.depth_val) } else { format!("{:.2}m", spec.depth_val) };
 
     let label_pos = match spec.symbol {
-        DepthMarkerKind::PostholeConcentric | DepthMarkerKind::Cross => {
-            Point::new(spec.at.x + spec.outer_radius_pt + 3.0, spec.at.y - 2.0)
-        }
+        DepthMarkerKind::PostholeConcentric | DepthMarkerKind::Cross => Point::new(spec.at.x + spec.outer_radius_pt + 3.0, spec.at.y - 2.0),
         DepthMarkerKind::None => spec.at,
     };
 
-    DepthMarkerGeometry {
-        solid_symbol,
-        dashed_symbol,
-        label_pos,
-        text,
-        font_size_pt: spec.font_size_pt,
-    }
+    DepthMarkerGeometry { solid_symbol, dashed_symbol, label_pos, text, font_size_pt: spec.font_size_pt }
 }
 
 /// Specification for slope hachure generation (경사면 비탈면 기호).
@@ -360,11 +326,7 @@ impl Default for SlopeHachureSpec {
 
 /// Generates slope hachure tick marks along an embankment/pit edge curve.
 /// Alternates between long (100%) and short (50%) perpendicular ticks at 1.5mm paper spacing.
-pub fn generate_slope_hachures(
-    top_path: &BezPath,
-    bottom_path: Option<&BezPath>,
-    spec: &SlopeHachureSpec,
-) -> BezPath {
+pub fn generate_slope_hachures(top_path: &BezPath, bottom_path: Option<&BezPath>, spec: &SlopeHachureSpec) -> BezPath {
     let mut out = BezPath::new();
     let top_pts = flatten_closed_path(top_path, FLATTEN_TOL);
     if top_pts.len() < 2 {
@@ -402,18 +364,13 @@ pub fn generate_slope_hachures(
     while cur_s <= s_max {
         if let Some((p, norm)) = sample_curve_at_distance(&top_pts, &seg_lens, cur_s) {
             let slope_len = if !bottom_segs.is_empty() {
-                find_ray_intersection(p, norm, &bottom_segs)
-                    .unwrap_or(spec.default_width_pt)
+                find_ray_intersection(p, norm, &bottom_segs).unwrap_or(spec.default_width_pt)
             } else {
                 spec.default_width_pt
             };
 
-            let is_long = (tick_idx % 2) == 0;
-            let tick_len = if is_long {
-                slope_len
-            } else {
-                slope_len * spec.short_ratio
-            };
+            let is_long = tick_idx.is_multiple_of(2);
+            let tick_len = if is_long { slope_len } else { slope_len * spec.short_ratio };
 
             let end_p = p + norm * tick_len;
             out.move_to(p);
@@ -484,11 +441,8 @@ pub fn compute_polygon_stats(path: &BezPath, scale: &ScaleConfig) -> FeatureStat
     let area_pt2 = 0.5 * area_sum.abs();
     let signed_area = 0.5 * area_sum;
 
-    let (centroid_x, centroid_y) = if signed_area.abs() > 1e-9 {
-        (cx_sum / (6.0 * signed_area), cy_sum / (6.0 * signed_area))
-    } else {
-        (pts[0].x, pts[0].y)
-    };
+    let (centroid_x, centroid_y) =
+        if signed_area.abs() > 1e-9 { (cx_sum / (6.0 * signed_area), cy_sum / (6.0 * signed_area)) } else { (pts[0].x, pts[0].y) };
     let centroid_canvas = Point::new(centroid_x, centroid_y);
 
     // 2. Exact Perimeter
@@ -534,11 +488,7 @@ pub fn compute_polygon_stats(path: &BezPath, scale: &ScaleConfig) -> FeatureStat
         az_deg -= 180.0;
     }
 
-    let quadrant = if az_deg <= 90.0 {
-        format!("N {:.0}° E", az_deg.round())
-    } else {
-        format!("N {:.0}° W", (180.0 - az_deg).round())
-    };
+    let quadrant = if az_deg <= 90.0 { format!("N {:.0}° E", az_deg.round()) } else { format!("N {:.0}° W", (180.0 - az_deg).round()) };
 
     // 5. Minimum Bounding Box (Rotating Calipers on Convex Hull)
     let (major_axis_pt, minor_axis_pt) = compute_mbb_dimensions(&pts);
@@ -620,9 +570,7 @@ fn compute_mbb_dimensions(pts: &[Point]) -> (f64, f64) {
 fn convex_hull(pts: &[Point]) -> Vec<Point> {
     let mut sorted = pts.to_vec();
     sorted.sort_by(|a, b| {
-        a.x.partial_cmp(&b.x)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal))
+        a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal))
     });
     sorted.dedup_by(|a, b| a.distance(*b) < 1e-9);
 
@@ -631,9 +579,7 @@ fn convex_hull(pts: &[Point]) -> Vec<Point> {
         return sorted;
     }
 
-    let cross = |o: Point, a: Point, b: Point| -> f64 {
-        (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
-    };
+    let cross = |o: Point, a: Point, b: Point| -> f64 { (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x) };
 
     let mut lower = Vec::new();
     for &p in &sorted {
@@ -671,19 +617,20 @@ pub fn flatten_closed_path(path: &BezPath, tol: f64) -> Vec<Point> {
             pts.push(p);
         }
         PathEl::ClosePath => {
-            if let Some(&first) = pts.first() {
-                if cur.distance(first) > 1e-6 {
-                    pts.push(first);
-                    cur = first;
-                }
+            if let Some(&first) = pts.first()
+                && cur.distance(first) > 1e-6
+            {
+                pts.push(first);
+                cur = first;
             }
         }
         _ => {}
     });
-    if let (Some(&first), Some(&last)) = (pts.first(), pts.last()) {
-        if first.distance(last) < 1e-6 && pts.len() > 1 {
-            pts.pop();
-        }
+    if let (Some(&first), Some(&last)) = (pts.first(), pts.last())
+        && first.distance(last) < 1e-6
+        && pts.len() > 1
+    {
+        pts.pop();
     }
     pts
 }
@@ -724,36 +671,16 @@ fn find_ray_intersection(origin: Point, dir: Vec2, segs: &[(Point, Point)]) -> O
             closest_t = t;
         }
     }
-    if closest_t.is_finite() {
-        Some(closest_t)
-    } else {
-        None
-    }
+    if closest_t.is_finite() { Some(closest_t) } else { None }
 }
 
 fn add_circle(path: &mut BezPath, c: Point, r: f64) {
     let k = 0.5522847498307935 * r;
     path.move_to(Point::new(c.x + r, c.y));
-    path.curve_to(
-        Point::new(c.x + r, c.y + k),
-        Point::new(c.x + k, c.y + r),
-        Point::new(c.x, c.y + r),
-    );
-    path.curve_to(
-        Point::new(c.x - k, c.y + r),
-        Point::new(c.x - r, c.y + k),
-        Point::new(c.x - r, c.y),
-    );
-    path.curve_to(
-        Point::new(c.x - r, c.y - k),
-        Point::new(c.x - k, c.y - r),
-        Point::new(c.x, c.y - r),
-    );
-    path.curve_to(
-        Point::new(c.x + k, c.y - r),
-        Point::new(c.x + r, c.y - k),
-        Point::new(c.x + r, c.y),
-    );
+    path.curve_to(Point::new(c.x + r, c.y + k), Point::new(c.x + k, c.y + r), Point::new(c.x, c.y + r));
+    path.curve_to(Point::new(c.x - k, c.y + r), Point::new(c.x - r, c.y + k), Point::new(c.x - r, c.y));
+    path.curve_to(Point::new(c.x - r, c.y - k), Point::new(c.x - k, c.y - r), Point::new(c.x, c.y - r));
+    path.curve_to(Point::new(c.x + k, c.y - r), Point::new(c.x + r, c.y - k), Point::new(c.x + r, c.y));
     path.close_path();
 }
 
@@ -782,11 +709,7 @@ mod tests {
 
     #[test]
     fn test_section_line_geometry() {
-        let spec = SectionLineSpec {
-            p0: Point::new(10.0, 50.0),
-            p1: Point::new(210.0, 50.0),
-            ..Default::default()
-        };
+        let spec = SectionLineSpec { p0: Point::new(10.0, 50.0), p1: Point::new(210.0, 50.0), ..Default::default() };
         let geom = generate_section_line_geometry(&spec);
         assert!(!geom.cut_line.is_empty());
         assert!(!geom.arrows.is_empty());
@@ -798,12 +721,7 @@ mod tests {
 
     #[test]
     fn test_spot_elevation_formatting() {
-        let spec = SpotElevationSpec {
-            at: Point::new(100.0, 200.0),
-            elevation_m: 152.35,
-            marker: SpotMarkerKind::Dot,
-            ..Default::default()
-        };
+        let spec = SpotElevationSpec { at: Point::new(100.0, 200.0), elevation_m: 152.35, marker: SpotMarkerKind::Dot, ..Default::default() };
         let geom = generate_spot_elevation_geometry(&spec);
         assert_eq!(geom.text, "+152.35m");
         assert!(geom.marker_fill);
@@ -815,12 +733,7 @@ mod tests {
         top.move_to(Point::new(0.0, 0.0));
         top.line_to(Point::new(100.0, 0.0));
 
-        let spec = SlopeHachureSpec {
-            spacing_mm: 1.5,
-            short_ratio: 0.5,
-            default_width_pt: 10.0,
-            ..Default::default()
-        };
+        let spec = SlopeHachureSpec { spacing_mm: 1.5, short_ratio: 0.5, default_width_pt: 10.0, ..Default::default() };
 
         let hachures = generate_slope_hachures(&top, None, &spec);
         assert!(!hachures.is_empty());

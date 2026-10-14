@@ -3,9 +3,7 @@
 
 use egui::{Align2, Color32, CornerRadius, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use serde_json::json;
-use vectorcraft_doc::stratigraphy::{
-    NumberingStyle, StratigraphyFillStyle,
-};
+use vectorcraft_doc::stratigraphy::{NumberingStyle, StratigraphyFillStyle};
 
 use super::*;
 use crate::VectorcraftApp;
@@ -61,10 +59,9 @@ pub fn show_dock_panel(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
 
     let mut newly_selected = selected_layer;
 
-    egui::ScrollArea::vertical()
-        .id_salt(wid("section-scroll", ()))
-        .auto_shrink([false, false])
-        .show(&mut ui.new_child(egui::UiBuilder::new().max_rect(list_rect)), |ui| {
+    egui::ScrollArea::vertical().id_salt(wid("section-scroll", ())).auto_shrink([false, false]).show(
+        &mut ui.new_child(egui::UiBuilder::new().max_rect(list_rect)),
+        |ui| {
             for layer in &layers_to_render {
                 let (row_rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
                 let is_sel = selected_layer == Some(layer.index);
@@ -125,7 +122,8 @@ pub fn show_dock_panel(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
                 text(ui, pos2(text_x, row_rect.center().y - 6.0), Align2::LEFT_CENTER, &line1, font(11.0), t.text);
                 text(ui, pos2(text_x, row_rect.center().y + 6.0), Align2::LEFT_CENTER, &line2, mono(10.0), t.text_dim);
             }
-        });
+        },
+    );
 
     ui.data_mut(|d| d.insert_temp(section_selected_layer_id(), newly_selected));
     cy += list_h + 10.0;
@@ -139,12 +137,11 @@ pub fn show_dock_panel(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         let _ = app.run("stratigraphy.generateTable", json!({ "at": [100, 500] }));
     }
 
-    if small_button(ui, wid("section-copy-tsv", ()), b2.left_center(), 28.0, "TSV 복사", true, &t).clicked() {
-        if let Ok(res) = app.run("stratigraphy.exportTsv", json!({})) {
-            if let Some(tsv) = res.get("tsv").and_then(|v| v.as_str()) {
-                ui.ctx().copy_text(tsv.to_string());
-            }
-        }
+    if small_button(ui, wid("section-copy-tsv", ()), b2.left_center(), 28.0, "TSV 복사", true, &t).clicked()
+        && let Ok(res) = app.run("stratigraphy.exportTsv", json!({}))
+        && let Some(tsv) = res.get("tsv").and_then(|v| v.as_str())
+    {
+        ui.ctx().copy_text(tsv.to_string());
     }
 
     cy += 36.0;
@@ -167,11 +164,7 @@ pub fn show_control_bar(_app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     x = text(ui, pos2(x, cy), Align2::LEFT_CENTER, "토층 번호 ›", bold(12.0), t.text).right() + 12.0;
 
     // Numbering style selector
-    let look = SegLook {
-        h: 24.0,
-        pad: 8.0,
-        font: font(11.0),
-    };
+    let look = SegLook { h: 24.0, pad: 8.0, font: font(11.0) };
 
     let style_parts = [
         Seg { key: "circled", label: "① 원문자", on: true, soon: None },

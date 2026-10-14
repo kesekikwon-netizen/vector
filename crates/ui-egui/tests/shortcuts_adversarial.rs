@@ -6,8 +6,8 @@
 
 use egui::{Key, Modifiers};
 use serde_json::json;
-use vectorcraft_ui_egui::shortcuts::handle;
 use vectorcraft_ui_egui::VectorcraftApp;
+use vectorcraft_ui_egui::shortcuts::handle;
 
 fn setup_test_app() -> (VectorcraftApp, egui::Context) {
     let mut session = vectorcraft_engine::Session::new();
@@ -18,38 +18,19 @@ fn setup_test_app() -> (VectorcraftApp, egui::Context) {
 }
 
 fn run_frame(ctx: &egui::Context, app: &mut VectorcraftApp, time: f64, events: Vec<egui::Event>) {
-    let mut out = ctx.run_ui(
-        egui::RawInput {
-            time: Some(time),
-            events,
-            ..Default::default()
-        },
-        |ui| {
-            handle(app, ui.ctx());
-            app.logic(ui.ctx());
-        },
-    );
+    let mut out = ctx.run_ui(egui::RawInput { time: Some(time), events, ..Default::default() }, |ui| {
+        handle(app, ui.ctx());
+        app.logic(ui.ctx());
+    });
     out.textures_delta.clear();
 }
 
 fn z_down_with(modifiers: Modifiers) -> egui::Event {
-    egui::Event::Key {
-        key: Key::Z,
-        physical_key: None,
-        pressed: true,
-        repeat: false,
-        modifiers,
-    }
+    egui::Event::Key { key: Key::Z, physical_key: None, pressed: true, repeat: false, modifiers }
 }
 
 fn z_up_with(modifiers: Modifiers) -> egui::Event {
-    egui::Event::Key {
-        key: Key::Z,
-        physical_key: None,
-        pressed: false,
-        repeat: false,
-        modifiers,
-    }
+    egui::Event::Key { key: Key::Z, physical_key: None, pressed: false, repeat: false, modifiers }
 }
 
 /// 1. Quick tap at 299ms (< 300ms): tool remains "zoom" permanently.
@@ -65,15 +46,8 @@ fn test_timing_boundary_299ms_quick_tap() {
 
     // Release at 1.299s (held for 299ms < 300ms)
     run_frame(&ctx, &mut app, 1.299, vec![z_up_with(Modifiers::NONE)]);
-    assert_eq!(
-        app.session.tool_id(),
-        "zoom",
-        "299ms hold (< 300ms) is a tap and must remain in zoom tool"
-    );
-    assert!(
-        app.spring_zoom.is_none(),
-        "Spring zoom state must be cleared after tap release"
-    );
+    assert_eq!(app.session.tool_id(), "zoom", "299ms hold (< 300ms) is a tap and must remain in zoom tool");
+    assert!(app.spring_zoom.is_none(), "Spring zoom state must be cleared after tap release");
 }
 
 /// 2. Hold at 301ms (> 300ms): spring-loaded zoom reverts to previous tool on release.
@@ -89,11 +63,7 @@ fn test_timing_boundary_301ms_spring_loaded() {
 
     // Release at 3.301s (held for 301ms > 300ms)
     run_frame(&ctx, &mut app, 3.301, vec![z_up_with(Modifiers::NONE)]);
-    assert_eq!(
-        app.session.tool_id(),
-        "pen",
-        "301ms hold (> 300ms) must revert to prior tool ('pen')"
-    );
+    assert_eq!(app.session.tool_id(), "pen", "301ms hold (> 300ms) must revert to prior tool ('pen')");
     assert!(app.spring_zoom.is_none());
 }
 
@@ -119,15 +89,8 @@ fn test_timing_boundary_exact_300ms_float_issue() {
     assert!(held_calc < 0.300, "Floating-point representation 2.3 - 2.0 is 0.2999999999999998 < 0.300");
 
     // With epsilon tolerance, exact 300ms hold reverts to "pen":
-    assert_eq!(
-        app.session.tool_id(),
-        "pen",
-        "With epsilon tolerance, exact 300ms hold must revert to prior tool ('pen')"
-    );
-    assert!(
-        app.spring_zoom.is_none(),
-        "Spring zoom state must be cleared after reversion"
-    );
+    assert_eq!(app.session.tool_id(), "pen", "With epsilon tolerance, exact 300ms hold must revert to prior tool ('pen')");
+    assert!(app.spring_zoom.is_none(), "Spring zoom state must be cleared after reversion");
 }
 
 /// 4. Dragging while Z is held: verify drag marks spring-loaded even if total duration < 300ms.
@@ -146,11 +109,7 @@ fn test_drag_while_z_held_sub_300ms() {
 
     // Release at 1.050s (held 50ms < 300ms)
     run_frame(&ctx, &mut app, 1.050, vec![z_up_with(Modifiers::NONE)]);
-    assert_eq!(
-        app.session.tool_id(),
-        "rectangle",
-        "Dragging while Z is held must revert to prior tool even if held < 300ms"
-    );
+    assert_eq!(app.session.tool_id(), "rectangle", "Dragging while Z is held must revert to prior tool even if held < 300ms");
     assert!(app.spring_zoom.is_none());
 
     // Case B: Held for 299ms with drag
@@ -163,11 +122,7 @@ fn test_drag_while_z_held_sub_300ms() {
 
     // Release at 2.299s (held 299ms < 300ms)
     run_frame(&ctx, &mut app, 2.299, vec![z_up_with(Modifiers::NONE)]);
-    assert_eq!(
-        app.session.tool_id(),
-        "ellipse",
-        "Dragging with 299ms hold must revert to prior tool"
-    );
+    assert_eq!(app.session.tool_id(), "ellipse", "Dragging with 299ms hold must revert to prior tool");
     assert!(app.spring_zoom.is_none());
 }
 
@@ -228,13 +183,6 @@ fn test_shift_z_hijacks_spring_zoom_bug() {
     run_frame(&ctx, &mut app, 1.0, vec![z_down_with(Modifiers::SHIFT)]);
 
     // With !modifiers.shift guard, Shift+Z does NOT trigger spring zoom:
-    assert_eq!(
-        app.session.tool_id(),
-        "pen",
-        "Shift+Z must NOT switch tool to 'zoom', leaving it for spot elevation"
-    );
-    assert!(
-        app.spring_zoom.is_none(),
-        "Shift+Z must NOT activate spring_zoom state"
-    );
+    assert_eq!(app.session.tool_id(), "pen", "Shift+Z must NOT switch tool to 'zoom', leaving it for spot elevation");
+    assert!(app.spring_zoom.is_none(), "Shift+Z must NOT activate spring_zoom state");
 }

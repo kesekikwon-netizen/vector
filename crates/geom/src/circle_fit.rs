@@ -127,14 +127,7 @@ pub fn fit_circle_3point(p1: Point, p2: Point, p3: Point) -> Result<Circle3Point
     let arc_span_deg = arc_span_rad.to_degrees().min(360.0);
     let rim_preservation_percent = (arc_span_deg / 360.0) * 100.0;
 
-    Ok(Circle3Point {
-        center,
-        radius,
-        diameter,
-        signed_area: 0.5 * two_a,
-        arc_span_deg,
-        rim_preservation_percent,
-    })
+    Ok(Circle3Point { center, radius, diameter, signed_area: 0.5 * two_a, arc_span_deg, rim_preservation_percent })
 }
 
 #[cfg(test)]

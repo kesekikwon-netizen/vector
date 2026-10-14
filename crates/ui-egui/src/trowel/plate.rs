@@ -37,14 +37,7 @@ pub fn show_dock_panel(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     };
 
     let head = Rect::from_min_size(r.min, vec2(r.width(), 32.0));
-    panel_head(
-        ui,
-        head,
-        "도판 배치",
-        &format!("총 {}매 · 보고서 규격", sheet_count),
-        2,
-        &t,
-    );
+    panel_head(ui, head, "도판 배치", &format!("총 {}매 · 보고서 규격", sheet_count), 2, &t);
 
     // Export PDF icon button
     if head_button(ui, wid("plate-export-pdf-head", ()), head, 0, "file-pdf", "도판 벡터 PDF 내보내기", &t).clicked() {
@@ -68,14 +61,7 @@ pub fn show_dock_panel(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let mut cy = head.bottom() + 6.0;
 
     let Some(sh) = active_sheet else {
-        text(
-            ui,
-            pos2(r.left() + 14.0, cy + 10.0),
-            Align2::LEFT_CENTER,
-            "생성된 도판 시트가 없습니다. ＋를 눌러 추가하세요.",
-            font(11.0),
-            t.text_dim,
-        );
+        text(ui, pos2(r.left() + 14.0, cy + 10.0), Align2::LEFT_CENTER, "생성된 도판 시트가 없습니다. ＋를 눌러 추가하세요.", font(11.0), t.text_dim);
         return;
     };
 
@@ -89,14 +75,21 @@ pub fn show_dock_panel(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     cy += 22.0;
 
     // Viewport list
-    text(ui, pos2(r.left() + 14.0, cy + 6.0), Align2::LEFT_CENTER, &format!("뷰포트 ({}개)", sh.viewports.len()), font(11.0), t.text_dim);
+    text(ui, pos2(r.left() + 14.0, cy + 6.0), Align2::LEFT_CENTER, format!("뷰포트 ({}개)", sh.viewports.len()), font(11.0), t.text_dim);
     cy += 18.0;
 
     for vp in &sh.viewports {
         let vp_row = Rect::from_min_size(pos2(r.left() + 10.0, cy), vec2(r.width() - 20.0, 24.0));
         ui.painter().rect_filled(vp_row, CornerRadius::same(4), t.row_selected);
         text(ui, pos2(vp_row.left() + 8.0, vp_row.center().y), Align2::LEFT_CENTER, &vp.name, font(11.0), t.text);
-        text(ui, pos2(vp_row.right() - 8.0, vp_row.center().y), Align2::RIGHT_CENTER, &format!("축척 1:{}", vp.scale.denom as u32), mono(10.0), t.text);
+        text(
+            ui,
+            pos2(vp_row.right() - 8.0, vp_row.center().y),
+            Align2::RIGHT_CENTER,
+            format!("축척 1:{}", vp.scale.denom as u32),
+            mono(10.0),
+            t.text,
+        );
         cy += 28.0;
     }
 
@@ -188,7 +181,12 @@ pub fn show_dialog(app: &mut VectorcraftApp, ctx: &egui::Context) {
             };
 
             ui.heading(format!("도판 시트: {}", sheet.name));
-            ui.label(format!("판형 규격: {} ({} × {} pt)", sheet.size.label(), sheet.size.dimensions_pt(sheet.orientation).0 as u32, sheet.size.dimensions_pt(sheet.orientation).1 as u32));
+            ui.label(format!(
+                "판형 규격: {} ({} × {} pt)",
+                sheet.size.label(),
+                sheet.size.dimensions_pt(sheet.orientation).0 as u32,
+                sheet.size.dimensions_pt(sheet.orientation).1 as u32
+            ));
             ui.separator();
 
             ui.collapsing("표제란 정보 (Title Block)", |ui| {

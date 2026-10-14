@@ -441,19 +441,13 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context) {
             matches!(e, egui::Event::Key { key: Key::Z, pressed: true, repeat: false, modifiers, .. } if !(modifiers.command || modifiers.ctrl || modifiers.alt || modifiers.shift))
         })
     });
-    let z_released = ctx.input(|i| {
-        i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Z, pressed: false, .. }))
-    });
+    let z_released = ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Z, pressed: false, .. })));
 
     if z_pressed && app.spring_zoom.is_none() {
         let now = ctx.input(|i| i.time);
         let cur_tool = app.session.tool_id().to_string();
         app.select_tool("zoom");
-        app.spring_zoom = Some(SpringZoomState {
-            start_time: now,
-            prev_tool: cur_tool,
-            dragged: false,
-        });
+        app.spring_zoom = Some(SpringZoomState { start_time: now, prev_tool: cur_tool, dragged: false });
     }
 
     if (z_released || (!z_down && app.spring_zoom.is_some()))
@@ -868,34 +862,15 @@ mod tests {
         let ctx = egui::Context::default();
 
         let run = |ctx: &egui::Context, app: &mut VectorcraftApp, time: f64, events: Vec<egui::Event>| {
-            let mut out = ctx.run_ui(
-                egui::RawInput {
-                    time: Some(time),
-                    events,
-                    ..Default::default()
-                },
-                |ui| {
-                    handle(app, ui.ctx());
-                    app.logic(ui.ctx());
-                },
-            );
+            let mut out = ctx.run_ui(egui::RawInput { time: Some(time), events, ..Default::default() }, |ui| {
+                handle(app, ui.ctx());
+                app.logic(ui.ctx());
+            });
             out.textures_delta.clear();
         };
 
-        let z_down = || egui::Event::Key {
-            key: Key::Z,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: Modifiers::NONE,
-        };
-        let z_up = || egui::Event::Key {
-            key: Key::Z,
-            physical_key: None,
-            pressed: false,
-            repeat: false,
-            modifiers: Modifiers::NONE,
-        };
+        let z_down = || egui::Event::Key { key: Key::Z, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+        let z_up = || egui::Event::Key { key: Key::Z, physical_key: None, pressed: false, repeat: false, modifiers: Modifiers::NONE };
 
         // 1. Quick tap (< 300ms): switches permanently to zoom tool
         app.select_tool("pen");
@@ -933,43 +908,19 @@ mod tests {
 
         // 4. Modifier combination (e.g. Cmd+Z / Ctrl+Z) does not trigger spring zoom
         app.select_tool("pen");
-        let cmd_z = egui::Event::Key {
-            key: Key::Z,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: Modifiers::COMMAND,
-        };
+        let cmd_z = egui::Event::Key { key: Key::Z, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND };
         run(&ctx, &mut app, 4.0, vec![cmd_z]);
         assert!(app.spring_zoom.is_none(), "Cmd+Z must not trigger spring zoom");
-        let cmd_z_up = egui::Event::Key {
-            key: Key::Z,
-            physical_key: None,
-            pressed: false,
-            repeat: false,
-            modifiers: Modifiers::COMMAND,
-        };
+        let cmd_z_up = egui::Event::Key { key: Key::Z, physical_key: None, pressed: false, repeat: false, modifiers: Modifiers::COMMAND };
         run(&ctx, &mut app, 4.1, vec![cmd_z_up]);
 
         // 5. Shift+Z does not trigger spring zoom (reserved for Spot Elevation 표고)
         app.select_tool("pen");
-        let shift_z = egui::Event::Key {
-            key: Key::Z,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: Modifiers::SHIFT,
-        };
+        let shift_z = egui::Event::Key { key: Key::Z, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::SHIFT };
         run(&ctx, &mut app, 5.0, vec![shift_z]);
         assert!(app.spring_zoom.is_none(), "Shift+Z must not trigger spring zoom");
         assert_eq!(app.session.tool_id(), "pen", "Shift+Z must not switch tool to zoom");
-        let shift_z_up = egui::Event::Key {
-            key: Key::Z,
-            physical_key: None,
-            pressed: false,
-            repeat: false,
-            modifiers: Modifiers::SHIFT,
-        };
+        let shift_z_up = egui::Event::Key { key: Key::Z, physical_key: None, pressed: false, repeat: false, modifiers: Modifiers::SHIFT };
         run(&ctx, &mut app, 5.1, vec![shift_z_up]);
 
         // 6. Hold exactly 300ms (float epsilon tolerance) reverts to previous tool on release

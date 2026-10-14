@@ -8,10 +8,11 @@ use crate::legend::MM;
 use crate::scale::ScaleRatio;
 
 /// Standard archaeological publication sheet formats.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum PlateSize {
     /// A4 (210.0 × 297.0 mm) - standard report & field size.
+    #[default]
     A4,
     /// 4×6배판 (188.0 × 257.0 mm) - Korean archaeological monograph volume standard.
     CrownQuarto4x6,
@@ -19,12 +20,6 @@ pub enum PlateSize {
     A3,
     /// Custom user-specified dimensions in millimeters.
     Custom { width_mm: f64, height_mm: f64 },
-}
-
-impl Default for PlateSize {
-    fn default() -> Self {
-        Self::A4
-    }
 }
 
 impl PlateSize {
@@ -69,19 +64,14 @@ pub enum PlateOrientation {
 }
 
 /// Source reference for a viewport item.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "target", rename_all = "lowercase")]
 pub enum ViewportSource {
+    #[default]
     WholeDocument,
     Layer(crate::NodeId),
     Artboard(usize),
     ExternalFile(String),
-}
-
-impl Default for ViewportSource {
-    fn default() -> Self {
-        Self::WholeDocument
-    }
 }
 
 /// A drawing viewport placed on a report plate.
@@ -106,13 +96,7 @@ pub struct ViewportItem {
 }
 
 impl ViewportItem {
-    pub fn new(
-        id: impl Into<String>,
-        name: impl Into<String>,
-        bounds: Rect,
-        scale: ScaleRatio,
-        source_scale: ScaleRatio,
-    ) -> Self {
+    pub fn new(id: impl Into<String>, name: impl Into<String>, bounds: Rect, scale: ScaleRatio, source_scale: ScaleRatio) -> Self {
         Self {
             id: id.into(),
             name: name.into(),
@@ -129,11 +113,7 @@ impl ViewportItem {
 
     /// Geometric reduction/magnification factor: e.g. 20.0 / 60.0 = 0.333333.
     pub fn zoom_factor(&self) -> f64 {
-        if self.scale.denom <= 1e-4 {
-            1.0
-        } else {
-            self.source_scale.denom / self.scale.denom
-        }
+        if self.scale.denom <= 1e-4 { 1.0 } else { self.source_scale.denom / self.scale.denom }
     }
 
     /// Returns the affine transform from source drawing points to plate sheet points.
@@ -142,9 +122,7 @@ impl ViewportItem {
         let zoom = self.zoom_factor();
         let rad = self.rotation_deg.to_radians();
 
-        Affine::translate(center.to_vec2() + self.pan_offset)
-            * Affine::rotate(rad)
-            * Affine::scale(zoom)
+        Affine::translate(center.to_vec2() + self.pan_offset) * Affine::rotate(rad) * Affine::scale(zoom)
     }
 }
 
@@ -232,11 +210,7 @@ impl Default for ScaleBarItem {
 impl ScaleBarItem {
     /// Width of a single metric segment in sheet points.
     pub fn segment_width_pt(&self) -> f64 {
-        if self.scale.denom <= 1e-4 {
-            0.0
-        } else {
-            self.segment_unit_m * (1000.0 / self.scale.denom) * MM
-        }
+        if self.scale.denom <= 1e-4 { 0.0 } else { self.segment_unit_m * (1000.0 / self.scale.denom) * MM }
     }
 
     /// Total width of the scale bar in sheet points.
@@ -362,15 +336,11 @@ impl PlateSheet {
 
     /// Synchronizes dependent items (North Arrow angle, Scale Bar ratio) from linked viewports.
     pub fn sync_dependencies(&mut self) {
-        if let Some(ref vp_id) = self.north_arrow.linked_viewport_id {
-            if let Some(vp) = self.viewports.iter().find(|v| &v.id == vp_id) {
-                self.north_arrow.rotation_deg = vp.rotation_deg;
-            }
+        if let Some(vp) = self.north_arrow.linked_viewport_id.as_ref().and_then(|vp_id| self.viewports.iter().find(|v| &v.id == vp_id)) {
+            self.north_arrow.rotation_deg = vp.rotation_deg;
         }
-        if let Some(ref vp_id) = self.scale_bar.linked_viewport_id {
-            if let Some(vp) = self.viewports.iter().find(|v| &v.id == vp_id) {
-                self.scale_bar.scale = vp.scale;
-            }
+        if let Some(vp) = self.scale_bar.linked_viewport_id.as_ref().and_then(|vp_id| self.viewports.iter().find(|v| &v.id == vp_id)) {
+            self.scale_bar.scale = vp.scale;
         }
     }
 }
@@ -399,13 +369,7 @@ mod tests {
 
     #[test]
     fn test_viewport_zoom_and_transform() {
-        let vp = ViewportItem::new(
-            "vp1",
-            "Plan",
-            Rect::new(50.0, 50.0, 250.0, 250.0),
-            ScaleRatio::new(60.0),
-            ScaleRatio::S1_20,
-        );
+        let vp = ViewportItem::new("vp1", "Plan", Rect::new(50.0, 50.0, 250.0, 250.0), ScaleRatio::new(60.0), ScaleRatio::S1_20);
         // 20 / 60 = 1/3
         assert!((vp.zoom_factor() - (1.0 / 3.0)).abs() < 1e-9);
         let xf = vp.transform();
@@ -414,10 +378,7 @@ mod tests {
 
     #[test]
     fn test_scale_bar_calculation() {
-        let mut sb = ScaleBarItem::default();
-        sb.scale = ScaleRatio::new(60.0);
-        sb.segment_unit_m = 1.0;
-        sb.segment_count = 2;
+        let sb = ScaleBarItem { scale: ScaleRatio::new(60.0), segment_unit_m: 1.0, segment_count: 2, ..Default::default() };
 
         // 1m at 1:60 = 1000mm / 60 * (72 / 25.4) = 47.24409 pt
         let seg_pt = sb.segment_width_pt();
@@ -428,13 +389,7 @@ mod tests {
     #[test]
     fn test_plate_sheet_sync_dependencies() {
         let mut sheet = PlateSheet::default();
-        let mut vp = ViewportItem::new(
-            "vp-main",
-            "Main Viewport",
-            Rect::new(20.0, 20.0, 200.0, 200.0),
-            ScaleRatio::new(40.0),
-            ScaleRatio::S1_20,
-        );
+        let mut vp = ViewportItem::new("vp-main", "Main Viewport", Rect::new(20.0, 20.0, 200.0, 200.0), ScaleRatio::new(40.0), ScaleRatio::S1_20);
         vp.rotation_deg = 22.5;
         sheet.viewports.push(vp);
 

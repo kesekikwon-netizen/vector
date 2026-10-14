@@ -6,8 +6,8 @@ use kurbo::{BezPath, Point};
 use serde_json::json;
 use vectorcraft_color::{Color, Paint};
 use vectorcraft_doc::{Appearance, Node, NodeId, NodeKind, ScaleConfig, ScaleRatio};
-use vectorcraft_geom::PathData;
 use vectorcraft_engine::Session;
+use vectorcraft_geom::PathData;
 
 fn test_session() -> Session {
     let mut s = Session::new();
@@ -34,7 +34,8 @@ fn create_trench_profile(s: &mut Session) -> NodeId {
         let node = Node::path(id, pd, app);
         doc.insert(None, usize::MAX, node).unwrap();
         Ok(())
-    }).unwrap();
+    })
+    .unwrap();
     id
 }
 
@@ -56,7 +57,8 @@ fn create_stone_obstacle(s: &mut Session) -> NodeId {
         let node = Node::path(id, pd, app);
         doc.insert(None, usize::MAX, node).unwrap();
         Ok(())
-    }).unwrap();
+    })
+    .unwrap();
     id
 }
 
@@ -75,17 +77,23 @@ fn test_elevation_create_stroke_weights_and_labels() {
             world_origin: (0.0, 150.0),
         });
         Ok(())
-    }).unwrap();
+    })
+    .unwrap();
 
-    let res = s.execute("elevation.create", &json!({
-        "profileId": profile_id.0,
-        "obstacleIds": [stone_id.0],
-        "datumM": 150.0,
-        "minorIntervalM": 0.1,
-        "majorIntervalM": 0.5,
-        "minorWeightPt": 0.2,
-        "majorWeightPt": 0.5,
-    })).unwrap();
+    let res = s
+        .execute(
+            "elevation.create",
+            &json!({
+                "profileId": profile_id.0,
+                "obstacleIds": [stone_id.0],
+                "datumM": 150.0,
+                "minorIntervalM": 0.1,
+                "majorIntervalM": 0.5,
+                "minorWeightPt": 0.2,
+                "majorWeightPt": 0.5,
+            }),
+        )
+        .unwrap();
 
     let gid = NodeId(res["id"].as_u64().unwrap());
     let seg_count = res["segmentCount"].as_u64().unwrap();
@@ -132,25 +140,40 @@ fn test_elevation_set_and_expand() {
     let mut s = test_session();
     let profile_id = create_trench_profile(&mut s);
 
-    let res = s.execute("elevation.create", &json!({
-        "profileId": profile_id.0,
-        "minorIntervalM": 0.2,
-        "majorIntervalM": 1.0,
-    })).unwrap();
+    let res = s
+        .execute(
+            "elevation.create",
+            &json!({
+                "profileId": profile_id.0,
+                "minorIntervalM": 0.2,
+                "majorIntervalM": 1.0,
+            }),
+        )
+        .unwrap();
     let gid = NodeId(res["id"].as_u64().unwrap());
 
     // Update options via elevation.set
-    let set_res = s.execute("elevation.set", &json!({
-        "id": gid.0,
-        "minorIntervalM": 0.1,
-        "majorIntervalM": 0.5,
-    })).unwrap();
+    let set_res = s
+        .execute(
+            "elevation.set",
+            &json!({
+                "id": gid.0,
+                "minorIntervalM": 0.1,
+                "majorIntervalM": 0.5,
+            }),
+        )
+        .unwrap();
     assert_eq!(set_res["success"], true);
 
     // Expand elevation group
-    let exp_res = s.execute("elevation.expand", &json!({
-        "id": gid.0,
-    })).unwrap();
+    let exp_res = s
+        .execute(
+            "elevation.expand",
+            &json!({
+                "id": gid.0,
+            }),
+        )
+        .unwrap();
     assert_eq!(exp_res["expanded"], true);
 
     let doc = &s.doc().unwrap().doc;
@@ -166,18 +189,19 @@ fn test_dynamic_reclip_on_profile_edit() {
     let mut s = test_session();
     let profile_id = create_trench_profile(&mut s);
 
-    let res = s.execute("elevation.create", &json!({
-        "profileId": profile_id.0,
-        "minorIntervalM": 0.1,
-        "majorIntervalM": 0.5,
-    })).unwrap();
+    let res = s
+        .execute(
+            "elevation.create",
+            &json!({
+                "profileId": profile_id.0,
+                "minorIntervalM": 0.1,
+                "majorIntervalM": 0.5,
+            }),
+        )
+        .unwrap();
     let gid = NodeId(res["id"].as_u64().unwrap());
 
-    let initial_child_count = if let NodeKind::Group { children, .. } = &s.doc().unwrap().doc.node(gid).unwrap().kind {
-        children.len()
-    } else {
-        0
-    };
+    let initial_child_count = if let NodeKind::Group { children, .. } = &s.doc().unwrap().doc.node(gid).unwrap().kind { children.len() } else { 0 };
 
     // Edit profile path: deepen trench to y = 600
     s.edit("Deepen Trench", |doc, _| {
@@ -194,12 +218,18 @@ fn test_dynamic_reclip_on_profile_edit() {
             *path = PathData::from_bezpath(&deepened);
         }
         Ok(())
-    }).unwrap();
+    })
+    .unwrap();
 
     // Verify elevation lines dynamically updated
     let doc = &s.doc().unwrap().doc;
     let group = doc.node(gid).unwrap();
     if let NodeKind::Group { children, .. } = &group.kind {
-        assert!(children.len() > initial_child_count, "deepened trench must generate more elevation lines: before={}, after={}", initial_child_count, children.len());
+        assert!(
+            children.len() > initial_child_count,
+            "deepened trench must generate more elevation lines: before={}, after={}",
+            initial_child_count,
+            children.len()
+        );
     }
 }

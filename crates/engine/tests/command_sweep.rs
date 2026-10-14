@@ -142,7 +142,14 @@ fn bug_artboard_huge_props_break_svg() {
 
 /// Commands too slow to fuzz exhaustively get a reduced junk set (they still run).
 fn heavy(id: &str) -> bool {
-    id.starts_with("document.serialize") || id.starts_with("document.export") || id == "document.open"
+    id.starts_with("document.serialize")
+        || id.starts_with("document.export")
+        || id == "document.open"
+        || id.starts_with("plate.export")
+        || id.starts_with("gpkg.")
+        || id.starts_with("dxf.")
+        || id.starts_with("style.")
+        || id.starts_with("elevation.")
 }
 
 #[test]
@@ -528,7 +535,7 @@ fn fuzzed_calls_keep_documents_serializable() {
 fn every_command_undoes_exactly() {
     let mut failures = vec![];
     for c in command_specs() {
-        if matches!(c.id, "edit.undo" | "edit.redo") || c.id.starts_with("file.") || c.id.starts_with("document.") {
+        if matches!(c.id, "edit.undo" | "edit.redo") || c.id.starts_with("file.") || c.id.starts_with("document.") || c.id.starts_with("trowel.new") {
             continue;
         }
         let mut s = Fixture::Multi.session();

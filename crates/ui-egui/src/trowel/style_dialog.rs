@@ -5,9 +5,7 @@ use std::collections::HashMap;
 
 use egui::vec2;
 use serde_json::json;
-use vectorcraft_doc::style_template::{
-    DiffStatus, ItemDiff, MergeAction, StyleCategory, TrowelStyleTemplate, diff_template,
-};
+use vectorcraft_doc::style_template::{DiffStatus, ItemDiff, MergeAction, StyleCategory, TrowelStyleTemplate, diff_template};
 
 use super::*;
 use crate::VectorcraftApp;
@@ -41,17 +39,13 @@ pub fn show_dialog(app: &mut VectorcraftApp, ctx: &egui::Context) {
         return;
     }
 
-    let mut resolutions: HashMap<String, MergeAction> =
-        ctx.data(|d| d.get_temp(style_resolutions_id())).unwrap_or_default();
-    let template_path: String =
-        ctx.data(|d| d.get_temp(style_template_path_id())).unwrap_or_default();
-    let mut category_filter: Option<StyleCategory> =
-        ctx.data(|d| d.get_temp(style_category_filter_id())).unwrap_or(None);
+    let mut resolutions: HashMap<String, MergeAction> = ctx.data(|d| d.get_temp(style_resolutions_id())).unwrap_or_default();
+    let template_path: String = ctx.data(|d| d.get_temp(style_template_path_id())).unwrap_or_default();
+    let mut category_filter: Option<StyleCategory> = ctx.data(|d| d.get_temp(style_category_filter_id())).unwrap_or(None);
 
     let template = if !template_path.is_empty() {
         match std::fs::read_to_string(&template_path) {
-            Ok(content) => serde_json::from_str::<TrowelStyleTemplate>(&content)
-                .unwrap_or_else(|_| TrowelStyleTemplate::default()),
+            Ok(content) => serde_json::from_str::<TrowelStyleTemplate>(&content).unwrap_or_else(|_| TrowelStyleTemplate::default()),
             Err(_) => TrowelStyleTemplate::default(),
         }
     } else {
@@ -62,12 +56,12 @@ pub fn show_dialog(app: &mut VectorcraftApp, ctx: &egui::Context) {
         Some(st) => diff_template(&st.doc, &template),
         None => {
             let mut open_flag = is_open;
-            egui::Window::new("고고학 양식 템플릿 (.trowel-style) 및 범례표 (J018)")
-                .id(wid("style-template-window", ()))
-                .open(&mut open_flag)
-                .show(ctx, |ui| {
+            egui::Window::new("고고학 양식 템플릿 (.trowel-style) 및 범례표 (J018)").id(wid("style-template-window", ())).open(&mut open_flag).show(
+                ctx,
+                |ui| {
                     ui.label("열린 문서가 없습니다.");
-                });
+                },
+            );
             let final_open = open_flag;
             ctx.data_mut(|d| d.insert_temp(style_dialog_open_id(), final_open));
             return;
@@ -89,7 +83,11 @@ pub fn show_dialog(app: &mut VectorcraftApp, ctx: &egui::Context) {
 
             // Section 1: Template and Canvas Legend Toolbar
             ui.horizontal(|ui| {
-                if ui.button("현재 문서 양식 내보내기 (.trowel-style)").on_hover_text("현재 문서의 레이어와 범례 속성을 .trowel-style 파일로 내보냅니다.").clicked() {
+                if ui
+                    .button("현재 문서 양식 내보내기 (.trowel-style)")
+                    .on_hover_text("현재 문서의 레이어와 범례 속성을 .trowel-style 파일로 내보냅니다.")
+                    .clicked()
+                {
                     let _ = app.run(
                         "style.exportTemplate",
                         json!({
@@ -99,7 +97,11 @@ pub fn show_dialog(app: &mut VectorcraftApp, ctx: &egui::Context) {
                     );
                 }
 
-                if ui.button("캔버스 자동 범례표 삽입").on_hover_text("도면에서 실제로 사용한 레이어만 추출하여 캔버스에 벡터 범례표를 삽입합니다 (0개 요소 레이어 필터링).").clicked() {
+                if ui
+                    .button("캔버스 자동 범례표 삽입")
+                    .on_hover_text("도면에서 실제로 사용한 레이어만 추출하여 캔버스에 벡터 범례표를 삽입합니다 (0개 요소 레이어 필터링).")
+                    .clicked()
+                {
                     let _ = app.run(
                         "style.generateLegend",
                         json!({
@@ -112,7 +114,8 @@ pub fn show_dialog(app: &mut VectorcraftApp, ctx: &egui::Context) {
                     );
                 }
 
-                if ui.button("범례표 갱신").on_hover_text("도면 요소 추가/삭제를 반영하여 범례표를 제자리에서 갱신합니다.").clicked() {
+                if ui.button("범례표 갱신").on_hover_text("도면 요소 추가/삭제를 반영하여 범례표를 제자리에서 갱신합니다.").clicked()
+                {
                     let _ = app.run("style.updateLegend", json!({}));
                 }
             });
@@ -134,26 +137,10 @@ pub fn show_dialog(app: &mut VectorcraftApp, ctx: &egui::Context) {
             // Section 3: Genuine Dynamic Diff Summary
             ui.label(egui::RichText::new("템플릿 차이 분석 결과 (Diff)").strong());
             ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new(format!("동일: {}", diff.identical_count))
-                        .color(t.text)
-                        .strong(),
-                );
-                ui.label(
-                    egui::RichText::new(format!("추가: {}", diff.added_count))
-                        .color(t.accent)
-                        .strong(),
-                );
-                ui.label(
-                    egui::RichText::new(format!("변경: {}", diff.modified_count))
-                        .color(t.warning)
-                        .strong(),
-                );
-                ui.label(
-                    egui::RichText::new(format!("누락: {}", diff.missing_count))
-                        .color(t.error)
-                        .strong(),
-                );
+                ui.label(egui::RichText::new(format!("동일: {}", diff.identical_count)).color(t.text).strong());
+                ui.label(egui::RichText::new(format!("추가: {}", diff.added_count)).color(t.accent).strong());
+                ui.label(egui::RichText::new(format!("변경: {}", diff.modified_count)).color(t.warning).strong());
+                ui.label(egui::RichText::new(format!("누락: {}", diff.missing_count)).color(t.error).strong());
                 ui.separator();
                 ui.label(egui::RichText::new(diff.summary_ko()).color(t.text_dim));
             });
@@ -163,7 +150,8 @@ pub fn show_dialog(app: &mut VectorcraftApp, ctx: &egui::Context) {
             // Section 4: Global Merge Action Batch Buttons & Category Filter
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("일괄 조치:").strong());
-                if ui.button("모두 덮어쓰기 (Overwrite)").on_hover_text("모든 항목에 대해 템플릿 정의로 덮어씁니다.").clicked() {
+                if ui.button("모두 덮어쓰기 (Overwrite)").on_hover_text("모든 항목에 대해 템플릿 정의로 덮어씁니다.").clicked()
+                {
                     for item in &diff.items {
                         resolutions.insert(item.key.clone(), MergeAction::Overwrite);
                     }
@@ -210,102 +198,89 @@ pub fn show_dialog(app: &mut VectorcraftApp, ctx: &egui::Context) {
             // Section 5: Dynamic Item Table
             ui.label(egui::RichText::new("항목별 세부 차이 및 병합 조치 선택:").strong());
 
-            let filtered_items: Vec<&ItemDiff> = diff
-                .items
-                .iter()
-                .filter(|item| category_filter.is_none() || category_filter == Some(item.category))
-                .collect();
+            let filtered_items: Vec<&ItemDiff> =
+                diff.items.iter().filter(|item| category_filter.is_none() || category_filter == Some(item.category)).collect();
 
             if filtered_items.is_empty() {
                 ui.label("표시할 항목이 없습니다.");
             } else {
-                egui::ScrollArea::vertical()
-                    .max_height(260.0)
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        egui::Grid::new(wid("style-diff-grid", ()))
-                            .striped(true)
-                            .min_col_width(70.0)
-                            .spacing(vec2(8.0, 6.0))
-                            .show(ui, |ui| {
-                                // Header row
-                                ui.label(egui::RichText::new("분류").strong());
-                                ui.label(egui::RichText::new("항목명").strong());
-                                ui.label(egui::RichText::new("상태").strong());
-                                ui.label(egui::RichText::new("차이 상세").strong());
-                                ui.label(egui::RichText::new("병합 조치").strong());
-                                ui.end_row();
+                egui::ScrollArea::vertical().max_height(260.0).auto_shrink([false, false]).show(ui, |ui| {
+                    egui::Grid::new(wid("style-diff-grid", ())).striped(true).min_col_width(70.0).spacing(vec2(8.0, 6.0)).show(ui, |ui| {
+                        // Header row
+                        ui.label(egui::RichText::new("분류").strong());
+                        ui.label(egui::RichText::new("항목명").strong());
+                        ui.label(egui::RichText::new("상태").strong());
+                        ui.label(egui::RichText::new("차이 상세").strong());
+                        ui.label(egui::RichText::new("병합 조치").strong());
+                        ui.end_row();
 
-                                for item in filtered_items {
-                                    // 1. Category Badge
-                                    let (cat_label, cat_color) = match item.category {
-                                        StyleCategory::LegendRow => ("레이어 규칙", t.accent),
-                                        StyleCategory::StrokeWeight => ("선 굵기", t.text),
-                                        StyleCategory::HatchPreset => ("단면 해치", t.warning),
-                                        StyleCategory::SoilPalette => ("토층 팔레트", t.clay),
-                                        StyleCategory::Typography => ("도면 서체", t.highlight),
-                                        StyleCategory::ElevationRules => ("표고선", t.accent_strong),
-                                        StyleCategory::TitleBlock => ("표제란", t.text_dim),
-                                    };
-                                    ui.label(egui::RichText::new(cat_label).color(cat_color));
+                        for item in filtered_items {
+                            // 1. Category Badge
+                            let (cat_label, cat_color) = match item.category {
+                                StyleCategory::LegendRow => ("레이어 규칙", t.accent),
+                                StyleCategory::StrokeWeight => ("선 굵기", t.text),
+                                StyleCategory::HatchPreset => ("단면 해치", t.warning),
+                                StyleCategory::SoilPalette => ("토층 팔레트", t.clay),
+                                StyleCategory::Typography => ("도면 서체", t.highlight),
+                                StyleCategory::ElevationRules => ("표고선", t.accent_strong),
+                                StyleCategory::TitleBlock => ("표제란", t.text_dim),
+                            };
+                            ui.label(egui::RichText::new(cat_label).color(cat_color));
 
-                                    // 2. Name / Label
-                                    ui.label(egui::RichText::new(&item.label).strong());
+                            // 2. Name / Label
+                            ui.label(egui::RichText::new(&item.label).strong());
 
-                                    // 3. Status Badge
-                                    let (status_label, status_color) = match item.status {
-                                        DiffStatus::Identical => ("동일", t.text),
-                                        DiffStatus::Added => ("추가", t.accent),
-                                        DiffStatus::Modified => ("변경", t.warning),
-                                        DiffStatus::Missing => ("누락", t.error),
-                                    };
-                                    ui.label(egui::RichText::new(status_label).color(status_color));
+                            // 3. Status Badge
+                            let (status_label, status_color) = match item.status {
+                                DiffStatus::Identical => ("동일", t.text),
+                                DiffStatus::Added => ("추가", t.accent),
+                                DiffStatus::Modified => ("변경", t.warning),
+                                DiffStatus::Missing => ("누락", t.error),
+                            };
+                            ui.label(egui::RichText::new(status_label).color(status_color));
 
-                                    // 4. Difference details
-                                    if item.property_diffs.is_empty() {
-                                        let detail = match item.status {
-                                            DiffStatus::Identical => "현재 문서와 일치",
-                                            DiffStatus::Missing => "도면 레이어 (템플릿 미포함)",
-                                            _ => "-",
-                                        };
-                                        ui.label(egui::RichText::new(detail).color(t.text_dim));
-                                    } else {
-                                        let diff_texts: Vec<String> = item
-                                            .property_diffs
-                                            .iter()
-                                            .map(|p| format!("{}: {} → {}", p.property_name, p.current_value, p.incoming_value))
-                                            .collect();
-                                        ui.label(diff_texts.join(", "));
-                                    }
+                            // 4. Difference details
+                            if item.property_diffs.is_empty() {
+                                let detail = match item.status {
+                                    DiffStatus::Identical => "현재 문서와 일치",
+                                    DiffStatus::Missing => "도면 레이어 (템플릿 미포함)",
+                                    _ => "-",
+                                };
+                                ui.label(egui::RichText::new(detail).color(t.text_dim));
+                            } else {
+                                let diff_texts: Vec<String> = item
+                                    .property_diffs
+                                    .iter()
+                                    .map(|p| format!("{}: {} → {}", p.property_name, p.current_value, p.incoming_value))
+                                    .collect();
+                                ui.label(diff_texts.join(", "));
+                            }
 
-                                    // 5. Merge action resolution selector
-                                    let current_action = resolutions
-                                        .get(&item.key)
-                                        .copied()
-                                        .unwrap_or(item.recommended_action);
-                                    let mut selected_action = current_action;
+                            // 5. Merge action resolution selector
+                            let current_action = resolutions.get(&item.key).copied().unwrap_or(item.recommended_action);
+                            let mut selected_action = current_action;
 
-                                    egui::ComboBox::from_id_salt(wid("res-combo", &item.key))
-                                        .width(110.0)
-                                        .selected_text(match selected_action {
-                                            MergeAction::Overwrite => "덮어쓰기",
-                                            MergeAction::KeepExisting => "기존 유지",
-                                            MergeAction::ImportAsNewCopy => "새 사본",
-                                        })
-                                        .show_ui(ui, |ui| {
-                                            ui.selectable_value(&mut selected_action, MergeAction::Overwrite, "덮어쓰기 (Overwrite)");
-                                            ui.selectable_value(&mut selected_action, MergeAction::KeepExisting, "기존 유지 (Keep)");
-                                            ui.selectable_value(&mut selected_action, MergeAction::ImportAsNewCopy, "새 사본 (Copy)");
-                                        });
+                            egui::ComboBox::from_id_salt(wid("res-combo", &item.key))
+                                .width(110.0)
+                                .selected_text(match selected_action {
+                                    MergeAction::Overwrite => "덮어쓰기",
+                                    MergeAction::KeepExisting => "기존 유지",
+                                    MergeAction::ImportAsNewCopy => "새 사본",
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut selected_action, MergeAction::Overwrite, "덮어쓰기 (Overwrite)");
+                                    ui.selectable_value(&mut selected_action, MergeAction::KeepExisting, "기존 유지 (Keep)");
+                                    ui.selectable_value(&mut selected_action, MergeAction::ImportAsNewCopy, "새 사본 (Copy)");
+                                });
 
-                                    if selected_action != current_action {
-                                        resolutions.insert(item.key.clone(), selected_action);
-                                    }
+                            if selected_action != current_action {
+                                resolutions.insert(item.key.clone(), selected_action);
+                            }
 
-                                    ui.end_row();
-                                }
-                            });
+                            ui.end_row();
+                        }
                     });
+                });
             }
 
             ui.separator();
@@ -317,10 +292,7 @@ pub fn show_dialog(app: &mut VectorcraftApp, ctx: &egui::Context) {
                         .items
                         .iter()
                         .map(|item| {
-                            let action = resolutions
-                                .get(&item.key)
-                                .copied()
-                                .unwrap_or(item.recommended_action);
+                            let action = resolutions.get(&item.key).copied().unwrap_or(item.recommended_action);
                             let action_str = match action {
                                 MergeAction::KeepExisting => "keep_existing",
                                 MergeAction::ImportAsNewCopy => "import_as_new_copy",

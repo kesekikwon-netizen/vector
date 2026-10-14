@@ -13,9 +13,8 @@ use vectorcraft_doc::appearance::{AppearanceItem, Dash, StrokeLayer};
 use vectorcraft_doc::{Appearance, CharStyle, Justify, Node, NodeId, NodeKind, TextObject};
 use vectorcraft_geom::PathData;
 use vectorcraft_pathops::plan::{
-    DEFAULT_HACHURE_SHORT_RATIO, DEFAULT_HACHURE_SPACING_MM, DEFAULT_PLAN_WEIGHT_PT,
-    DepthMarkerKind, DepthMarkerSpec, SectionLineSpec, SlopeHachureSpec, SpotElevationSpec,
-    SpotMarkerKind, ViewDirection, compute_polygon_stats, generate_depth_marker_geometry,
+    DEFAULT_HACHURE_SHORT_RATIO, DEFAULT_HACHURE_SPACING_MM, DEFAULT_PLAN_WEIGHT_PT, DepthMarkerKind, DepthMarkerSpec, SectionLineSpec,
+    SlopeHachureSpec, SpotElevationSpec, SpotMarkerKind, ViewDirection, compute_polygon_stats, generate_depth_marker_geometry,
     generate_section_line_geometry, generate_slope_hachures, generate_spot_elevation_geometry,
 };
 
@@ -109,11 +108,9 @@ fn section_line(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "trowel.sectionLine";
 
     let p0 = p.get("p0").or_else(|| p.get("p1")).and_then(parse_point).ok_or_else(|| bad(C, "missing or invalid `p0` or `p1`"))?;
-    let p1 = if p.get("p0").is_some() {
-        p.get("p1")
-    } else {
-        p.get("p2")
-    }.and_then(parse_point).ok_or_else(|| bad(C, "missing or invalid `p1` or `p2`"))?;
+    let p1 = if p.get("p0").is_some() { p.get("p1") } else { p.get("p2") }
+        .and_then(parse_point)
+        .ok_or_else(|| bad(C, "missing or invalid `p1` or `p2`"))?;
 
     let label_start = p.get("labelStart").and_then(|v| v.as_str()).unwrap_or("A").to_string();
     let label_end = p.get("labelEnd").and_then(|v| v.as_str()).unwrap_or("A′").to_string();
@@ -126,16 +123,8 @@ fn section_line(s: &mut Session, p: &Value) -> Result<Value> {
     let weight_pt = p.get("weight").and_then(|v| v.as_f64()).unwrap_or(DEFAULT_PLAN_WEIGHT_PT);
     let arrow_length_pt = p.get("arrowLength").and_then(|v| v.as_f64()).unwrap_or(14.0);
 
-    let spec = SectionLineSpec {
-        p0,
-        p1,
-        label_start,
-        label_end,
-        view_direction,
-        weight_pt,
-        arrow_length_pt,
-        dash_pattern: vec![12.0, 3.0, 2.0, 3.0],
-    };
+    let spec =
+        SectionLineSpec { p0, p1, label_start, label_end, view_direction, weight_pt, arrow_length_pt, dash_pattern: vec![12.0, 3.0, 2.0, 3.0] };
 
     let geom = generate_section_line_geometry(&spec);
     let target_parent = s.doc()?.target_parent()?;
@@ -234,15 +223,7 @@ fn spot_elevation(s: &mut Session, p: &Value) -> Result<Value> {
     let prefix_plus = p.get("prefixPlus").and_then(|v| v.as_bool()).unwrap_or(true);
     let suffix_m = p.get("suffixM").and_then(|v| v.as_bool()).unwrap_or(true);
 
-    let spec = SpotElevationSpec {
-        at,
-        elevation_m: elevation,
-        marker,
-        font_size_pt,
-        halo,
-        prefix_plus,
-        suffix_m,
-    };
+    let spec = SpotElevationSpec { at, elevation_m: elevation, marker, font_size_pt, halo, prefix_plus, suffix_m };
 
     let geom = generate_spot_elevation_geometry(&spec);
     let target_parent = s.doc()?.target_parent()?;
@@ -309,14 +290,7 @@ fn depth_marker(s: &mut Session, p: &Value) -> Result<Value> {
     let radius = p.get("radius").and_then(|v| v.as_f64()).unwrap_or(7.0);
     let font_size = p.get("fontSize").and_then(|v| v.as_f64()).unwrap_or(7.0);
 
-    let spec = DepthMarkerSpec {
-        at,
-        depth_val: depth,
-        is_cm,
-        symbol,
-        font_size_pt: font_size,
-        outer_radius_pt: radius,
-    };
+    let spec = DepthMarkerSpec { at, depth_val: depth, is_cm, symbol, font_size_pt: font_size, outer_radius_pt: radius };
 
     let geom = generate_depth_marker_geometry(&spec);
     let target_parent = s.doc()?.target_parent()?;
@@ -408,13 +382,7 @@ fn slope_hachures(s: &mut Session, p: &Value) -> Result<Value> {
         None
     };
 
-    let spec = SlopeHachureSpec {
-        spacing_mm,
-        short_ratio,
-        weight_pt: DEFAULT_PLAN_WEIGHT_PT,
-        default_width_pt: width,
-        range,
-    };
+    let spec = SlopeHachureSpec { spacing_mm, short_ratio, weight_pt: DEFAULT_PLAN_WEIGHT_PT, default_width_pt: width, range };
 
     let hachures_bp = generate_slope_hachures(&top_bp, bottom_bp.as_ref(), &spec);
     let target_parent = doc.target_parent()?;
@@ -499,39 +467,55 @@ mod tests {
         s.execute("file.new", &json!({"width": 800, "height": 600})).expect("new doc");
 
         // 1. Section line
-        let res = s.execute("trowel.sectionLine", &json!({
-            "p1": [10.0, 10.0],
-            "p2": [200.0, 10.0],
-            "label": "A"
-        })).expect("section line");
+        let res = s
+            .execute(
+                "trowel.sectionLine",
+                &json!({
+                    "p1": [10.0, 10.0],
+                    "p2": [200.0, 10.0],
+                    "label": "A"
+                }),
+            )
+            .expect("section line");
         assert!(res.get("id").is_some());
 
         // 2. Spot elevation
-        let res = s.execute("trowel.spotElevation", &json!({
-            "at": [100.0, 100.0],
-            "elevation": 152.35
-        })).expect("spot elevation");
+        let res = s
+            .execute(
+                "trowel.spotElevation",
+                &json!({
+                    "at": [100.0, 100.0],
+                    "elevation": 152.35
+                }),
+            )
+            .expect("spot elevation");
         assert!(res.get("id").is_some());
 
         // 3. Depth marker
-        let res = s.execute("trowel.depthMarker", &json!({
-            "at": [150.0, 150.0],
-            "depthCm": 45.0
-        })).expect("depth marker");
+        let res = s
+            .execute(
+                "trowel.depthMarker",
+                &json!({
+                    "at": [150.0, 150.0],
+                    "depthCm": 45.0
+                }),
+            )
+            .expect("depth marker");
         assert!(res.get("id").is_some());
 
         // 4. Polygon stats with canonical House 1 points (at default 1:20 scale)
         let scale = vectorcraft_doc::scale::ScaleConfig::new(20.0);
         let ppm = scale.scale.points_per_meter();
-        let pts: Vec<[f64; 2]> = vectorcraft_pathops::plan::HOUSE_1_POLYGON_METERS
-            .iter()
-            .map(|&(x, y)| [x * ppm, -y * ppm])
-            .collect();
-        let res = s.execute("trowel.polygonStats", &json!({
-            "points": pts
-        })).expect("polygon stats");
+        let pts: Vec<[f64; 2]> = vectorcraft_pathops::plan::HOUSE_1_POLYGON_METERS.iter().map(|&(x, y)| [x * ppm, -y * ppm]).collect();
+        let res = s
+            .execute(
+                "trowel.polygonStats",
+                &json!({
+                    "points": pts
+                }),
+            )
+            .expect("polygon stats");
         let area_m2 = res["area_m2"].as_f64().unwrap();
         assert!((area_m2 - 32.91).abs() < 0.01);
     }
 }
-

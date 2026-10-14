@@ -2,10 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::Document;
 use crate::hatch::{DEFAULT_HATCH_SPACING_MM, DEFAULT_HATCH_WEIGHT_PT, HatchDirection};
 use crate::legend::{LegendGroup, LegendSample, LineType, SAME};
 use crate::stratigraphy::StratigraphyPatternKind;
-use crate::Document;
 
 /// File format identifier for standalone Trowel style templates.
 pub const TROWEL_STYLE_FORMAT: &str = "trowel-style";
@@ -346,14 +346,7 @@ pub struct TypographyStyle {
 
 impl Default for TypographyStyle {
     fn default() -> Self {
-        Self {
-            caption_pt: 10.0,
-            feature_name_pt: 9.0,
-            legend_and_soil_pt: 8.0,
-            elevation_pt: 7.0,
-            coordinates_pt: 7.0,
-            font_family: None,
-        }
+        Self { caption_pt: 10.0, feature_name_pt: 9.0, legend_and_soil_pt: 8.0, elevation_pt: 7.0, coordinates_pt: 7.0, font_family: None }
     }
 }
 
@@ -459,10 +452,7 @@ pub struct StyleDiff {
 
 impl StyleDiff {
     pub fn summary_ko(&self) -> String {
-        format!(
-            "새 항목 {}개 · 바뀐 항목 {}개 · 같은 항목 {}개",
-            self.added_count, self.modified_count, self.identical_count
-        )
+        format!("새 항목 {}개 · 바뀐 항목 {}개 · 같은 항목 {}개", self.added_count, self.modified_count, self.identical_count)
     }
 }
 
@@ -486,10 +476,7 @@ pub fn diff_template(doc: &Document, template: &TrowelStyleTemplate) -> StyleDif
         // Find matching layer in doc by name or strata key
         let existing = doc.layers.iter().find(|l| {
             l.display_name().trim() == row.name.trim()
-                || (row.strata_key.is_some()
-                    && l.legend()
-                        .and_then(|leg| leg.strata.as_deref())
-                        == row.strata_key.as_deref())
+                || (row.strata_key.is_some() && l.legend().and_then(|leg| leg.strata.as_deref()) == row.strata_key.as_deref())
         });
 
         if let Some(layer) = existing {
@@ -591,13 +578,7 @@ pub fn diff_template(doc: &Document, template: &TrowelStyleTemplate) -> StyleDif
         }
     }
 
-    StyleDiff {
-        items,
-        identical_count,
-        added_count,
-        modified_count,
-        missing_count,
-    }
+    StyleDiff { items, identical_count, added_count, modified_count, missing_count }
 }
 
 #[cfg(test)]

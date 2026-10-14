@@ -191,21 +191,14 @@ pub fn fit_two_point(
 
 /// N-Point Helmert 2D Similarity Registration ($N \ge 2$, 4 DOF: scale, rotation, translation).
 /// Preserves isotropic aspect ratio and orthogonal angles.
-pub fn fit_similarity(
-    pairs: &[PointPair],
-    points_per_meter: Option<f64>,
-) -> Result<RegistrationResult, RegistrationError> {
+pub fn fit_similarity(pairs: &[PointPair], points_per_meter: Option<f64>) -> Result<RegistrationResult, RegistrationError> {
     let n = pairs.len();
     if n < 2 {
         return Err(RegistrationError::InsufficientPoints { required: 2, actual: n });
     }
 
     for p in pairs {
-        if !p.source.x.is_finite()
-            || !p.source.y.is_finite()
-            || !p.target.x.is_finite()
-            || !p.target.y.is_finite()
-        {
+        if !p.source.x.is_finite() || !p.source.y.is_finite() || !p.target.x.is_finite() || !p.target.y.is_finite() {
             return Err(RegistrationError::InvalidCoordinates);
         }
     }
@@ -261,21 +254,14 @@ pub fn fit_similarity(
 /// N-Point 6-Parameter Affine Registration ($N \ge 3$, 6 DOF).
 /// Supports anisotropic scaling, shearing, rotation, and translation.
 /// Checks for collinearity ($\det(\mathbf{C}) < 10^{-12}$).
-pub fn fit_affine(
-    pairs: &[PointPair],
-    points_per_meter: Option<f64>,
-) -> Result<RegistrationResult, RegistrationError> {
+pub fn fit_affine(pairs: &[PointPair], points_per_meter: Option<f64>) -> Result<RegistrationResult, RegistrationError> {
     let n = pairs.len();
     if n < 3 {
         return Err(RegistrationError::InsufficientPoints { required: 3, actual: n });
     }
 
     for p in pairs {
-        if !p.source.x.is_finite()
-            || !p.source.y.is_finite()
-            || !p.target.x.is_finite()
-            || !p.target.y.is_finite()
-        {
+        if !p.source.x.is_finite() || !p.source.y.is_finite() || !p.target.x.is_finite() || !p.target.y.is_finite() {
             return Err(RegistrationError::InvalidCoordinates);
         }
     }
@@ -347,10 +333,7 @@ pub fn fit_affine(
 
 /// Automatically fits affine transform if possible (N >= 3 and not collinear);
 /// otherwise falls back to similarity transform.
-pub fn fit_auto(
-    pairs: &[PointPair],
-    points_per_meter: Option<f64>,
-) -> Result<RegistrationResult, RegistrationError> {
+pub fn fit_auto(pairs: &[PointPair], points_per_meter: Option<f64>) -> Result<RegistrationResult, RegistrationError> {
     if pairs.len() >= 3 {
         match fit_affine(pairs, points_per_meter) {
             Ok(res) => return Ok(res),
@@ -362,11 +345,7 @@ pub fn fit_auto(
 }
 
 /// Evaluates per-point residuals and RMSE given an existing transform matrix and point pairs.
-pub fn evaluate_residuals(
-    transform: Affine,
-    pairs: &[PointPair],
-    points_per_meter: Option<f64>,
-) -> Result<RegistrationResult, RegistrationError> {
+pub fn evaluate_residuals(transform: Affine, pairs: &[PointPair], points_per_meter: Option<f64>) -> Result<RegistrationResult, RegistrationError> {
     if pairs.is_empty() {
         return Err(RegistrationError::InsufficientPoints { required: 1, actual: 0 });
     }
@@ -406,17 +385,7 @@ fn compute_residuals(
         let dist_m = points_per_meter.map(|ppm| dist_pt / ppm);
         let dist_mm = dist_pt / MM;
 
-        residuals.push(PointResidual {
-            index: i,
-            source: p.source,
-            target: p.target,
-            mapped,
-            dx,
-            dy,
-            dist_pt,
-            dist_m,
-            dist_mm,
-        });
+        residuals.push(PointResidual { index: i, source: p.source, target: p.target, mapped, dx, dy, dist_pt, dist_m, dist_mm });
     }
 
     let n = pairs.len() as f64;
@@ -452,8 +421,7 @@ mod tests {
         let p2 = Point::new(110.0, 20.0); // dist = 100
         let target_dist = 200.0; // scale = 2.0
 
-        let res = fit_two_point(p1, p2, Some(target_dist), None, None, AxisAlignment::Horizontal)
-            .expect("two point fit");
+        let res = fit_two_point(p1, p2, Some(target_dist), None, None, AxisAlignment::Horizontal).expect("two point fit");
         assert!((res.scale - 2.0).abs() < 1e-9);
         assert!(res.rotation_deg.abs() < 1e-9);
 
@@ -470,8 +438,7 @@ mod tests {
         let q1 = Point::new(50.0, 50.0);
         let q2 = Point::new(50.0, 150.0); // rotated 90 deg, len 100
 
-        let res = fit_two_point(p1, p2, None, Some(q1), Some(q2), AxisAlignment::None)
-            .expect("two point with targets");
+        let res = fit_two_point(p1, p2, None, Some(q1), Some(q2), AxisAlignment::None).expect("two point with targets");
         assert!((res.scale - 1.0).abs() < 1e-9);
         assert!((res.rotation_deg - 90.0).abs() < 1e-9);
 
@@ -484,26 +451,11 @@ mod tests {
         // True transform: scale=1.5, rot=30 deg, tx=100, ty=-50
         let theta = 30.0f64.to_radians();
         let s = 1.5;
-        let ground_truth = Affine::new([
-            s * theta.cos(),
-            s * theta.sin(),
-            -s * theta.sin(),
-            s * theta.cos(),
-            100.0,
-            -50.0,
-        ]);
+        let ground_truth = Affine::new([s * theta.cos(), s * theta.sin(), -s * theta.sin(), s * theta.cos(), 100.0, -50.0]);
 
-        let pts = [
-            Point::new(10.0, 10.0),
-            Point::new(80.0, 20.0),
-            Point::new(40.0, 90.0),
-            Point::new(120.0, 110.0),
-        ];
+        let pts = [Point::new(10.0, 10.0), Point::new(80.0, 20.0), Point::new(40.0, 90.0), Point::new(120.0, 110.0)];
 
-        let pairs: Vec<PointPair> = pts
-            .iter()
-            .map(|&p| PointPair::new(p, ground_truth * p))
-            .collect();
+        let pairs: Vec<PointPair> = pts.iter().map(|&p| PointPair::new(p, ground_truth * p)).collect();
 
         let res = fit_similarity(&pairs, Some(100.0)).expect("similarity fit");
         assert!(res.rmse_pt < 1e-9);
@@ -519,17 +471,9 @@ mod tests {
         let ground_truth = Affine::new([1.050, 0.080, -0.060, 0.980, 150.0, -80.0]);
 
         // Gwangnyeong-ri 1 control point layout (in canvas space)
-        let pts = [
-            Point::new(100.0, 100.0),
-            Point::new(500.0, 120.0),
-            Point::new(490.0, 480.0),
-            Point::new(110.0, 470.0),
-        ];
+        let pts = [Point::new(100.0, 100.0), Point::new(500.0, 120.0), Point::new(490.0, 480.0), Point::new(110.0, 470.0)];
 
-        let pairs: Vec<PointPair> = pts
-            .iter()
-            .map(|&p| PointPair::new(p, ground_truth * p))
-            .collect();
+        let pairs: Vec<PointPair> = pts.iter().map(|&p| PointPair::new(p, ground_truth * p)).collect();
 
         let res = fit_affine(&pairs, Some(141.732)).expect("affine fit");
         assert!(res.rmse_pt < 1e-9);
@@ -558,10 +502,7 @@ mod tests {
 
     #[test]
     fn test_degenerate_points() {
-        let pairs = vec![
-            PointPair::new(Point::new(5.0, 5.0), Point::new(10.0, 10.0)),
-            PointPair::new(Point::new(5.0, 5.0), Point::new(20.0, 20.0)),
-        ];
+        let pairs = vec![PointPair::new(Point::new(5.0, 5.0), Point::new(10.0, 10.0)), PointPair::new(Point::new(5.0, 5.0), Point::new(20.0, 20.0))];
         let err = fit_similarity(&pairs, None).unwrap_err();
         assert_eq!(err, RegistrationError::DegeneratePoints);
     }

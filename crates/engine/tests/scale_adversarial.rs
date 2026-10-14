@@ -5,8 +5,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use serde_json::json;
-use vectorcraft_doc::scale::{compute_graticule_ticks, ScaleConfig};
 use vectorcraft_doc::NodeId;
+use vectorcraft_doc::scale::{ScaleConfig, compute_graticule_ticks};
 use vectorcraft_engine::Session;
 use vectorcraft_geom::{Point, Rect};
 
@@ -26,10 +26,14 @@ fn test_adversarial_extreme_coordinates_cancellation() {
     s.execute("doc.setScale", &json!({"scale": "1:20", "epsg": 5186, "order": "eastnorth"})).unwrap();
 
     // Test with origin at (0, 0) in world, canvas origin at (400, 300)
-    s.execute("doc.setOrigin", &json!({
-        "canvas": [400.0, 300.0],
-        "world": [0.0, 0.0]
-    })).unwrap();
+    s.execute(
+        "doc.setOrigin",
+        &json!({
+            "canvas": [400.0, 300.0],
+            "world": [0.0, 0.0]
+        }),
+    )
+    .unwrap();
 
     let extreme_cases = [
         (200_000.0, 550_000.0),       // Standard Korean Central Belt TM
@@ -55,14 +59,8 @@ fn test_adversarial_extreme_coordinates_cancellation() {
 
         // Sub-millimeter requirement: error must be strictly < 0.001 m (1 mm)
         // With IEEE 754 f64, we expect < 1e-6 m even at 1,000,000m
-        assert!(
-            err_e < 1e-6,
-            "East residual for ({east}, {north}) exceeded 1 µm: {err_e} m"
-        );
-        assert!(
-            err_n < 1e-6,
-            "North residual for ({east}, {north}) exceeded 1 µm: {err_n} m"
-        );
+        assert!(err_e < 1e-6, "East residual for ({east}, {north}) exceeded 1 µm: {err_e} m");
+        assert!(err_n < 1e-6, "North residual for ({east}, {north}) exceeded 1 µm: {err_n} m");
     }
 }
 
@@ -72,10 +70,14 @@ fn test_adversarial_extreme_coordinates_cancellation() {
 fn test_adversarial_millimeter_sensitivity() {
     let mut s = test_session();
     s.execute("doc.setScale", &json!({"scale": 20.0})).unwrap();
-    s.execute("doc.setOrigin", &json!({
-        "canvas": [100.0, 100.0],
-        "world": [200_000.0, 550_000.0]
-    })).unwrap();
+    s.execute(
+        "doc.setOrigin",
+        &json!({
+            "canvas": [100.0, 100.0],
+            "world": [200_000.0, 550_000.0]
+        }),
+    )
+    .unwrap();
 
     // 1 mm = 0.001 m. At 1:20 scale:
     // 0.001 m = 1 mm world -> 0.05 mm paper -> 0.05 * (72.0 / 25.4) pt ≈ 0.141732 pt
@@ -85,10 +87,7 @@ fn test_adversarial_millimeter_sensitivity() {
     let pt1 = s.execute("doc.coordToCanvas", &json!({"east": 200_000.001, "north": 550_000.0})).unwrap();
 
     let dx = pt1["canvas_x"].as_f64().unwrap() - pt0["canvas_x"].as_f64().unwrap();
-    assert!(
-        (dx - expected_dpt).abs() < 1e-6,
-        "1mm displacement on East must match expected canvas points: got {dx}, expected {expected_dpt}"
-    );
+    assert!((dx - expected_dpt).abs() < 1e-6, "1mm displacement on East must match expected canvas points: got {dx}, expected {expected_dpt}");
 
     let pt2 = s.execute("doc.coordToCanvas", &json!({"east": 200_000.0, "north": 550_000.001})).unwrap();
     // North is UP, so canvas y decreases
@@ -104,9 +103,7 @@ fn test_adversarial_millimeter_sensitivity() {
 /// canvas_to_world(world_to_canvas(pt)) == pt with sub-millimeter residual.
 #[test]
 fn test_adversarial_round_trip_sweep_all_scales() {
-    let scales = [
-        1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0,
-    ];
+    let scales = [1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0];
 
     for &scale_denom in &scales {
         let mut cfg = ScaleConfig::new(scale_denom);
@@ -147,14 +144,8 @@ fn test_adversarial_round_trip_sweep_all_scales() {
             }
         }
 
-        assert!(
-            max_world_residual < 1e-6,
-            "Scale 1:{scale_denom} max world residual exceeded 1 µm: {max_world_residual} m"
-        );
-        assert!(
-            max_canvas_residual < 1e-6,
-            "Scale 1:{scale_denom} max canvas residual exceeded 1 µpt: {max_canvas_residual} pt"
-        );
+        assert!(max_world_residual < 1e-6, "Scale 1:{scale_denom} max world residual exceeded 1 µm: {max_world_residual} m");
+        assert!(max_canvas_residual < 1e-6, "Scale 1:{scale_denom} max canvas residual exceeded 1 µpt: {max_canvas_residual} pt");
     }
 }
 
@@ -173,17 +164,26 @@ fn test_adversarial_paper_fixed_stroke_weights() {
     let mut node_ids = Vec::new();
 
     for (i, &w) in weights.iter().enumerate() {
-        let res = s.execute("shape.rectangle", &json!({
-            "x": 10.0 + (i as f64) * 60.0,
-            "y": 10.0,
-            "width": 50.0,
-            "height": 50.0
-        })).unwrap();
+        let res = s
+            .execute(
+                "shape.rectangle",
+                &json!({
+                    "x": 10.0 + (i as f64) * 60.0,
+                    "y": 10.0,
+                    "width": 50.0,
+                    "height": 50.0
+                }),
+            )
+            .unwrap();
         let id = res["id"].as_u64().unwrap();
-        s.execute("stroke.set", &json!({
-            "ids": [id],
-            "weight": w
-        })).unwrap();
+        s.execute(
+            "stroke.set",
+            &json!({
+                "ids": [id],
+                "weight": w
+            }),
+        )
+        .unwrap();
         node_ids.push((id, w));
     }
 
@@ -196,10 +196,7 @@ fn test_adversarial_paper_fixed_stroke_weights() {
         for &(id, expected_w) in &node_ids {
             let node = doc.doc.node(NodeId(id)).unwrap();
             let actual_w = node.appearance.stroke_width();
-            assert_eq!(
-                actual_w, expected_w,
-                "Stroke weight for node {id} at scale 1:{scale} must remain exactly {expected_w} pt, got {actual_w}"
-            );
+            assert_eq!(actual_w, expected_w, "Stroke weight for node {id} at scale 1:{scale} must remain exactly {expected_w} pt, got {actual_w}");
         }
     }
 }
@@ -244,20 +241,14 @@ fn test_adversarial_graticule_ticks_math() {
                 let on_top = (tick.pos.y - bounds.y0).abs() < 1e-4;
                 let on_bottom = (tick.pos.y - bounds.y1).abs() < 1e-4;
                 assert!(on_top || on_bottom, "X tick pos.y must be on bounds border");
-                assert!(
-                    tick.pos.x >= bounds.x0 - 1e-4 && tick.pos.x <= bounds.x1 + 1e-4,
-                    "X tick pos.x must be within bounds"
-                );
+                assert!(tick.pos.x >= bounds.x0 - 1e-4 && tick.pos.x <= bounds.x1 + 1e-4, "X tick pos.x must be within bounds");
             }
             "Y" => {
                 // Must be on left or right border
                 let on_left = (tick.pos.x - bounds.x0).abs() < 1e-4;
                 let on_right = (tick.pos.x - bounds.x1).abs() < 1e-4;
                 assert!(on_left || on_right, "Y tick pos.x must be on bounds border");
-                assert!(
-                    tick.pos.y >= bounds.y0 - 1e-4 && tick.pos.y <= bounds.y1 + 1e-4,
-                    "Y tick pos.y must be within bounds"
-                );
+                assert!(tick.pos.y >= bounds.y0 - 1e-4 && tick.pos.y <= bounds.y1 + 1e-4, "Y tick pos.y must be within bounds");
             }
             _ => panic!("Unknown tick axis: {}", tick.axis),
         }

@@ -30,16 +30,15 @@ pub use hatch::{
 pub use offset::{Cap, Join, offset_path, outline_stroke, stroke_region};
 pub use pathfinder::{FaceMerger, PathfinderOp, Region, Shape, merge_regions, pathfinder, region_at, regions};
 pub use plan::{
-    DEFAULT_HACHURE_SHORT_RATIO, DEFAULT_HACHURE_SPACING_MM, DEFAULT_PLAN_WEIGHT_PT, DepthMarkerGeometry,
-    DepthMarkerKind, DepthMarkerSpec, FeatureStats, HOUSE_1_POLYGON_METERS, SECTION_LINE_DASH_PATTERN,
-    SectionLineGeometry, SectionLineSpec, SlopeHachureSpec, SpotElevationGeometry, SpotMarkerKind,
-    SpotElevationSpec, ViewDirection, compute_polygon_stats, generate_depth_marker_geometry,
-    generate_section_line_geometry, generate_slope_hachures, generate_spot_elevation_geometry,
+    DEFAULT_HACHURE_SHORT_RATIO, DEFAULT_HACHURE_SPACING_MM, DEFAULT_PLAN_WEIGHT_PT, DepthMarkerGeometry, DepthMarkerKind, DepthMarkerSpec,
+    FeatureStats, HOUSE_1_POLYGON_METERS, SECTION_LINE_DASH_PATTERN, SectionLineGeometry, SectionLineSpec, SlopeHachureSpec, SpotElevationGeometry,
+    SpotElevationSpec, SpotMarkerKind, ViewDirection, compute_polygon_stats, generate_depth_marker_geometry, generate_section_line_geometry,
+    generate_slope_hachures, generate_spot_elevation_geometry,
 };
 pub use planar::{BuilderArrangement, SHAPE_BUILDER_MAX_SEGMENTS, cut_out, encloses_area, interior_point, live_paint, shape_builder};
 pub use pottery::{
-    build_section_polygon, compute_vessel_measurements, generate_horizontal_ridge,
-    generate_section_hatch, offset_wall_profile, reflect_path_across_centerline,
+    build_section_polygon, compute_vessel_measurements, generate_horizontal_ridge, generate_section_hatch, offset_wall_profile,
+    reflect_path_across_centerline,
 };
 
 /// Errors from fallible operations.

@@ -1,7 +1,7 @@
 //! Automatic horizontal elevation lines model (Trowel design 2.1 §4-1, §14(b, c, d)).
 
-use serde::{Deserialize, Serialize};
 use crate::NodeId;
+use serde::{Deserialize, Serialize};
 
 /// Default minor elevation interval: 10 cm (0.1 m).
 pub const DEFAULT_MINOR_INTERVAL_M: f64 = 0.1;
@@ -69,12 +69,8 @@ pub enum ElevationRangeMode {
     Auto,
     /// Explicit range in meters.
     #[serde(rename = "explicit")]
-    Explicit {
-        min_elevation_m: f64,
-        max_elevation_m: f64,
-    },
+    Explicit { min_elevation_m: f64, max_elevation_m: f64 },
 }
-
 
 /// Specification for a live elevation lines group.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

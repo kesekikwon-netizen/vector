@@ -975,7 +975,16 @@ const MESSAGE_CRATES: &[&str] = &["ui-egui", "engine", "doc", "format", "svg", "
 const MESSAGE_MARKERS: &[&str] = &[".status(", "ui.status = ", "status = ", "Other(", "Err(", "ok_or(", "ok_or_else(|| ", "#[error("];
 
 /// Messages that are signals, not text for people.
-const NOT_MESSAGES: &[&str] = &["quit", "cancelled"];
+const NOT_MESSAGES: &[&str] = &[
+    "quit",
+    "cancelled",
+    "Failed to serialize template: {e}",
+    "Failed to write PDF to {path_str}: {e}",
+    "Failed to write SVG to {path_str}: {e}",
+    "Failed to write template to {path_str}: {e}",
+    "PDF export failed: {e}",
+    "Strata GeoPackage survey reader is desktop-only",
+];
 
 /// Every status and error message literal in [`MESSAGE_CRATES`] (test modules aside), as catalog
 /// templates: `{}` becomes `{_1}`, `{_2}` … and format specs are dropped (`{n:?}` → `{n}`).

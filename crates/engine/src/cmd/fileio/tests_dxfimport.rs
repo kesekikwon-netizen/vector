@@ -245,15 +245,19 @@ fn a_drawing_export_writes_opens_again() {
 #[test]
 fn cad_import_dxf_command_works() {
     let mut s = Session::new();
-    let r = s.execute("cad.importDxf", &json!({
-        "dataBase64": b64(&plan()),
-        "preserveCoords": true,
-        "desca": true,
-        "scale": 20.0
-    })).unwrap();
+    let r = s
+        .execute(
+            "cad.importDxf",
+            &json!({
+                "dataBase64": b64(&plan()),
+                "preserveCoords": true,
+                "desca": true,
+                "scale": 20.0
+            }),
+        )
+        .unwrap();
     assert_eq!(r["success"], true);
     assert_eq!(r["format"], "dxf");
     let doc = &s.doc().unwrap().doc;
     assert!(doc.scale.is_some());
 }
-

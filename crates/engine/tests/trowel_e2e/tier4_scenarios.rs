@@ -11,8 +11,8 @@
 
 use serde_json::json;
 
-use vectorcraft_doc::style_template::TrowelStyleTemplate;
 use vectorcraft_doc::NodeId;
+use vectorcraft_doc::style_template::TrowelStyleTemplate;
 
 use super::common::*;
 
@@ -566,9 +566,12 @@ fn test_tier4_workflow_10_kiln_structure_longitudinal_and_transverse_sections() 
     let _ = try_exec(&mut s, "stroke.set", json!({"weight": 0.8, "ids": [kiln["id"].as_u64().unwrap()]})).unwrap();
 
     // 2. 3 synchronized section lines: A-A' (longitudinal), B-B' (firing chamber), C-C' (flue)
-    let s_a = try_exec(&mut s, "trowel.sectionLine", json!({"p0": [80.0, 190.0], "p1": [620.0, 190.0], "labelStart": "A", "labelEnd": "A'"})).unwrap();
-    let s_b = try_exec(&mut s, "trowel.sectionLine", json!({"p0": [250.0, 80.0], "p1": [250.0, 300.0], "labelStart": "B", "labelEnd": "B'"})).unwrap();
-    let s_c = try_exec(&mut s, "trowel.sectionLine", json!({"p0": [480.0, 80.0], "p1": [480.0, 300.0], "labelStart": "C", "labelEnd": "C'"})).unwrap();
+    let s_a =
+        try_exec(&mut s, "trowel.sectionLine", json!({"p0": [80.0, 190.0], "p1": [620.0, 190.0], "labelStart": "A", "labelEnd": "A'"})).unwrap();
+    let s_b =
+        try_exec(&mut s, "trowel.sectionLine", json!({"p0": [250.0, 80.0], "p1": [250.0, 300.0], "labelStart": "B", "labelEnd": "B'"})).unwrap();
+    let s_c =
+        try_exec(&mut s, "trowel.sectionLine", json!({"p0": [480.0, 80.0], "p1": [480.0, 300.0], "labelStart": "C", "labelEnd": "C'"})).unwrap();
 
     assert_eq!(s_a["labelStart"], "A");
     assert_eq!(s_b["labelStart"], "B");
@@ -595,26 +598,8 @@ fn test_tier4_workflow_11_trench_grid_system_and_subquadrat_batch_calibration() 
     let _ = try_exec(&mut s, "doc.setOrigin", json!({"canvas": [0.0, 0.0], "world": [152840.0, 512340.0]})).unwrap();
 
     // 1. 8 GCPs across 4 quadrats
-    let src = vec![
-        (0.0, 0.0),
-        (200.0, 0.0),
-        (400.0, 0.0),
-        (400.0, 200.0),
-        (400.0, 400.0),
-        (200.0, 400.0),
-        (0.0, 400.0),
-        (0.0, 200.0),
-    ];
-    let dst = vec![
-        (10.0, 10.0),
-        (210.0, 10.0),
-        (410.0, 10.0),
-        (410.0, 210.0),
-        (410.0, 410.0),
-        (210.0, 410.0),
-        (10.0, 410.0),
-        (10.0, 210.0),
-    ];
+    let src = vec![(0.0, 0.0), (200.0, 0.0), (400.0, 0.0), (400.0, 200.0), (400.0, 400.0), (200.0, 400.0), (0.0, 400.0), (0.0, 200.0)];
+    let dst = vec![(10.0, 10.0), (210.0, 10.0), (410.0, 10.0), (410.0, 210.0), (410.0, 410.0), (210.0, 410.0), (10.0, 410.0), (10.0, 210.0)];
 
     let (coeffs, residuals) = solve_affine_least_squares(&src, &dst).expect("8 GCP affine");
     assert!(residuals.iter().all(|&r| r < 1e-4));
@@ -798,7 +783,8 @@ fn test_tier4_workflow_15_end_to_end_excavation_to_publication_full_lifecycle() 
     // Step 5: Pottery 1:1 drafting with 3-pt rim circumcircle fit
     let v_res = try_exec(&mut s, "pottery.createVessel", json!({"centerlineX": 250.0, "sectionSide": "right"})).unwrap();
     let vid = v_res["vesselId"].as_str().unwrap();
-    let s5_fit = try_exec(&mut s, "pottery.rimFit", json!({"p1": [150.0, 100.0], "p2": [250.0, 50.0], "p3": [350.0, 100.0], "applyToVesselId": vid})).unwrap();
+    let s5_fit =
+        try_exec(&mut s, "pottery.rimFit", json!({"p1": [150.0, 100.0], "p2": [250.0, 50.0], "p3": [350.0, 100.0], "applyToVesselId": vid})).unwrap();
     assert!(s5_fit["diameterMm"].as_f64().unwrap() > 0.0);
 
     // Step 6: 4×6배판 report plate composition with 3 viewports and title block

@@ -11,8 +11,8 @@ use crate::NodeId;
 pub enum NumberingStyle {
     #[default]
     Circled, // ①, ②, ③ ... ㊿
-    Roman,   // Ⅰ, Ⅱ, Ⅲ ... Ⅹ
-    Arabic,  // 1, 2, 3 ...
+    Roman,  // Ⅰ, Ⅱ, Ⅲ ... Ⅹ
+    Arabic, // 1, 2, 3 ...
 }
 
 pub type LayerNumberingStyle = NumberingStyle;
@@ -102,11 +102,7 @@ pub struct StratigraphyLayer {
 
 impl StratigraphyLayer {
     pub fn badge_text(&self, style: NumberingStyle) -> String {
-        if let Some(custom) = &self.custom_badge {
-            custom.clone()
-        } else {
-            style.format(self.index)
-        }
+        if let Some(custom) = &self.custom_badge { custom.clone() } else { style.format(self.index) }
     }
 }
 
@@ -158,10 +154,7 @@ impl StratigraphyTable {
         for layer in &self.layers {
             let badge = layer.badge_text(self.numbering_style);
             let d = &layer.description;
-            out.push_str(&format!(
-                "{}\t{}\t{}\t{}\t{}\t{}\n",
-                badge, d.color_name, d.munsell, d.texture, d.inclusions, d.notes
-            ));
+            out.push_str(&format!("{}\t{}\t{}\t{}\t{}\t{}\n", badge, d.color_name, d.munsell, d.texture, d.inclusions, d.notes));
         }
         out
     }

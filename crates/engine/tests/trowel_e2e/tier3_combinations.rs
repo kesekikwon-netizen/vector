@@ -17,8 +17,6 @@ use vectorcraft_doc::{LineType, NodeId};
 
 use super::common::*;
 
-
-
 // =========================================================================
 // Combo 01: DXF CP949 import to elevation lines with 1D void clipping
 // =========================================================================
@@ -34,19 +32,13 @@ fn test_tier3_combo_01_dxf_cp949_to_elevation_void_clipping() {
     dxf.extend_from_slice(b"\n 70\n0\n  0\nENDTAB\n  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n  0\nLWPOLYLINE\n  8\n");
     dxf.extend_from_slice(&layer_cp949);
     // Profile: 2.0m wide x 1.2m deep trench
-    dxf.extend_from_slice(b"\n 90\n4\n 70\n0\n 10\n0.0\n 20\n200.0\n 10\n100.0\n 20\n80.0\n 10\n300.0\n 20\n80.0\n 10\n400.0\n 20\n200.0\n  0\nENDSEC\n  0\nEOF\n");
-
-    let opts = ImportOptions {
-        preserve_coords: true,
-        scale: Some(20.0),
-        encoding: Some(CadEncoding::Cp949),
-        ..Default::default()
-    };
-    let imported = import(&dxf, &opts).expect("CP949 DXF import must succeed");
-    assert!(
-        imported.document.layers.iter().any(|l| l.display_name() == "단면선"),
-        "Layer name must be cleanly decoded from CP949"
+    dxf.extend_from_slice(
+        b"\n 90\n4\n 70\n0\n 10\n0.0\n 20\n200.0\n 10\n100.0\n 20\n80.0\n 10\n300.0\n 20\n80.0\n 10\n400.0\n 20\n200.0\n  0\nENDSEC\n  0\nEOF\n",
     );
+
+    let opts = ImportOptions { preserve_coords: true, scale: Some(20.0), encoding: Some(CadEncoding::Cp949), ..Default::default() };
+    let imported = import(&dxf, &opts).expect("CP949 DXF import must succeed");
+    assert!(imported.document.layers.iter().any(|l| l.display_name() == "단면선"), "Layer name must be cleanly decoded from CP949");
 
     let mut s = trowel_session();
     s.edit("Load imported document", |doc, _| {
@@ -278,10 +270,7 @@ fn test_tier3_combo_05_underlay_2pt_registration_to_plan_shoelace_area() {
 
     // 3. Plan tool execution with Shoelace polygon stats query
     let ppm = vectorcraft_doc::ScaleRatio::new(20.0).points_per_meter();
-    let canvas_pts: Vec<[f64; 2]> = HOUSE_1_POLYGON_METERS
-        .iter()
-        .map(|&(x, y)| [x * ppm, -y * ppm])
-        .collect();
+    let canvas_pts: Vec<[f64; 2]> = HOUSE_1_POLYGON_METERS.iter().map(|&(x, y)| [x * ppm, -y * ppm]).collect();
 
     let stats_res = try_exec(&mut s, "trowel.polygonStats", json!({ "points": canvas_pts })).unwrap();
     assert_eq!(stats_res["formatted"]["area"], "32.91 ㎡");
@@ -516,10 +505,7 @@ fn test_tier3_combo_11_dxf_export_from_calibrated_tm_coordinates() {
 
     // 3. Export to DXF
     let doc = &s.doc().unwrap().doc;
-    let dxf_opts = vectorcraft_cad::DxfOptions {
-        scale: 20.0,
-        ..Default::default()
-    };
+    let dxf_opts = vectorcraft_cad::DxfOptions { scale: 20.0, ..Default::default() };
     let out = vectorcraft_cad::export(doc, &dxf_opts).expect("DXF export");
     assert!(!out.bytes.is_empty(), "Exported DXF byte stream must not be empty");
 }
@@ -704,22 +690,8 @@ fn test_tier3_combo_18_underlay_affine_least_squares_to_residual_table() {
     let mut s = trowel_session();
 
     // 1. 6 GCP points with synthetic translation and rotation
-    let src = vec![
-        (0.0, 0.0),
-        (100.0, 0.0),
-        (200.0, 50.0),
-        (200.0, 150.0),
-        (100.0, 200.0),
-        (0.0, 100.0),
-    ];
-    let dst = vec![
-        (15.0, 25.0),
-        (115.0, 25.0),
-        (215.0, 75.0),
-        (215.0, 175.0),
-        (115.0, 225.0),
-        (15.0, 125.0),
-    ];
+    let src = vec![(0.0, 0.0), (100.0, 0.0), (200.0, 50.0), (200.0, 150.0), (100.0, 200.0), (0.0, 100.0)];
+    let dst = vec![(15.0, 25.0), (115.0, 25.0), (215.0, 75.0), (215.0, 175.0), (115.0, 225.0), (15.0, 125.0)];
 
     // 2. Mathematical least-squares solver oracle
     let (coeffs, residuals) = solve_affine_least_squares(&src, &dst).expect("least squares affine");

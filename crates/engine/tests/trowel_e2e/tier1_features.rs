@@ -5,22 +5,17 @@
 #![allow(clippy::all)]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use std::path::{Path, PathBuf};
 use serde_json::json;
-use vectorcraft_doc::style_template::TrowelStyleTemplate;
+use std::path::{Path, PathBuf};
 use vectorcraft_doc::LineType;
+use vectorcraft_doc::style_template::TrowelStyleTemplate;
 use vectorcraft_engine::EngineError;
 
 use super::common::*;
 
 // Helper to get workspace root path
 fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf()
+    Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap().to_path_buf()
 }
 
 // =========================================================================
@@ -39,18 +34,8 @@ fn test_tier1_j001_theme_quiet_plate_default() {
 fn test_tier1_j001_theme_options_contain_plate() {
     let mut s = trowel_session();
     let list = try_exec(&mut s, "prefs.list", json!({})).unwrap();
-    let pref = list
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|p| p["key"] == "uiBrightness")
-        .expect("uiBrightness pref exists");
-    let options: Vec<&str> = pref["options"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|o| o.as_str().unwrap())
-        .collect();
+    let pref = list.as_array().unwrap().iter().find(|p| p["key"] == "uiBrightness").expect("uiBrightness pref exists");
+    let options: Vec<&str> = pref["options"].as_array().unwrap().iter().map(|o| o.as_str().unwrap()).collect();
     assert!(options.contains(&"plate"), "options must contain 'plate': {:?}", options);
 }
 
@@ -238,11 +223,7 @@ fn resolve_drawing_book(target: &Path) -> (PathBuf, PathBuf, String) {
     };
 
     let drawing_book_dir = survey_dir.join("도면");
-    let name = survey_dir
-        .file_name()
-        .map(|s| s.to_string_lossy().into_owned())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "도면집".to_string());
+    let name = survey_dir.file_name().map(|s| s.to_string_lossy().into_owned()).filter(|s| !s.is_empty()).unwrap_or_else(|| "도면집".to_string());
     (survey_dir, drawing_book_dir, name)
 }
 
@@ -425,10 +406,15 @@ fn test_tier1_j006_set_and_get_drawing_scale() {
 fn test_tier1_j006_set_origin_and_canvas_to_world_conversion() {
     let mut s = trowel_session();
     let _ = try_exec(&mut s, "doc.setScale", json!({"scale": 20.0, "epsg": 5186})).unwrap();
-    let _ = try_exec(&mut s, "doc.setOrigin", json!({
-        "canvas": [100.0, 200.0],
-        "world": [152840.123, 512340.456]
-    })).unwrap();
+    let _ = try_exec(
+        &mut s,
+        "doc.setOrigin",
+        json!({
+            "canvas": [100.0, 200.0],
+            "world": [152840.123, 512340.456]
+        }),
+    )
+    .unwrap();
     let w_res = try_exec(&mut s, "doc.coordToWorld", json!({"x": 100.0, "y": 200.0})).unwrap();
     assert!((w_res["east"].as_f64().unwrap() - 152840.123).abs() < 1e-4);
     assert!((w_res["north"].as_f64().unwrap() - 512340.456).abs() < 1e-4);
@@ -530,7 +516,7 @@ fn test_tier1_j002b_window_focus_lost_clears_spring_tool() {
 
 #[test]
 fn test_tier1_j007_dxf_preserve_coordinates_large_tm() {
-    use vectorcraft_cad::{import, ImportOptions};
+    use vectorcraft_cad::{ImportOptions, import};
     let dxf = "  0\nSECTION\n  2\nHEADER\n  9\n$INSUNITS\n 70\n6\n  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n  0\nLINE\n  8\n0\n 10\n200000.0\n 20\n500000.0\n 11\n200050.0\n 21\n500050.0\n  0\nENDSEC\n  0\nEOF\n";
     let opts = ImportOptions { preserve_coords: true, scale: Some(20.0), ..Default::default() };
     let res = import(dxf.as_bytes(), &opts).unwrap();
@@ -541,7 +527,7 @@ fn test_tier1_j007_dxf_preserve_coordinates_large_tm() {
 
 #[test]
 fn test_tier1_j007_dxf_cp949_korean_decoding() {
-    use vectorcraft_cad::{import, CadEncoding, ImportOptions};
+    use vectorcraft_cad::{CadEncoding, ImportOptions, import};
     let layer_bytes = [0xC5, 0xE4, 0xC3, 0xFE, 0xBC, 0xB1]; // "토층선" in CP949
     let mut dxf = Vec::new();
     dxf.extend_from_slice(b"  0\nSECTION\n  2\nTABLES\n  0\nTABLE\n  2\nLAYER\n  0\nLAYER\n  2\n");
@@ -556,7 +542,7 @@ fn test_tier1_j007_dxf_cp949_korean_decoding() {
 
 #[test]
 fn test_tier1_j007_desca_section_profile_reclassification() {
-    use vectorcraft_cad::{import, ImportOptions};
+    use vectorcraft_cad::{ImportOptions, import};
     let dxf = "  0\nSECTION\n  2\nENTITIES\n  0\nLWPOLYLINE\n  8\nSECTION_PROFILE\n 90\n2\n 70\n0\n 10\n0.0\n 20\n0.0\n 10\n100.0\n 20\n0.0\n  0\nLWPOLYLINE\n  8\nSECTION_PROFILE\n 90\n3\n 70\n1\n 10\n10.0\n 20\n10.0\n 10\n20.0\n 20\n10.0\n 10\n20.0\n 20\n20.0\n  0\nENDSEC\n  0\nEOF\n";
     let opts = ImportOptions { desca: true, ..Default::default() };
     let res = import(dxf.as_bytes(), &opts).unwrap();
@@ -566,13 +552,15 @@ fn test_tier1_j007_desca_section_profile_reclassification() {
 
 #[test]
 fn test_tier1_j007_desca_level_text_normalization() {
-    use vectorcraft_cad::{import, ImportOptions};
+    use vectorcraft_cad::{ImportOptions, import};
     let dxf = "  0\nSECTION\n  2\nENTITIES\n  0\nTEXT\n  8\nLEVEL_TEXT\n 10\n0.0\n 20\n0.0\n 40\n2.5\n  1\nEL. 152.5\n  0\nENDSEC\n  0\nEOF\n";
     let opts = ImportOptions { desca: true, ..Default::default() };
     let res = import(dxf.as_bytes(), &opts).unwrap();
     let mut texts = Vec::new();
     res.document.walk(|n| {
-        if let vectorcraft_doc::NodeKind::Text(t) = &n.kind { texts.push(t.plain_text()); }
+        if let vectorcraft_doc::NodeKind::Text(t) = &n.kind {
+            texts.push(t.plain_text());
+        }
     });
     assert!(texts.contains(&"152.5m".to_string()));
 }
@@ -625,12 +613,17 @@ fn test_tier1_j015_cmd_elevation_create_group() {
     let p_res = try_exec(&mut s, "shape.rectangle", json!({"x": 100.0, "y": 200.0, "width": 400.0, "height": 200.0})).unwrap();
     let pid = p_res["id"].as_u64().unwrap();
 
-    let res = try_exec(&mut s, "elevation.create", json!({
-        "profileId": pid,
-        "datumM": 150.0,
-        "minorIntervalM": 0.1,
-        "majorIntervalM": 0.5
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "elevation.create",
+        json!({
+            "profileId": pid,
+            "datumM": 150.0,
+            "minorIntervalM": 0.1,
+            "majorIntervalM": 0.5
+        }),
+    )
+    .unwrap();
     assert!(res["id"].as_u64().is_some());
     assert!(res["segmentCount"].as_u64().unwrap() >= 1);
 }
@@ -653,12 +646,17 @@ fn test_tier1_j015_cmd_elevation_expand_to_discrete_vectors() {
 #[test]
 fn test_tier1_j008_two_point_scale_calibration() {
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "calibrate.twoPoint", json!({
-        "p1": [100.0, 100.0],
-        "p2": [300.0, 100.0],
-        "realDistanceM": 4.0,
-        "alignAxis": "horizontal"
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "calibrate.twoPoint",
+        json!({
+            "p1": [100.0, 100.0],
+            "p2": [300.0, 100.0],
+            "realDistanceM": 4.0,
+            "alignAxis": "horizontal"
+        }),
+    )
+    .unwrap();
     assert!((res["measuredCanvasDist"].as_f64().unwrap() - 200.0).abs() < 1e-4);
     assert!(res["scale"].as_f64().unwrap() > 0.0);
     assert!(res["rotationDeg"].as_f64().unwrap().abs() < 1e-4);
@@ -695,10 +693,15 @@ fn test_tier1_j008_cmd_calibrate_residuals_table() {
         {"source": [100.0, 0.0], "target": [110.0, 10.0], "name": "CP2"},
         {"source": [0.0, 100.0], "target": [10.0, 110.0], "name": "CP3"}
     ]);
-    let res = try_exec(&mut s, "calibrate.residuals", json!({
-        "affineCoeffs": [1.0, 0.0, 0.0, 1.0, 10.0, 10.0],
-        "pairs": pairs
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "calibrate.residuals",
+        json!({
+            "affineCoeffs": [1.0, 0.0, 0.0, 1.0, 10.0, 10.0],
+            "pairs": pairs
+        }),
+    )
+    .unwrap();
     assert!(res["rmsePt"].as_f64().unwrap() < 1e-6);
     assert_eq!(res["residuals"].as_array().unwrap().len(), 3);
 }
@@ -706,10 +709,14 @@ fn test_tier1_j008_cmd_calibrate_residuals_table() {
 #[test]
 fn test_tier1_j008_cmd_calibrate_apply_transform() {
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "calibrate.apply", json!({
-        "affineCoeffs": [2.0, 0.0, 0.0, 2.0, 50.0, 50.0],
-        "mode": "replace"
-    }));
+    let res = try_exec(
+        &mut s,
+        "calibrate.apply",
+        json!({
+            "affineCoeffs": [2.0, 0.0, 0.0, 2.0, 50.0, 50.0],
+            "mode": "replace"
+        }),
+    );
     // Either returns target update or gracefully fails if no image present
     if let Err(e) = res {
         assert!(e.to_string().contains("image") || e.to_string().contains("underlay") || e.to_string().contains("target"));
@@ -736,13 +743,18 @@ fn test_tier1_j009_pca_azimuth_and_length_house_1() {
 #[test]
 fn test_tier1_j009_cmd_trowel_section_line() {
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "trowel.sectionLine", json!({
-        "p0": [100.0, 100.0],
-        "p1": [500.0, 100.0],
-        "labelStart": "A",
-        "labelEnd": "A'",
-        "viewDirection": "right"
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "trowel.sectionLine",
+        json!({
+            "p0": [100.0, 100.0],
+            "p1": [500.0, 100.0],
+            "labelStart": "A",
+            "labelEnd": "A'",
+            "viewDirection": "right"
+        }),
+    )
+    .unwrap();
     assert!(res["id"].as_u64().is_some());
     assert_eq!(res["labelStart"], "A");
     assert_eq!(res["labelEnd"], "A'");
@@ -751,12 +763,17 @@ fn test_tier1_j009_cmd_trowel_section_line() {
 #[test]
 fn test_tier1_j009_cmd_trowel_spot_elevation() {
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "trowel.spotElevation", json!({
-        "at": [250.0, 300.0],
-        "elevation": 152.45,
-        "marker": "dot",
-        "suffixM": true
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "trowel.spotElevation",
+        json!({
+            "at": [250.0, 300.0],
+            "elevation": 152.45,
+            "marker": "dot",
+            "suffixM": true
+        }),
+    )
+    .unwrap();
     assert_eq!(res["text"], "+152.45m");
     assert_eq!(res["elevation"], 152.45);
 }
@@ -766,10 +783,7 @@ fn test_tier1_j009_cmd_trowel_polygon_stats_area_query() {
     let mut s = trowel_session();
     let _ = try_exec(&mut s, "doc.setScale", json!({"scale": 20.0})).unwrap();
     let ppm = vectorcraft_doc::ScaleRatio::new(20.0).points_per_meter();
-    let pts: Vec<[f64; 2]> = HOUSE_1_POLYGON_METERS
-        .iter()
-        .map(|&(x, y)| [x * ppm, -y * ppm])
-        .collect();
+    let pts: Vec<[f64; 2]> = HOUSE_1_POLYGON_METERS.iter().map(|&(x, y)| [x * ppm, -y * ppm]).collect();
     let res = try_exec(&mut s, "trowel.polygonStats", json!({ "points": pts })).unwrap();
     assert_eq!(res["formatted"]["area"], "32.91 ㎡");
     assert!((res["area_m2"].as_f64().unwrap() - 32.91).abs() < 0.01);
@@ -838,12 +852,17 @@ fn test_tier1_j010_stratigraphy_add_and_remove_layer() {
 #[test]
 fn test_tier1_j010_circled_layer_number_badge() {
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "stratigraphy.circledNumber", json!({
-        "at": [150.0, 250.0],
-        "number": 1,
-        "style": "circled",
-        "addToTable": true
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "stratigraphy.circledNumber",
+        json!({
+            "at": [150.0, 250.0],
+            "number": 1,
+            "style": "circled",
+            "addToTable": true
+        }),
+    )
+    .unwrap();
     assert_eq!(res["badge"], "①");
     assert_eq!(res["number"], 1);
     assert_eq!(res["layerCreated"], true);
@@ -861,10 +880,14 @@ fn test_tier1_j010_generate_stratigraphy_table_canvas() {
 #[test]
 fn test_tier1_j010_live_paint_fill_soil_layer() {
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "stratigraphy.livePaintFill", json!({
-        "point": [100.0, 100.0],
-        "layerIndex": 1
-    }));
+    let res = try_exec(
+        &mut s,
+        "stratigraphy.livePaintFill",
+        json!({
+            "point": [100.0, 100.0],
+            "layerIndex": 1
+        }),
+    );
     assert!(res.is_ok() || res.as_ref().unwrap_err().to_string().contains("bounded") || res.is_err());
 }
 
@@ -885,12 +908,17 @@ fn test_tier1_j010_stratigraphy_export_tsv() {
 #[test]
 fn test_tier1_j011_pottery_create_vessel_centerline() {
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "pottery.createVessel", json!({
-        "name": "공열문 심발",
-        "centerlineX": 300.0,
-        "sectionSide": "right",
-        "targetScale": "1:1"
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "pottery.createVessel",
+        json!({
+            "name": "공열문 심발",
+            "centerlineX": 300.0,
+            "sectionSide": "right",
+            "targetScale": "1:1"
+        }),
+    )
+    .unwrap();
     assert_eq!(res["centerlineX"], 300.0);
     assert!(res["centerlineNodeId"].as_u64().is_some());
     let doc = &s.doc().unwrap().doc;
@@ -919,11 +947,16 @@ fn test_tier1_j011_pottery_reflect_exterior_profile() {
     let p_res = try_exec(&mut s, "shape.rectangle", json!({"x": 350.0, "y": 100.0, "width": 50.0, "height": 100.0})).unwrap();
     let pid = p_res["id"].as_u64().unwrap();
 
-    let ref_res = try_exec(&mut s, "pottery.reflectExterior", json!({
-        "pathId": pid,
-        "centerlineX": 300.0,
-        "targetSide": "left"
-    })).unwrap();
+    let ref_res = try_exec(
+        &mut s,
+        "pottery.reflectExterior",
+        json!({
+            "pathId": pid,
+            "centerlineX": 300.0,
+            "targetSide": "left"
+        }),
+    )
+    .unwrap();
     assert!(ref_res["reflectedId"].as_u64().is_some());
 }
 
@@ -937,13 +970,19 @@ fn test_tier1_j011_pottery_wall_hatch_section() {
     s.edit("Set outer profile", |doc, _| {
         doc.pottery_vessels[0].outer_profile_node = Some(vectorcraft_doc::NodeId(pid));
         Ok(())
-    }).unwrap();
+    })
+    .unwrap();
 
-    let h_res = try_exec(&mut s, "pottery.wallHatch", json!({
-        "vesselId": vid,
-        "fillMode": "hatch",
-        "angleDeg": 45.0
-    })).unwrap();
+    let h_res = try_exec(
+        &mut s,
+        "pottery.wallHatch",
+        json!({
+            "vesselId": vid,
+            "fillMode": "hatch",
+            "angleDeg": 45.0
+        }),
+    )
+    .unwrap();
     assert!(h_res["success"].as_bool().unwrap_or(true));
 }
 
@@ -957,12 +996,18 @@ fn test_tier1_j011_pottery_measurements_readout() {
     s.edit("Set outer profile", |doc, _| {
         doc.pottery_vessels[0].outer_profile_node = Some(vectorcraft_doc::NodeId(pid));
         Ok(())
-    }).unwrap();
+    })
+    .unwrap();
 
-    let m_res = try_exec(&mut s, "pottery.measurements", json!({
-        "vesselId": vid,
-        "emitAnnotations": true
-    })).unwrap();
+    let m_res = try_exec(
+        &mut s,
+        "pottery.measurements",
+        json!({
+            "vesselId": vid,
+            "emitAnnotations": true
+        }),
+    )
+    .unwrap();
     assert!(m_res["ledger"].is_array());
     assert!(m_res["heightCm"].as_f64().is_some());
 }
@@ -1016,12 +1061,17 @@ fn test_tier1_j017_pressure_smoothing_filter() {
 #[test]
 fn test_tier1_j012_create_plate_sheet_4x6_crown_quarto() {
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "plate.createSheet", json!({
-        "size": "4x6",
-        "orientation": "portrait",
-        "name": "도판 1",
-        "pageNumber": "42"
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "plate.createSheet",
+        json!({
+            "size": "4x6",
+            "orientation": "portrait",
+            "name": "도판 1",
+            "pageNumber": "42"
+        }),
+    )
+    .unwrap();
     assert_eq!(res["size"], "4×6배판 (188×257 mm)");
     assert_eq!(res["orientation"], "portrait");
     let doc = &s.doc().unwrap().doc;
@@ -1032,12 +1082,17 @@ fn test_tier1_j012_create_plate_sheet_4x6_crown_quarto() {
 fn test_tier1_j012_add_viewport_independent_scale() {
     let mut s = trowel_session();
     let _ = try_exec(&mut s, "plate.createSheet", json!({"size": "A4"})).unwrap();
-    let res = try_exec(&mut s, "plate.addViewport", json!({
-        "name": "평면 뷰포트",
-        "bounds": [50.0, 50.0, 200.0, 200.0],
-        "scale": "1:60",
-        "sourceScale": "1:20"
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "plate.addViewport",
+        json!({
+            "name": "평면 뷰포트",
+            "bounds": [50.0, 50.0, 200.0, 200.0],
+            "scale": "1:60",
+            "sourceScale": "1:20"
+        }),
+    )
+    .unwrap();
     assert_eq!(res["scale"], "1:60");
     assert_eq!(res["sourceScale"], "1:20");
 }
@@ -1046,11 +1101,16 @@ fn test_tier1_j012_add_viewport_independent_scale() {
 fn test_tier1_j012_update_title_block_fields() {
     let mut s = trowel_session();
     let _ = try_exec(&mut s, "plate.createSheet", json!({"size": "A4"})).unwrap();
-    let res = try_exec(&mut s, "plate.updateTitleBlock", json!({
-        "projectTitle": "광령리 유적 발굴조사",
-        "director": "연구원",
-        "date": "2026.10"
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "plate.updateTitleBlock",
+        json!({
+            "projectTitle": "광령리 유적 발굴조사",
+            "director": "연구원",
+            "date": "2026.10"
+        }),
+    )
+    .unwrap();
     assert!(res["success"].as_bool().unwrap_or(true));
     let doc = &s.doc().unwrap().doc;
     assert_eq!(doc.plate_sheets[0].title_block.project_title, "광령리 유적 발굴조사");
@@ -1060,11 +1120,16 @@ fn test_tier1_j012_update_title_block_fields() {
 fn test_tier1_j012_update_segmented_scale_bar() {
     let mut s = trowel_session();
     let _ = try_exec(&mut s, "plate.createSheet", json!({"size": "A4"})).unwrap();
-    let res = try_exec(&mut s, "plate.updateScaleBar", json!({
-        "unit": 1.0,
-        "count": 5,
-        "scale": "1:60"
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "plate.updateScaleBar",
+        json!({
+            "unit": 1.0,
+            "count": 5,
+            "scale": "1:60"
+        }),
+    )
+    .unwrap();
     assert!(res["success"].as_bool().unwrap_or(true));
     let doc = &s.doc().unwrap().doc;
     assert_eq!(doc.plate_sheets[0].scale_bar.segment_count, 5);
@@ -1088,10 +1153,15 @@ fn test_tier1_j012_plate_export_pdf_and_svg() {
 fn test_tier1_j018_export_template_json() {
     let mut s = trowel_session();
     let _ = try_exec(&mut s, "legend.addGroup", json!({"group": "plan"})).unwrap();
-    let res = try_exec(&mut s, "style.exportTemplate", json!({
-        "name": "광령리 양식",
-        "author": "조사원"
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "style.exportTemplate",
+        json!({
+            "name": "광령리 양식",
+            "author": "조사원"
+        }),
+    )
+    .unwrap();
     assert_eq!(res["format"], "trowel-style");
     assert_eq!(res["name"], "광령리 양식");
     assert!(res["rowCount"].as_u64().unwrap() >= 1);
@@ -1110,19 +1180,17 @@ fn test_tier1_j018_diff_template_categories() {
 fn test_tier1_j018_apply_template_merge() {
     let mut s = trowel_session();
     let mut tmpl = TrowelStyleTemplate::default();
-    tmpl.legend_rows = vec![
-        vectorcraft_doc::style_template::TemplateLegendRow {
-            name: "석축".to_string(),
-            group: Some(vectorcraft_doc::legend::LegendGroup::Plan),
-            weight_pt: Some(0.5),
-            line_type: LineType::Dashed,
-            sample: vectorcraft_doc::legend::LegendSample::Line,
-            favourite: true,
-            strata_key: None,
-            description: None,
-            hatch_preset_ref: None,
-        },
-    ];
+    tmpl.legend_rows = vec![vectorcraft_doc::style_template::TemplateLegendRow {
+        name: "석축".to_string(),
+        group: Some(vectorcraft_doc::legend::LegendGroup::Plan),
+        weight_pt: Some(0.5),
+        line_type: LineType::Dashed,
+        sample: vectorcraft_doc::legend::LegendSample::Line,
+        favourite: true,
+        strata_key: None,
+        description: None,
+        hatch_preset_ref: None,
+    }];
     let res = try_exec(&mut s, "style.applyTemplate", json!({"template": tmpl})).unwrap();
     assert!(res["appliedCount"].as_u64().unwrap() >= 1);
 }
@@ -1131,11 +1199,16 @@ fn test_tier1_j018_apply_template_merge() {
 fn test_tier1_j018_generate_dynamic_legend_table() {
     let mut s = trowel_session();
     let _ = try_exec(&mut s, "legend.addGroup", json!({"group": "plan"})).unwrap();
-    let res = try_exec(&mut s, "style.generateLegend", json!({
-        "at": [50.0, 500.0],
-        "width": 200.0,
-        "filterUnused": false
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "style.generateLegend",
+        json!({
+            "at": [50.0, 500.0],
+            "width": 200.0,
+            "filterUnused": false
+        }),
+    )
+    .unwrap();
     assert!(res["nodeId"].as_u64().is_some());
     assert!(res["entryCount"].as_u64().unwrap() >= 1);
 }
@@ -1173,11 +1246,16 @@ fn test_tier1_j019_gpkg_import_layers_and_set_origin() {
     let db_path = std::env::temp_dir().join(format!("test_tier1_j019_import_{now}.gpkg"));
     vectorcraft_cad::create_sample_gpkg(&db_path).unwrap();
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "gpkg.importLayers", json!({
-        "path": db_path.to_str().unwrap(),
-        "scale": 20.0,
-        "setOrigin": true
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "gpkg.importLayers",
+        json!({
+            "path": db_path.to_str().unwrap(),
+            "scale": 20.0,
+            "setOrigin": true
+        }),
+    )
+    .unwrap();
     assert_eq!(res["importedLayersCount"], 2);
     let doc = &s.doc().unwrap().doc;
     assert_eq!(doc.scale.as_ref().unwrap().crs.epsg, 5186);
@@ -1190,10 +1268,15 @@ fn test_tier1_j019_gpkg_feature_hatch_presets() {
     let db_path = std::env::temp_dir().join(format!("test_tier1_j019_hatch_{now}.gpkg"));
     vectorcraft_cad::create_7layers_sample_gpkg(&db_path).unwrap();
     let mut s = trowel_session();
-    let res = try_exec(&mut s, "gpkg.importLayers", json!({
-        "path": db_path.to_str().unwrap(),
-        "applyHatchPresets": true
-    })).unwrap();
+    let res = try_exec(
+        &mut s,
+        "gpkg.importLayers",
+        json!({
+            "path": db_path.to_str().unwrap(),
+            "applyHatchPresets": true
+        }),
+    )
+    .unwrap();
     assert_eq!(res["importedLayersCount"], 7);
     let doc = &s.doc().unwrap().doc;
     assert!(doc.layers.iter().any(|l| l.display_name().contains("유구") || l.display_name().contains("remains")));
