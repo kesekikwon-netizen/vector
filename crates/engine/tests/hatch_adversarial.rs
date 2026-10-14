@@ -461,3 +461,131 @@ fn test_challenge_document_level_alternation_in_svg() {
     );
 }
 
+#[test]
+fn test_adversarial_empirical_svg_pdf_alternating_angles() {
+    let mut s = test_session();
+    let r1 = s.execute("shape.rectangle", &json!({"x": 0.0, "y": 0.0, "width": 50.0, "height": 50.0})).unwrap();
+    let id1 = r1["id"].as_u64().unwrap();
+    let r2 = s.execute("shape.rectangle", &json!({"x": 50.0, "y": 0.0, "width": 50.0, "height": 50.0})).unwrap();
+    let id2 = r2["id"].as_u64().unwrap();
+
+    s.execute("hatch.cutFace", &json!({"ids": [id1, id2]})).unwrap();
+    let doc = s.doc().unwrap();
+
+    let svg = vectorcraft_svg::export(&doc.doc, &vectorcraft_svg::ExportOptions::default());
+    assert!(svg.contains("<path d=\""), "SVG must contain path elements for hatch lines");
+
+    // Extract hatch line path d attributes (stroke-width="0.1")
+    let mut d_attrs = Vec::new();
+    for line in svg.lines() {
+        if line.contains("stroke-width=\"0.1\"") && line.contains("<path d=\"") {
+            if let Some(start) = line.find("<path d=\"") {
+                let after = &line[start + 9..];
+                if let Some(end) = after.find('\"') {
+                    d_attrs.push(&after[..end]);
+                }
+            }
+        }
+    }
+
+    // Parse path segments and calculate dx, dy slopes
+    let mut box1_angles = Vec::new();
+    let mut box2_angles = Vec::new();
+
+    for d in d_attrs {
+        let path = kurbo::BezPath::from_svg(d).unwrap_or_default();
+        let segs = extract_segments(&path);
+        for (p1, p2) in segs {
+            let dx = p2.x - p1.x;
+            let dy = p2.y - p1.y;
+            let angle = dy.atan2(dx).to_degrees();
+            let norm_angle = ((angle % 180.0) + 180.0) % 180.0;
+            let midpoint = kurbo::Point::new((p1.x + p2.x) * 0.5, (p1.y + p2.y) * 0.5);
+            if midpoint.x >= 0.0 && midpoint.x <= 50.0 {
+                box1_angles.push(norm_angle);
+            } else if midpoint.x > 50.0 && midpoint.x <= 100.0 {
+                box2_angles.push(norm_angle);
+            }
+        }
+    }
+
+    assert!(!box1_angles.is_empty(), "Box 1 must contain hatch lines in SVG");
+    assert!(!box2_angles.is_empty(), "Box 2 must contain hatch lines in SVG");
+
+    // Check angle in Box 1: all segments should be within 1° of either 45° or 135°
+    let b1_first = box1_angles[0];
+    for a in &box1_angles {
+        assert!((a - b1_first).abs() < 1.0, "Box 1 lines must be parallel, expected ~{b1_first}, got {a}");
+    }
+
+    // Check angle in Box 2: all segments should be within 1° of the opposite angle
+    let b2_first = box2_angles[0];
+    for a in &box2_angles {
+        assert!((a - b2_first).abs() < 1.0, "Box 2 lines must be parallel, expected ~{b2_first}, got {a}");
+    }
+
+    // Verify alternation: one is 45° and the other is 135°
+    let is_45_135 = ((b1_first - 45.0).abs() < 1.0 && (b2_first - 135.0).abs() < 1.0)
+        || ((b1_first - 135.0).abs() < 1.0 && (b2_first - 45.0).abs() < 1.0);
+    assert!(is_45_135, "Box 1 ({b1_first}°) and Box 2 ({b2_first}°) must alternate between 45° and 135°!");
+
+    // PDF verification
+    let pdf = vectorcraft_pdf::export(&doc.doc, &vectorcraft_pdf::PdfOptions::default()).unwrap();
+    assert!(pdf.starts_with(b"%PDF-"), "PDF must have valid header");
+    assert!(pdf.len() > 500, "PDF must not be empty");
+}
+
+// REJECT DEFECT FINDING:
+// In bipartite_2color / solve_face_hatching, `has_conflict` is a single global bool.
+// When an odd cycle (e.g. K3) exists in one component, ALL alternate-hatched faces across
+// all components in the document are falsely flagged with conflict: true.
+#[test]
+fn test_adversarial_disconnected_component_conflict_isolation() {
+    let mut s = test_session();
+    // Component 1: K3 (3 mutually touching triangles: A, B, C)
+    let r0 = s.execute("path.create", &json!({
+        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 50.0, "y": 0.0}, {"x": 100.0, "y": 50.0}],
+        "closed": true
+    })).unwrap();
+    let id0 = r0["id"].as_u64().unwrap();
+    let r1 = s.execute("path.create", &json!({
+        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 100.0, "y": 50.0}, {"x": 0.0, "y": 100.0}],
+        "closed": true
+    })).unwrap();
+    let id1 = r1["id"].as_u64().unwrap();
+    let r2 = s.execute("path.create", &json!({
+        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 0.0, "y": 100.0}, {"x": 50.0, "y": 0.0}],
+        "closed": true
+    })).unwrap();
+    let id2 = r2["id"].as_u64().unwrap();
+
+    // Component 2: 2 adjacent squares (D and E), completely separate at (500, 500)
+    let r3 = s.execute("shape.rectangle", &json!({"x": 500.0, "y": 500.0, "width": 50.0, "height": 50.0})).unwrap();
+    let id3 = r3["id"].as_u64().unwrap();
+    let r4 = s.execute("shape.rectangle", &json!({"x": 550.0, "y": 500.0, "width": 50.0, "height": 50.0})).unwrap();
+    let id4 = r4["id"].as_u64().unwrap();
+
+    // Set all to Alternate
+    s.execute("hatch.set", &json!({"direction": "alt", "ids": [id0, id1, id2, id3, id4]})).unwrap();
+
+    // Verify K3 faces report conflict
+    let get0 = s.execute("hatch.get", &json!({"id": id0})).unwrap();
+    assert!(get0["has_conflict"].as_bool().unwrap(), "K3 face 0 must report conflict");
+
+    // Check Face 3 and Face 4 (independent bipartite component)
+    let get3 = s.execute("hatch.get", &json!({"id": id3})).unwrap();
+    let get4 = s.execute("hatch.get", &json!({"id": id4})).unwrap();
+    println!("Face 3 has_conflict: {}", get3["has_conflict"]);
+    println!("Face 4 has_conflict: {}", get4["has_conflict"]);
+
+    assert!(
+        !get3["has_conflict"].as_bool().unwrap(),
+        "DEFECT: Disconnected bipartite face 3 was falsely marked with conflict due to unrelated K3 component in document!"
+    );
+    assert!(
+        !get4["has_conflict"].as_bool().unwrap(),
+        "DEFECT: Disconnected bipartite face 4 was falsely marked with conflict due to unrelated K3 component in document!"
+    );
+}
+
+

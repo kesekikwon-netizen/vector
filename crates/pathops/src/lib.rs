@@ -20,8 +20,8 @@ pub use edit::{
     split_into_grid,
 };
 pub use hatch::{
-    DocumentHatchResolution, HatchFace, HatchFaceResult, bipartite_2color, build_adjacency_graph, emit_hatch_lines,
-    resolve_document_hatching, solve_face_hatching,
+    DocumentHatchResolution, HatchFace, HatchFaceResult, bipartite_2color, bipartite_2color_components,
+    build_adjacency_graph, emit_hatch_lines, resolve_document_hatching, solve_face_hatching,
 };
 pub use offset::{Cap, Join, offset_path, outline_stroke, stroke_region};
 pub use pathfinder::{FaceMerger, PathfinderOp, Region, Shape, merge_regions, pathfinder, region_at, regions};

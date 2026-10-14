@@ -172,46 +172,78 @@ fn perp_dist(pt: Point, line_pt: Point, line_dir: kurbo::Vec2) -> f64 {
     (v.x * line_dir.y - v.y * line_dir.x).abs()
 }
 
-/// 2-coloring of an adjacency graph for alternating hatch (§14(e)).
-/// Returns (assignments: Vec<bool>, has_conflict: bool).
-/// False = 45°, True = 135°.
-pub fn bipartite_2color(adj: &[Vec<usize>]) -> (Vec<bool>, bool) {
+/// Component-isolated 2-coloring of an adjacency graph for alternating hatch (§14(e)).
+/// Returns `(assignments: Vec<bool>, face_conflicts: Vec<bool>)`.
+/// - False = 45°, True = 135°.
+/// - `face_conflicts[i]` is true if and only if face `i` belongs to a connected component
+///   containing an odd cycle (non-bipartite component).
+pub fn bipartite_2color_components(adj: &[Vec<usize>]) -> (Vec<bool>, Vec<bool>) {
     let num_faces = adj.len();
     let mut color = vec![None; num_faces];
-    let mut has_conflict = false;
+    let mut face_conflicts = vec![false; num_faces];
 
     for start in 0..num_faces {
-        if color.get(start).copied().flatten().is_none() {
-            if let Some(c) = color.get_mut(start) {
-                *c = Some(false);
-            }
-            let mut queue = std::collections::VecDeque::new();
-            queue.push_back(start);
+        if color.get(start).copied().flatten().is_some() {
+            continue;
+        }
 
-            while let Some(u) = queue.pop_front() {
-                let c = match color.get(u).copied().flatten() {
-                    Some(val) => val,
-                    None => false,
-                };
-                let neighbors = match adj.get(u) {
-                    Some(list) => list.clone(),
-                    None => Vec::new(),
-                };
-                for v in neighbors {
-                    if let Some(&Some(vc)) = color.get(v) {
-                        if vc == c {
-                            has_conflict = true; // Odd cycle detected
-                        }
-                    } else if let Some(slot) = color.get_mut(v) {
-                        *slot = Some(!c);
-                        queue.push_back(v);
+        let mut comp_nodes = Vec::new();
+        let mut comp_conflict = false;
+
+        if let Some(c) = color.get_mut(start) {
+            *c = Some(false);
+        }
+        comp_nodes.push(start);
+
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(start);
+
+        while let Some(u) = queue.pop_front() {
+            let c = match color.get(u).copied().flatten() {
+                Some(val) => val,
+                None => false,
+            };
+            let neighbors = match adj.get(u) {
+                Some(list) => list.clone(),
+                None => Vec::new(),
+            };
+            for v in neighbors {
+                if v >= num_faces {
+                    continue;
+                }
+                if let Some(&Some(vc)) = color.get(v) {
+                    if vc == c {
+                        comp_conflict = true; // Odd cycle detected in this component
                     }
+                } else if let Some(slot) = color.get_mut(v) {
+                    *slot = Some(!c);
+                    comp_nodes.push(v);
+                    queue.push_back(v);
+                }
+            }
+        }
+
+        if comp_conflict {
+            for node in comp_nodes {
+                if let Some(slot) = face_conflicts.get_mut(node) {
+                    *slot = true;
                 }
             }
         }
     }
 
     let assignments = color.into_iter().map(|c| c.unwrap_or(false)).collect();
+    (assignments, face_conflicts)
+}
+
+/// 2-coloring of an adjacency graph for alternating hatch (§14(e)).
+/// Returns (assignments: Vec<bool>, has_conflict: bool) where has_conflict indicates
+/// if any connected component in the graph contains an odd cycle.
+/// False = 45°, True = 135°.
+/// Maintained as a backwards-compatible wrapper around `bipartite_2color_components`.
+pub fn bipartite_2color(adj: &[Vec<usize>]) -> (Vec<bool>, bool) {
+    let (assignments, conflicts) = bipartite_2color_components(adj);
+    let has_conflict = conflicts.into_iter().any(|c| c);
     (assignments, has_conflict)
 }
 
@@ -231,7 +263,7 @@ pub fn solve_face_hatching(
         }
     };
 
-    let (coloring, has_conflict) = bipartite_2color(adj);
+    let (coloring, face_conflicts) = bipartite_2color_components(adj);
     let mut results = Vec::with_capacity(n);
 
     for i in 0..n {
@@ -267,11 +299,12 @@ pub fn solve_face_hatching(
             BezPath::new()
         };
 
+        let is_conflict = face_conflicts.get(i).copied().unwrap_or(false);
         results.push(HatchFaceResult {
             face_index: i,
             direction: effective_dir,
             base_direction: base_dir,
-            conflict: has_conflict && style.direction == HatchDirection::Alternate,
+            conflict: is_conflict && style.direction == HatchDirection::Alternate,
             lines,
         });
     }
@@ -560,5 +593,37 @@ mod tests {
         // With spacing 2.8346 pt, expected lines is approx 141.4 / 2.8346 approx 50 lines
         let move_count = lines.elements().iter().filter(|el| matches!(el, PathEl::MoveTo(_))).count();
         assert!(move_count >= 40 && move_count <= 60, "Expected approx 50 hatch lines, got {move_count}");
+    }
+
+    #[test]
+    fn test_bipartite_2color_components_disconnected_isolation() {
+        // Component 1: K3 (0-1-2) with odd cycle
+        // Component 2: P2 (3-4) bipartite path
+        let adj = vec![
+            vec![1, 2], // 0
+            vec![0, 2], // 1
+            vec![0, 1], // 2
+            vec![4],    // 3
+            vec![3],    // 4
+        ];
+        let (assignments, conflicts) = bipartite_2color_components(&adj);
+        assert_eq!(assignments.len(), 5);
+        assert_eq!(conflicts.len(), 5);
+
+        // Component 1 MUST have conflict
+        assert!(conflicts[0]);
+        assert!(conflicts[1]);
+        assert!(conflicts[2]);
+
+        // Component 2 MUST NOT have conflict
+        assert!(!conflicts[3]);
+        assert!(!conflicts[4]);
+
+        // Component 2 must alternate colors
+        assert_ne!(assignments[3], assignments[4]);
+
+        // Legacy wrapper must report global conflict
+        let (_legacy_assign, legacy_conflict) = bipartite_2color(&adj);
+        assert!(legacy_conflict);
     }
 }
