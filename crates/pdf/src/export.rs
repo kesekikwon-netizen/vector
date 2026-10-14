@@ -17,7 +17,7 @@ use krilla::surface::Surface;
 use krilla::text::{GlyphId, KrillaGlyph};
 use kurbo::{PathEl, Shape, Vec2};
 use vectorcraft_color::{BlendMode, Color, GradientKind, Paint};
-use vectorcraft_doc::{AppearanceItem, Document, LineCap, LineJoin, Node, NodeKind, StrokeAlign, StrokeLayer, TextObject};
+use vectorcraft_doc::{AppearanceItem, Document, LineCap, LineJoin, Node, NodeId, NodeKind, StrokeAlign, StrokeLayer, TextObject};
 use vectorcraft_effects::stroke::{self, WrittenShape};
 use vectorcraft_geom::{Affine, BezPath, FillRule, Rect};
 use vectorcraft_text::TextLayout;
@@ -469,6 +469,8 @@ pub(crate) struct Exporter<'a> {
     /// Inline graphics being drawn inside inline graphics (text in a symbol shown inline in
     /// text…): deeper ones are left out.
     inline_depth: u32,
+    /// Resolved hatch directions for Alternate-hatched faces.
+    hatch_dirs: HashMap<NodeId, vectorcraft_doc::HatchDirection>,
 }
 
 /// How deep inline graphics nest before they are left out.
@@ -478,6 +480,7 @@ impl<'a> Exporter<'a> {
     /// An exporter of `doc` writing images as `set` says; layers whose Print option is off are
     /// left out.
     pub(crate) fn new(doc: &'a Document, set: &'a crate::PdfSettings) -> Self {
+        let hatch_res = vectorcraft_pathops::hatch::resolve_document_hatching(doc);
         Self {
             doc,
             warnings: vec![],
@@ -500,6 +503,7 @@ impl<'a> Exporter<'a> {
             overprint: false,
             overprinted: false,
             inline_depth: 0,
+            hatch_dirs: hatch_res.effective_dirs,
         }
     }
 
@@ -1049,7 +1053,11 @@ impl Exporter<'_> {
             }
         }
         if let Some(hatch) = &n.hatch {
-            let dir = hatch.effective_direction();
+            let dir = if hatch.direction == vectorcraft_doc::HatchDirection::Alternate {
+                self.hatch_dirs.get(&n.id).copied().unwrap_or_else(|| hatch.effective_direction())
+            } else {
+                hatch.effective_direction()
+            };
             if dir != vectorcraft_doc::HatchDirection::None {
                 let lines = vectorcraft_pathops::hatch::emit_hatch_lines(bp, dir, hatch.spacing_pt());
                 if let Some(hpath) = to_path(&lines) {

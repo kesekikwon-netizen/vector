@@ -452,6 +452,8 @@ struct Frame<'a> {
     opts: &'a RenderOptions,
     /// What colours paint as: screen colours, or one ink plane of a CMYK document (see [`ink`]).
     ink: Ink,
+    /// Document-level resolved hatch directions for Alternate-hatched faces.
+    hatch_dirs: Option<&'a std::collections::HashMap<vectorcraft_doc::NodeId, vectorcraft_doc::HatchDirection>>,
 }
 
 impl Frame<'_> {
@@ -540,7 +542,17 @@ impl Renderer {
         let inv = view.inverse();
         let visible = inv.transform_rect_bbox(Rect::new(0.0, 0.0, w as f64, h as f64));
         let px = 1.0 / view.determinant().abs().sqrt().max(1e-12);
-        let frame = Frame { mt: threads > 0, doc, view, visible, px, opts, ink: Ink::Display };
+        let hatch_res = vectorcraft_pathops::hatch::resolve_document_hatching(doc);
+        let frame = Frame {
+            mt: threads > 0,
+            doc,
+            view,
+            visible,
+            px,
+            opts,
+            ink: Ink::Display,
+            hatch_dirs: Some(&hatch_res.effective_dirs),
+        };
         self.stamp += 1;
         // View Opacity Mask: the mask's coverage in greyscale instead of the artwork.
         if let Some(m) = opts.mask_view.and_then(|id| doc.node(id)).and_then(|n| n.mask.as_deref()) {
@@ -695,7 +707,8 @@ impl Renderer {
         let px = 1.0 / view.determinant().abs().sqrt().max(1e-12);
         let mut ctx = single_threaded_context(w, h);
         let opts = RenderOptions::default();
-        let frame = Frame { mt: false, doc, view, visible, px, opts: &opts, ink: Ink::Display };
+        let hatch_res = vectorcraft_pathops::hatch::resolve_document_hatching(doc);
+        let frame = Frame { mt: false, doc, view, visible, px, opts: &opts, ink: Ink::Display, hatch_dirs: Some(&hatch_res.effective_dirs) };
         (self.knockout, self.nested, self.backdrop) = (false, 0, None);
         self.clip_paths.clear();
         self.draw_arc(&mut ctx, &frame, n);
@@ -717,7 +730,8 @@ impl Renderer {
             ctx.set_paint(peniko::Color::from_rgba8(bg[0], bg[1], bg[2], bg[3]));
             ctx.fill_rect(&kurbo::Rect::new(0.0, 0.0, w as f64, w as f64));
         }
-        let frame = Frame { mt: false, doc, view, visible: b.inflate(1.0, 1.0), px: 1.0 / s, opts: &RenderOptions::default(), ink: Ink::Display };
+        let hatch_res = vectorcraft_pathops::hatch::resolve_document_hatching(doc);
+        let frame = Frame { mt: false, doc, view, visible: b.inflate(1.0, 1.0), px: 1.0 / s, opts: &RenderOptions::default(), ink: Ink::Display, hatch_dirs: Some(&hatch_res.effective_dirs) };
         (self.knockout, self.nested, self.backdrop) = (false, 0, None);
         self.clip_paths.clear();
         self.draw_node(&mut ctx, &frame, n, true);
@@ -1233,7 +1247,11 @@ impl Renderer {
             }
         }
         if let Some(hatch) = &n.hatch {
-            let dir = hatch.effective_direction();
+            let dir = if hatch.direction == vectorcraft_doc::HatchDirection::Alternate {
+                f.hatch_dirs.and_then(|m| m.get(&n.id).copied()).unwrap_or_else(|| hatch.effective_direction())
+            } else {
+                hatch.effective_direction()
+            };
             if dir != vectorcraft_doc::HatchDirection::None {
                 let lines = vectorcraft_pathops::hatch::emit_hatch_lines(bp, dir, hatch.spacing_pt());
                 if !lines.elements().is_empty() {

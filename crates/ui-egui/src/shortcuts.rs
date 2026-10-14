@@ -438,7 +438,7 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context) {
     let z_down = ctx.input(|i| i.key_down(Key::Z));
     let z_pressed = ctx.input(|i| {
         i.events.iter().any(|e| {
-            matches!(e, egui::Event::Key { key: Key::Z, pressed: true, repeat: false, modifiers, .. } if !(modifiers.command || modifiers.ctrl || modifiers.alt))
+            matches!(e, egui::Event::Key { key: Key::Z, pressed: true, repeat: false, modifiers, .. } if !(modifiers.command || modifiers.ctrl || modifiers.alt || modifiers.shift))
         })
     });
     let z_released = ctx.input(|i| {
@@ -460,7 +460,7 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context) {
         if let Some(state) = app.spring_zoom.take() {
             let now = ctx.input(|i| i.time);
             let held = now - state.start_time;
-            if held >= SPRING_LOADED_DELAY_SECS || state.dragged {
+            if held >= (SPRING_LOADED_DELAY_SECS - 1e-4) || state.dragged {
                 app.select_tool(&state.prev_tool);
             }
         }
@@ -942,5 +942,42 @@ mod tests {
         };
         run(&ctx, &mut app, 4.0, vec![cmd_z]);
         assert!(app.spring_zoom.is_none(), "Cmd+Z must not trigger spring zoom");
+        let cmd_z_up = egui::Event::Key {
+            key: Key::Z,
+            physical_key: None,
+            pressed: false,
+            repeat: false,
+            modifiers: Modifiers::COMMAND,
+        };
+        run(&ctx, &mut app, 4.1, vec![cmd_z_up]);
+
+        // 5. Shift+Z does not trigger spring zoom (reserved for Spot Elevation 표고)
+        app.select_tool("pen");
+        let shift_z = egui::Event::Key {
+            key: Key::Z,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::SHIFT,
+        };
+        run(&ctx, &mut app, 5.0, vec![shift_z]);
+        assert!(app.spring_zoom.is_none(), "Shift+Z must not trigger spring zoom");
+        assert_eq!(app.session.tool_id(), "pen", "Shift+Z must not switch tool to zoom");
+        let shift_z_up = egui::Event::Key {
+            key: Key::Z,
+            physical_key: None,
+            pressed: false,
+            repeat: false,
+            modifiers: Modifiers::SHIFT,
+        };
+        run(&ctx, &mut app, 5.1, vec![shift_z_up]);
+
+        // 6. Hold exactly 300ms (float epsilon tolerance) reverts to previous tool on release
+        app.select_tool("pen");
+        run(&ctx, &mut app, 6.000, vec![z_down()]);
+        assert_eq!(app.session.tool_id(), "zoom");
+        run(&ctx, &mut app, 6.300, vec![z_up()]);
+        assert_eq!(app.session.tool_id(), "pen", "Holding exactly 300ms must revert to prior tool");
+        assert!(app.spring_zoom.is_none());
     }
 }

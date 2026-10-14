@@ -68,7 +68,7 @@ impl HatchDirection {
 }
 
 /// The style specification for hatching a closed planar face.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HatchStyle {
     /// Hatch direction mode.
     #[serde(default)]
@@ -82,6 +82,18 @@ pub struct HatchStyle {
     /// User manual flip toggle (inverts 45° ↔ 135°).
     #[serde(default)]
     pub flipped: bool,
+    /// Resolved base direction from 2-coloring across adjacent faces.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_direction: Option<HatchDirection>,
+}
+
+impl PartialEq for HatchStyle {
+    fn eq(&self, other: &Self) -> bool {
+        self.direction == other.direction
+            && self.spacing_mm == other.spacing_mm
+            && self.weight_pt == other.weight_pt
+            && self.flipped == other.flipped
+    }
 }
 
 fn default_spacing_mm() -> f64 {
@@ -99,6 +111,7 @@ impl Default for HatchStyle {
             spacing_mm: DEFAULT_HATCH_SPACING_MM,
             weight_pt: DEFAULT_HATCH_WEIGHT_PT,
             flipped: false,
+            resolved_direction: None,
         }
     }
 }
@@ -111,6 +124,7 @@ impl HatchStyle {
             spacing_mm: DEFAULT_HATCH_SPACING_MM,
             weight_pt: DEFAULT_HATCH_WEIGHT_PT,
             flipped: false,
+            resolved_direction: None,
         }
     }
 
@@ -142,10 +156,11 @@ impl HatchStyle {
                 }
             }
             HatchDirection::Alternate => {
+                let base = self.resolved_direction.unwrap_or(HatchDirection::Deg45);
                 if self.flipped {
-                    HatchDirection::Deg135
+                    base.inverted()
                 } else {
-                    HatchDirection::Deg45
+                    base
                 }
             }
             HatchDirection::None => HatchDirection::None,
@@ -159,6 +174,7 @@ impl HatchStyle {
             spacing_mm: DEFAULT_HATCH_SPACING_MM,
             weight_pt: DEFAULT_HATCH_WEIGHT_PT,
             flipped: false,
+            resolved_direction: None,
         }
     }
 }

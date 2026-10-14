@@ -28,6 +28,8 @@ pub struct HatchFaceResult {
     pub face_index: usize,
     /// Resolved effective direction (Deg45, Deg135, or None).
     pub direction: HatchDirection,
+    /// Unflipped base direction assigned by the 2-coloring solver (Deg45 or Deg135).
+    pub base_direction: HatchDirection,
     /// True if an odd-cycle conflict was detected in this face's component.
     pub conflict: bool,
     /// The generated vector hatch lines for this face.
@@ -239,31 +241,24 @@ pub fn solve_face_hatching(
         };
         let style = styles.get(i).cloned().unwrap_or_default();
 
-        let effective_dir = match style.direction {
+        let (effective_dir, base_dir) = match style.direction {
             HatchDirection::Deg45 => {
-                if style.flipped {
-                    HatchDirection::Deg135
-                } else {
-                    HatchDirection::Deg45
-                }
+                let base = HatchDirection::Deg45;
+                let eff = if style.flipped { HatchDirection::Deg135 } else { HatchDirection::Deg45 };
+                (eff, base)
             }
             HatchDirection::Deg135 => {
-                if style.flipped {
-                    HatchDirection::Deg45
-                } else {
-                    HatchDirection::Deg135
-                }
+                let base = HatchDirection::Deg135;
+                let eff = if style.flipped { HatchDirection::Deg45 } else { HatchDirection::Deg135 };
+                (eff, base)
             }
             HatchDirection::Alternate => {
                 let is_135 = coloring.get(i).copied().unwrap_or(false);
-                let base_dir = if is_135 { HatchDirection::Deg135 } else { HatchDirection::Deg45 };
-                if style.flipped {
-                    base_dir.inverted()
-                } else {
-                    base_dir
-                }
+                let base = if is_135 { HatchDirection::Deg135 } else { HatchDirection::Deg45 };
+                let eff = if style.flipped { base.inverted() } else { base };
+                (eff, base)
             }
-            HatchDirection::None => HatchDirection::None,
+            HatchDirection::None => (HatchDirection::None, HatchDirection::None),
         };
 
         let lines = if effective_dir != HatchDirection::None && style.is_hatched() {
@@ -275,12 +270,81 @@ pub fn solve_face_hatching(
         results.push(HatchFaceResult {
             face_index: i,
             direction: effective_dir,
+            base_direction: base_dir,
             conflict: has_conflict && style.direction == HatchDirection::Alternate,
             lines,
         });
     }
 
     results
+}
+
+/// Document-level hatching resolution results across all Alternate-hatched faces.
+#[derive(Clone, Debug, Default)]
+pub struct DocumentHatchResolution {
+    /// Map from NodeId to effective hatch direction (Deg45 or Deg135), including flip.
+    pub effective_dirs: std::collections::HashMap<vectorcraft_doc::NodeId, HatchDirection>,
+    /// Map from NodeId to base dual-coloring direction (Deg45 or Deg135), excluding flip.
+    pub base_dirs: std::collections::HashMap<vectorcraft_doc::NodeId, HatchDirection>,
+    /// List of NodeIds in odd-cycle conflict components.
+    pub conflicts: Vec<vectorcraft_doc::NodeId>,
+}
+
+/// Resolves 2-coloring for all Alternate hatch nodes across the entire document.
+pub fn resolve_document_hatching(doc: &vectorcraft_doc::Document) -> DocumentHatchResolution {
+    let mut node_ids = Vec::new();
+    let mut faces = Vec::new();
+    let mut styles = Vec::new();
+
+    doc.walk(|n| {
+        let Some(hatch) = &n.hatch else { return };
+        if hatch.direction != HatchDirection::Alternate {
+            return;
+        }
+        let outline = match &n.kind {
+            vectorcraft_doc::NodeKind::Path { path, .. } => path.to_bezpath(),
+            vectorcraft_doc::NodeKind::Compound { children, .. } => {
+                let mut bp = BezPath::new();
+                for c in children {
+                    if let Some(pd) = c.path_data() {
+                        bp.extend(pd.to_bezpath());
+                    }
+                }
+                bp
+            }
+            _ => return,
+        };
+        if !outline.elements().is_empty() {
+            faces.push(outline);
+            styles.push(hatch.clone());
+            node_ids.push(n.id);
+        }
+    });
+
+    if faces.is_empty() {
+        return DocumentHatchResolution::default();
+    }
+
+    let results = solve_face_hatching(&faces, &styles, None);
+    let mut effective_dirs = std::collections::HashMap::with_capacity(results.len());
+    let mut base_dirs = std::collections::HashMap::with_capacity(results.len());
+    let mut conflicts = Vec::new();
+
+    for r in results {
+        if let Some(&id) = node_ids.get(r.face_index) {
+            effective_dirs.insert(id, r.direction);
+            base_dirs.insert(id, r.base_direction);
+            if r.conflict {
+                conflicts.push(id);
+            }
+        }
+    }
+
+    DocumentHatchResolution {
+        effective_dirs,
+        base_dirs,
+        conflicts,
+    }
 }
 
 /// Emits vector hatch lines clipped to a closed boundary polygon at the given spacing.

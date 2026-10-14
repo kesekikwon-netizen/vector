@@ -43,6 +43,7 @@ fn write(doc: &Document, opts: &ExportOptions, native: Option<&[u8]>, id_prefix:
         .or_else(|| doc.art_bounds())
         .or_else(|| doc.artboards.first().map(|a| a.rect))
         .unwrap_or(Rect::new(0.0, 0.0, 1.0, 1.0));
+    let hatch_res = vectorcraft_pathops::hatch::resolve_document_hatching(doc);
     let mut w = Writer {
         doc,
         opts,
@@ -69,6 +70,7 @@ fn write(doc: &Document, opts: &ExportOptions, native: Option<&[u8]>, id_prefix:
         fonts: Vec::new(),
         shared_images: HashMap::new(),
         layer_nest: 0,
+        hatch_dirs: hatch_res.effective_dirs,
     };
     w.assign_name_ids();
     // Page Isolated Blending / Page Knockout Group: the page content is one isolated group.
@@ -269,6 +271,8 @@ struct Writer<'a> {
     shared_images: HashMap<(String, u32, u32), String>,
     /// Layers being written inside one another (more than one: a sublayer).
     layer_nest: usize,
+    /// Resolved hatch directions for Alternate-hatched faces.
+    hatch_dirs: HashMap<NodeId, vectorcraft_doc::HatchDirection>,
 }
 
 /// The characters type uses from one face, under one `@font-face` description: the family the
@@ -1064,7 +1068,11 @@ impl Writer<'_> {
 
     fn emit_hatch(&mut self, n: &Node, paths: &[&PathData]) {
         let Some(hatch) = &n.hatch else { return };
-        let dir = hatch.effective_direction();
+        let dir = if hatch.direction == vectorcraft_doc::HatchDirection::Alternate {
+            self.hatch_dirs.get(&n.id).copied().unwrap_or_else(|| hatch.effective_direction())
+        } else {
+            hatch.effective_direction()
+        };
         if dir == vectorcraft_doc::HatchDirection::None {
             return;
         }

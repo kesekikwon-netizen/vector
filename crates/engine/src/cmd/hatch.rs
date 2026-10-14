@@ -9,8 +9,7 @@ use vectorcraft_doc::hatch::{
     DEFAULT_CUT_BORDER_PT, DEFAULT_HATCH_SPACING_MM, DEFAULT_HATCH_WEIGHT_PT, HatchDirection, HatchStyle,
 };
 use vectorcraft_doc::{AppearanceItem, NodeId, NodeKind, StrokeLayer};
-use vectorcraft_geom::BezPath;
-use vectorcraft_pathops::hatch::solve_face_hatching;
+use vectorcraft_pathops::hatch::resolve_document_hatching;
 
 use super::overprint::edit_counted;
 use super::*;
@@ -106,10 +105,12 @@ fn set(s: &mut Session, p: &Value) -> Result<Value> {
                     spacing_mm,
                     weight_pt,
                     flipped,
+                    resolved_direction: None,
                 });
             }
             count += 1;
         }
+        update_document_hatch_directions(d);
         Ok(count)
     })?;
 
@@ -147,6 +148,7 @@ fn cut_face(s: &mut Session, p: &Value) -> Result<Value> {
             }
             count += 1;
         }
+        update_document_hatch_directions(d);
         Ok(count)
     })?;
 
@@ -173,6 +175,7 @@ fn flip(s: &mut Session, p: &Value) -> Result<Value> {
                 count += 1;
             }
         }
+        update_document_hatch_directions(d);
         Ok(count)
     })?;
 
@@ -235,75 +238,19 @@ fn get(s: &mut Session, p: &Value) -> Result<Value> {
     }
 }
 
-fn check_conflicts(s: &Session, ids: &[NodeId]) -> Vec<u64> {
-    let Ok(st) = s.doc() else { return Vec::new() };
-    let mut faces = Vec::new();
-    let mut styles = Vec::new();
-    let mut valid_ids = Vec::new();
-
-    let check_all = ids.len() <= 1;
-    if check_all {
-        st.doc.walk(|n| {
-            if let Some(hatch) = &n.hatch {
-                if hatch.direction == HatchDirection::Alternate {
-                    let outline = match &n.kind {
-                        NodeKind::Path { path, .. } => path.to_bezpath(),
-                        NodeKind::Compound { children, .. } => {
-                            let mut bp = BezPath::new();
-                            for c in children {
-                                if let Some(pd) = c.path_data() {
-                                    bp.extend(pd.to_bezpath());
-                                }
-                            }
-                            bp
-                        }
-                        _ => return,
-                    };
-                    if !outline.elements().is_empty() {
-                        faces.push(outline);
-                        styles.push(hatch.clone());
-                        valid_ids.push(n.id.0);
-                    }
-                }
+fn update_document_hatch_directions(d: &mut vectorcraft_doc::Document) {
+    let res = resolve_document_hatching(d);
+    for (id, base_dir) in res.base_dirs {
+        if let Some(node) = d.node_mut(id) {
+            if let Some(hatch) = &mut node.hatch {
+                hatch.resolved_direction = Some(base_dir);
             }
-        });
-    } else {
-        for id in ids {
-            let Some(n) = st.doc.node(*id) else { continue };
-            let Some(hatch) = &n.hatch else { continue };
-            if hatch.direction != HatchDirection::Alternate {
-                continue;
-            }
-            let outline = match &n.kind {
-                NodeKind::Path { path, .. } => path.to_bezpath(),
-                NodeKind::Compound { children, .. } => {
-                    let mut bp = BezPath::new();
-                    for c in children {
-                        if let Some(pd) = c.path_data() {
-                            bp.extend(pd.to_bezpath());
-                        }
-                    }
-                    bp
-                }
-                _ => continue,
-            };
-            if outline.elements().is_empty() {
-                continue;
-            }
-            faces.push(outline);
-            styles.push(hatch.clone());
-            valid_ids.push(id.0);
         }
     }
+}
 
-    if faces.len() < 3 {
-        return Vec::new();
-    }
-
-    let results = solve_face_hatching(&faces, &styles, None);
-    results
-        .into_iter()
-        .filter(|r| r.conflict)
-        .filter_map(|r| valid_ids.get(r.face_index).copied())
-        .collect()
+fn check_conflicts(s: &Session, _ids: &[NodeId]) -> Vec<u64> {
+    let Ok(st) = s.doc() else { return Vec::new() };
+    let res = resolve_document_hatching(&st.doc);
+    res.conflicts.into_iter().map(|id| id.0).collect()
 }
