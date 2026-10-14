@@ -189,7 +189,11 @@ fn pen_pressure(ui: &Ui, pressed: bool) -> f32 {
     let id = egui::Id::new("canvas-pressure");
     let (force, now) = ui.input(|i| {
         let f = i.events.iter().rev().find_map(|e| match e {
-            egui::Event::Touch { force: Some(f), .. } if f.is_finite() => Some(f.clamp(0.0, 1.0)),
+            egui::Event::Touch { phase, force: Some(f), .. }
+                if *phase != egui::TouchPhase::End && *phase != egui::TouchPhase::Cancel && f.is_finite() =>
+            {
+                Some(f.clamp(0.0, 1.0))
+            }
             _ => None,
         });
         (f, i.time)
@@ -201,8 +205,19 @@ fn pen_pressure(ui: &Ui, pressed: bool) -> f32 {
     }
     let raw = force.or_else(|| if pressed { None } else { ui.data(|d| d.get_temp::<f32>(id)) }).unwrap_or(1.0);
     ui.data_mut(|d| d.insert_temp(id, raw));
+    let curve_mode: String = ui
+        .data(|d| {
+            d.get_temp::<String>(egui::Id::new("canvas-pressure-curve"))
+                .or_else(|| d.get_temp::<&'static str>(egui::Id::new("canvas-pressure-curve")).map(str::to_string))
+        })
+        .unwrap_or_else(|| "standard".to_string());
+    let mapped = map_pressure_curve(raw, &curve_mode);
 
-    map_pressure_curve(raw, "standard")
+    let stable_id = egui::Id::new("canvas-pressure-stable");
+    let prev_stable = if pressed { None } else { ui.data(|d| d.get_temp::<f32>(stable_id)) };
+    let stabilized = stabilize_pressure(mapped, prev_stable, 0.45);
+    ui.data_mut(|d| d.insert_temp(stable_id, stabilized));
+    stabilized
 }
 
 pub fn mods(m: egui::Modifiers, space: bool) -> Mods {
@@ -672,6 +687,25 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
     let middle_pan = matches!(drag, Some(Drag::Pan { middle: true, .. }));
 
     // Proximity Palm Rejection for primary contact (Task J017 B3)
+    let has_pen_force = ui.input(|i| {
+        i.events.iter().any(|e| match e {
+            egui::Event::Touch { phase, force: Some(f), .. }
+                if *phase != egui::TouchPhase::End
+                    && *phase != egui::TouchPhase::Cancel
+                    && f.is_finite()
+                    && *f > 0.0 =>
+            {
+                true
+            }
+            _ => false,
+        })
+    });
+    let touch_ended = ui.input(|i| {
+        i.events.iter().any(|e| match e {
+            egui::Event::Touch { phase, .. } => *phase == egui::TouchPhase::End || *phase == egui::TouchPhase::Cancel,
+            _ => false,
+        })
+    });
     let is_capacitive_touch = ui.input(|i| {
         i.events.iter().any(|e| match e {
             egui::Event::Touch { force: None, .. } => true,
@@ -679,8 +713,17 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
             _ => false,
         })
     });
-    let prox: StylusProximityState = ui.data(|d| d.get_temp(egui::Id::new("canvas-stylus-proximity"))).unwrap_or_default();
+    let mut prox: StylusProximityState = ui.data(|d| d.get_temp(egui::Id::new("canvas-stylus-proximity"))).unwrap_or_default();
     let now = ui.input(|i| i.time);
+    if has_pen_force {
+        prox.in_proximity = true;
+        prox.last_seen_time = now;
+        ui.data_mut(|d| d.insert_temp(egui::Id::new("canvas-stylus-proximity"), prox));
+    } else if (touch_ended || (drag.is_none() && !pointer.primary_down())) && prox.in_proximity {
+        prox.in_proximity = false;
+        prox.last_seen_time = now;
+        ui.data_mut(|d| d.insert_temp(egui::Id::new("canvas-stylus-proximity"), prox));
+    }
     let palm_rejected = is_capacitive_touch && (prox.in_proximity || (prox.last_seen_time > 0.0 && now - prox.last_seen_time < 0.6));
 
     // egui counts a press a few pixels outside the canvas as on it (its interaction radius): only a
@@ -795,12 +838,20 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
                 }
             }
         } else {
+            let now = ui.input(|i| i.time);
             let sp: Option<SpringPanState> = ui.data(|d| d.get_temp(egui::Id::new("canvas-spring-pan")));
             ui.data_mut(|dd| {
                 dd.remove::<Drag>(drag_id());
                 dd.remove::<Pos2>(drag_pos_id());
                 dd.remove::<f32>(egui::Id::new("canvas-pressure-stable"));
                 dd.remove::<SpringPanState>(egui::Id::new("canvas-spring-pan"));
+                let prev_prox: StylusProximityState = dd.get_temp(egui::Id::new("canvas-stylus-proximity")).unwrap_or_default();
+                if prev_prox.in_proximity {
+                    dd.insert_temp(
+                        egui::Id::new("canvas-stylus-proximity"),
+                        StylusProximityState { in_proximity: false, last_seen_time: now },
+                    );
+                }
             });
             if let Some(sp) = sp {
                 if sp.active && app.session.tool_id() != sp.prev_tool {
@@ -1461,6 +1512,7 @@ fn context_menu(app: &mut VectorcraftApp, resp: &egui::Response, xf: &Xf) {
     let barrel1 = resp.secondary_clicked()
         || resp.ctx.data(|d| d.get_temp::<bool>(egui::Id::new("canvas-stylus-barrel1"))).unwrap_or(false);
     if barrel1 {
+        resp.ctx.data_mut(|d| d.remove::<bool>(egui::Id::new("canvas-stylus-barrel1")));
         let tool = app.session.tool_id();
         let is_drawing_tool = matches!(
             tool,
@@ -1473,7 +1525,6 @@ fn context_menu(app: &mut VectorcraftApp, resp: &egui::Response, xf: &Xf) {
                 let _ = app.session.cancel_interaction();
             }
             let _ = app.run("edit.undo", json!({}));
-            resp.ctx.data_mut(|d| d.remove::<bool>(egui::Id::new("canvas-stylus-barrel1")));
             return;
         }
     }
@@ -3783,7 +3834,7 @@ mod tests {
         assert_eq!(cmd, "object.liquify");
         let pressures: Vec<f64> = p["points"].as_array().unwrap().iter().map(|s| (s[2].as_f64().unwrap() * 100.0).round() / 100.0).collect();
         assert_eq!(pressures.first(), Some(&0.2), "the press's own pressure: {pressures:?}");
-        assert!(pressures.contains(&0.5) && pressures.contains(&0.8), "{pressures:?}");
+        assert!(pressures.len() == 3 && pressures[1] > pressures[0] && pressures[2] > pressures[1], "smoothed pressures must increase with pen force: {pressures:?}");
     }
 
     /// #491: a pen tap whose press and lift come in one frame selects what it tapped, and the
@@ -3948,13 +3999,169 @@ mod tests {
         // Within cooldown window (0.5s after lift)
         prox.in_proximity = false;
         let now_within = 100.5;
-        let rejected = prox.in_proximity || (now_within - prox.last_seen_time < 0.6);
+        let rejected = prox.in_proximity || (prox.last_seen_time > 0.0 && now_within - prox.last_seen_time < 0.6);
         assert!(rejected, "Capacitive touch must be rejected within 600ms cooldown");
 
         // Past cooldown window (0.7s after lift)
         let now_past = 100.7;
-        let rejected_past = prox.in_proximity || (now_past - prox.last_seen_time < 0.6);
+        let rejected_past = prox.in_proximity || (prox.last_seen_time > 0.0 && now_past - prox.last_seen_time < 0.6);
         assert!(!rejected_past, "Capacitive touch must be accepted past 600ms cooldown");
+
+        // 1.0s after stylus release: touch gestures must NOT be dropped (Finding 1)
+        let now_1s = 101.0;
+        let rejected_1s = prox.in_proximity || (prox.last_seen_time > 0.0 && now_1s - prox.last_seen_time < 0.6);
+        assert!(!rejected_1s, "Touch gesture 1.0s after stylus release must NOT be dropped");
+    }
+
+    #[test]
+    fn test_pen_pressure_ema_runtime_stabilization_and_persistence() {
+        let ctx = egui::Context::default();
+        let stable_id = egui::Id::new("canvas-pressure-stable");
+
+        // Step 1: Stroke start (pressed = true) with raw = 0.8
+        let mut p1 = 0.0;
+        let mut out1 = ctx.run_ui(
+            egui::RawInput {
+                events: vec![egui::Event::Touch {
+                    device_id: egui::TouchDeviceId(1),
+                    id: egui::TouchId(1),
+                    phase: egui::TouchPhase::Start,
+                    pos: Pos2::ZERO,
+                    force: Some(0.8),
+                }],
+                time: Some(1.0),
+                ..Default::default()
+            },
+            |ui| {
+                p1 = pen_pressure(ui, true);
+            },
+        );
+        out1.textures_delta.clear();
+        let stored1: f32 = ctx.data(|d| d.get_temp(stable_id)).expect("canvas-pressure-stable must be persisted");
+        assert_eq!(p1, stored1);
+        assert!((p1 - 0.8).abs() < 1e-4, "Stroke start must have zero latency (mapped = 0.8)");
+
+        // Step 2: Continuous drag (pressed = false) with raw step drop to 0.2
+        let mut p2 = 0.0;
+        let mut out2 = ctx.run_ui(
+            egui::RawInput {
+                events: vec![egui::Event::Touch {
+                    device_id: egui::TouchDeviceId(1),
+                    id: egui::TouchId(1),
+                    phase: egui::TouchPhase::Move,
+                    pos: Pos2::ZERO,
+                    force: Some(0.2),
+                }],
+                time: Some(1.016),
+                ..Default::default()
+            },
+            |ui| {
+                p2 = pen_pressure(ui, false);
+            },
+        );
+        out2.textures_delta.clear();
+        let stored2: f32 = ctx.data(|d| d.get_temp(stable_id)).expect("canvas-pressure-stable must be persisted");
+        assert_eq!(p2, stored2);
+        let expected2 = 0.45 * 0.2 + 0.55 * 0.8;
+        assert!((p2 - expected2).abs() < 1e-4, "EMA filter must calculate beta*curr + (1-beta)*prev: got {p2}, expected {expected2}");
+
+        // Step 3: Sequential call with raw remaining at 0.2
+        let mut p3 = 0.0;
+        let mut out3 = ctx.run_ui(
+            egui::RawInput {
+                events: vec![egui::Event::Touch {
+                    device_id: egui::TouchDeviceId(1),
+                    id: egui::TouchId(1),
+                    phase: egui::TouchPhase::Move,
+                    pos: Pos2::ZERO,
+                    force: Some(0.2),
+                }],
+                time: Some(1.032),
+                ..Default::default()
+            },
+            |ui| {
+                p3 = pen_pressure(ui, false);
+            },
+        );
+        out3.textures_delta.clear();
+        let expected3 = 0.45 * 0.2 + 0.55 * expected2;
+        assert!((p3 - expected3).abs() < 1e-4, "Sequential step must smoothly decay");
+
+        // Step 4: Curve mode "soft" preference / canvas state
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("canvas-pressure-curve"), "soft".to_string()));
+        let mut p_soft = 0.0;
+        let mut out_soft = ctx.run_ui(
+            egui::RawInput {
+                events: vec![egui::Event::Touch {
+                    device_id: egui::TouchDeviceId(1),
+                    id: egui::TouchId(1),
+                    phase: egui::TouchPhase::Start,
+                    pos: Pos2::ZERO,
+                    force: Some(0.5),
+                }],
+                time: Some(2.0),
+                ..Default::default()
+            },
+            |ui| {
+                p_soft = pen_pressure(ui, true);
+            },
+        );
+        out_soft.textures_delta.clear();
+        let expected_soft = map_pressure_curve(0.5, "soft");
+        assert!((p_soft - expected_soft).abs() < 1e-4, "Soft curve mode must be used when configured");
+        assert!(p_soft > 0.5);
+
+        // Step 5: Curve mode "firm" preference / canvas state
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("canvas-pressure-curve"), "firm".to_string()));
+        let mut p_firm = 0.0;
+        let mut out_firm = ctx.run_ui(
+            egui::RawInput {
+                events: vec![egui::Event::Touch {
+                    device_id: egui::TouchDeviceId(1),
+                    id: egui::TouchId(1),
+                    phase: egui::TouchPhase::Start,
+                    pos: Pos2::ZERO,
+                    force: Some(0.5),
+                }],
+                time: Some(3.0),
+                ..Default::default()
+            },
+            |ui| {
+                p_firm = pen_pressure(ui, true);
+            },
+        );
+        out_firm.textures_delta.clear();
+        let expected_firm = map_pressure_curve(0.5, "firm");
+        assert!((p_firm - expected_firm).abs() < 1e-4, "Firm curve mode must be used when configured");
+        assert!(p_firm < 0.5);
+    }
+
+    #[test]
+    fn test_barrel1_unconditional_cleanup_in_non_drawing_tool() {
+        let mut app = VectorcraftApp::new(Session::new(), Default::default());
+        app.session.execute("file.new", &json!({"width": 800, "height": 600})).unwrap();
+        app.select_tool("zoom"); // Non-drawing tool
+        let ctx = egui::Context::default();
+
+        // Simulate barrel 1 button temp flag set by input driver
+        let barrel1_id = egui::Id::new("canvas-stylus-barrel1");
+        ctx.data_mut(|d| d.insert_temp(barrel1_id, true));
+        assert_eq!(ctx.data(|d| d.get_temp::<bool>(barrel1_id)), Some(true));
+
+        // Run frame through show/context_menu using frame helper
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerButton {
+                pos: pos2(200.0, 200.0),
+                button: egui::PointerButton::Secondary,
+                pressed: true,
+                modifiers: Default::default(),
+            }],
+        );
+
+        // Verify canvas-stylus-barrel1 was cleaned up unconditionally and does NOT linger
+        assert_eq!(ctx.data(|d| d.get_temp::<bool>(barrel1_id)), None, "Barrel 1 flag must not linger in non-drawing tools");
     }
 
     #[test]
@@ -3966,5 +4173,37 @@ mod tests {
         let spring_pan = SpringPanState { prev_tool: "section-line".into(), start_time: 10.0, active: true };
         assert_eq!(spring_pan.prev_tool, "section-line");
         assert!(spring_pan.active);
+    }
+
+    #[test]
+    fn test_stylus_drag_release_unlatches_proximity_runtime() {
+        let mut app = VectorcraftApp::new(Session::new(), Default::default());
+        app.session.execute("file.new", &json!({"width": 800, "height": 600})).unwrap();
+        app.select_tool("paintbrush");
+        let ctx = egui::Context::default();
+        let prox_id = egui::Id::new("canvas-stylus-proximity");
+
+        // 1. Initial frame to initialize canvas rect
+        frame(&mut app, &ctx, vec![]);
+        let at = app.canvas_rect.unwrap().center();
+
+        // 2. Stylus start on canvas
+        let start_events = pen(egui::TouchPhase::Start, at, 0.6);
+        frame(&mut app, &ctx, start_events);
+        let prox_start: Option<StylusProximityState> = ctx.data(|d| d.get_temp(prox_id));
+        assert!(prox_start.is_some(), "Stylus proximity must be initialized on pen contact");
+        assert!(prox_start.unwrap().in_proximity, "Stylus must be in_proximity during active contact");
+
+        // 3. Stylus end / lift
+        let end_events = pen(egui::TouchPhase::End, at, 0.6);
+        frame(&mut app, &ctx, end_events);
+        let prox_end: StylusProximityState = ctx.data(|d| d.get_temp(prox_id)).expect("Proximity state must be present");
+        assert!(!prox_end.in_proximity, "Stylus proximity MUST unlatch in_proximity=false upon drag release!");
+        assert!(prox_end.last_seen_time > 0.0, "Release timestamp must be recorded");
+
+        // 4. Simulate a frame 1.0s later
+        let now_1s_later = prox_end.last_seen_time + 1.0;
+        let cooldown_active = prox_end.in_proximity || (prox_end.last_seen_time > 0.0 && now_1s_later - prox_end.last_seen_time < 0.6);
+        assert!(!cooldown_active, "Palm rejection must be inactive 1.0s after pen release");
     }
 }

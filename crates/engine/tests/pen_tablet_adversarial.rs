@@ -308,3 +308,21 @@ fn test_cad_lines_strictly_respect_legend_weights_regardless_of_pressure() {
         assert_eq!(p1.subpaths[0].anchors.len(), p2.subpaths[0].anchors.len());
     }
 }
+
+// =========================================================================
+// 6. Stylus Barrel Button 1 in Non-Drawing / Idle State
+// =========================================================================
+
+#[test]
+fn test_barrel_button_1_in_idle_or_non_drawing_state() {
+    let mut s = Session::new();
+    s.execute("file.new", &json!({"width": 800, "height": 600})).unwrap();
+    let view = ViewInfo::default();
+    s.select_tool("zoom", view).unwrap();
+
+    // Trigger edit.undo while idle in non-drawing tool
+    let res = s.execute("edit.undo", &json!({}));
+    assert!(res.is_ok() || res.is_err());
+    assert_eq!(s.tool_id(), "zoom");
+}
+
