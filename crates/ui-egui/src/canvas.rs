@@ -846,7 +846,6 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
             ui.data_mut(|dd| {
                 dd.remove::<Drag>(drag_id());
                 dd.remove::<Pos2>(drag_pos_id());
-                dd.remove::<f32>(egui::Id::new("canvas-pressure-stable"));
                 dd.remove::<SpringPanState>(egui::Id::new("canvas-spring-pan"));
                 let prev_prox: StylusProximityState = dd.get_temp(egui::Id::new("canvas-stylus-proximity")).unwrap_or_default();
                 if prev_prox.in_proximity {
@@ -887,6 +886,10 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
                 Drag::Art | Drag::Gesture => {}
                 Drag::Pan { .. } | Drag::RotateView { .. } => {}
             }
+            ui.data_mut(|dd| {
+                dd.remove::<f32>(egui::Id::new("canvas-pressure-stable"));
+                dd.remove::<f32>(egui::Id::new("canvas-pressure"));
+            });
         }
     } else if let Some(p) = hover
         && (pointer.is_moving() || mods_changed)
@@ -4383,5 +4386,251 @@ mod tests {
         frame_with_time(&mut app, &ctx, vec![touch(2, egui::TouchPhase::End, at1), touch(3, egui::TouchPhase::End, at2)], 11.564);
         frame_with_time(&mut app, &ctx, vec![], 11.580);
         assert_eq!(count(&app), 1, "Three-finger tap post-cooldown must redo back to 1");
+    }
+
+    #[test]
+    fn test_multi_cycle_alternating_stylus_touch_adversarial_stress() {
+        let mut app = VectorcraftApp::new(Session::new(), Default::default());
+        app.session.execute("file.new", &json!({"width": 800, "height": 600})).unwrap();
+        app.select_tool("rectangle");
+        let ctx = egui::Context::default();
+        frame_with_time(&mut app, &ctx, vec![], 1.0);
+        let at = app.canvas_rect.unwrap().center();
+
+        let count = |app: &VectorcraftApp| app.session.active().unwrap().doc.layers[0].children().unwrap().len();
+        let touch = |n: u64, phase, pos| egui::Event::Touch {
+            device_id: egui::TouchDeviceId(1),
+            id: egui::TouchId(n),
+            phase,
+            pos,
+            force: None,
+        };
+        let button = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+
+        assert_eq!(count(&app), 0, "Initial document should be empty");
+
+        let mut pressure_leaks: Vec<(usize, &'static str, f32)> = Vec::new();
+
+        // Execute 12 consecutive alternating cycles
+        for cycle in 0..12 {
+            let t_base = 20.0 + (cycle as f64) * 5.0;
+
+            // 1. Stylus drag with pressure (f = 0.8)
+            let pen_start = at + vec2((cycle as f32) * 5.0, (cycle as f32) * 5.0);
+            let pen_end = pen_start + vec2(60.0, 40.0);
+            frame_with_time(&mut app, &ctx, pen(egui::TouchPhase::Start, pen_start, 0.8), t_base);
+            frame_with_time(&mut app, &ctx, pen(egui::TouchPhase::Move, pen_end, 0.8), t_base + 0.05);
+            frame_with_time(&mut app, &ctx, pen(egui::TouchPhase::End, pen_end, 0.8), t_base + 0.10);
+            frame_with_time(&mut app, &ctx, vec![], t_base + 0.15);
+
+            // Assert stylus successfully drew rectangle (count increases to cycle + 1)
+            assert_eq!(
+                count(&app),
+                cycle + 1,
+                "Cycle {cycle}: Stylus drag with f=0.8 must commit a new rectangle"
+            );
+
+            // 2. Stylus release verification: check NO zombie touches in Taps, StylusProximityState, or canvas-pressure-stable
+            let prox: StylusProximityState =
+                ctx.data(|d| d.get_temp(egui::Id::new("canvas-stylus-proximity"))).unwrap_or_default();
+            assert!(
+                !prox.in_proximity,
+                "Cycle {cycle}: Stylus proximity MUST unlatch in_proximity=false upon release"
+            );
+            assert!(prox.last_seen_time > 0.0, "Cycle {cycle}: Stylus last_seen_time must be recorded");
+
+            if let Some(p) = ctx.data(|d| d.get_temp::<f32>(egui::Id::new("canvas-pressure-stable"))) {
+                pressure_leaks.push((cycle, "after_stylus_release", p));
+            }
+
+            let taps: Option<crate::touch::Taps> = ctx.data(|d| d.get_temp(egui::Id::new("canvas-touch")));
+            assert!(
+                taps.as_ref().map_or(true, |t| !t.is_down()),
+                "Cycle {cycle}: No zombie touches in Taps after stylus release"
+            );
+
+            // 3. Post-cooldown 2-finger tap undo (dt = 1.0s >= 0.6s cooldown)
+            let t_undo = t_base + 1.2;
+            let id0 = (cycle as u64) * 10 + 2;
+            let id1 = (cycle as u64) * 10 + 3;
+            let at0 = at;
+            let at1 = at + vec2(50.0, 0.0);
+
+            frame_with_time(
+                &mut app,
+                &ctx,
+                vec![touch(id0, egui::TouchPhase::Start, at0), egui::Event::PointerMoved(at0), button(at0, true)],
+                t_undo,
+            );
+            frame_with_time(
+                &mut app,
+                &ctx,
+                vec![touch(id0, egui::TouchPhase::Move, at0 + vec2(4.0, 4.0)), egui::Event::PointerMoved(at0 + vec2(4.0, 4.0))],
+                t_undo + 0.016,
+            );
+            frame_with_time(&mut app, &ctx, vec![touch(id1, egui::TouchPhase::Start, at1)], t_undo + 0.032);
+            frame_with_time(
+                &mut app,
+                &ctx,
+                vec![touch(id0, egui::TouchPhase::End, at0), button(at0 + vec2(4.0, 4.0), false), egui::Event::PointerGone],
+                t_undo + 0.048,
+            );
+            frame_with_time(&mut app, &ctx, vec![touch(id1, egui::TouchPhase::End, at1)], t_undo + 0.064);
+            frame_with_time(&mut app, &ctx, vec![], t_undo + 0.080);
+
+            // Verify 2-finger tap undo reduced count back to cycle
+            assert_eq!(
+                count(&app),
+                cycle,
+                "Cycle {cycle}: Post-cooldown 2-finger tap MUST undo rectangle back to {cycle}"
+            );
+
+            let taps_after_undo: Option<crate::touch::Taps> = ctx.data(|d| d.get_temp(egui::Id::new("canvas-touch")));
+            assert!(
+                taps_after_undo.as_ref().map_or(true, |t| !t.is_down()),
+                "Cycle {cycle}: No zombie touches in Taps after undo"
+            );
+            if let Some(p) = ctx.data(|d| d.get_temp::<f32>(egui::Id::new("canvas-pressure-stable"))) {
+                pressure_leaks.push((cycle, "after_undo", p));
+            }
+
+            // 4. Post-cooldown 3-finger tap redo (dt >= 0.3s after undo)
+            let t_redo = t_undo + 0.3;
+            let id2 = (cycle as u64) * 10 + 4;
+            let at2 = at + vec2(100.0, 0.0);
+
+            frame_with_time(
+                &mut app,
+                &ctx,
+                vec![touch(id0, egui::TouchPhase::Start, at0), egui::Event::PointerMoved(at0), button(at0, true)],
+                t_redo,
+            );
+            frame_with_time(
+                &mut app,
+                &ctx,
+                vec![touch(id0, egui::TouchPhase::Move, at0 + vec2(4.0, 4.0)), egui::Event::PointerMoved(at0 + vec2(4.0, 4.0))],
+                t_redo + 0.016,
+            );
+            frame_with_time(
+                &mut app,
+                &ctx,
+                vec![touch(id1, egui::TouchPhase::Start, at1), touch(id2, egui::TouchPhase::Start, at2)],
+                t_redo + 0.032,
+            );
+            frame_with_time(
+                &mut app,
+                &ctx,
+                vec![touch(id0, egui::TouchPhase::End, at0), button(at0 + vec2(4.0, 4.0), false), egui::Event::PointerGone],
+                t_redo + 0.048,
+            );
+            frame_with_time(
+                &mut app,
+                &ctx,
+                vec![touch(id1, egui::TouchPhase::End, at1), touch(id2, egui::TouchPhase::End, at2)],
+                t_redo + 0.064,
+            );
+            frame_with_time(&mut app, &ctx, vec![], t_redo + 0.080);
+
+            // Verify 3-finger tap redo restored rectangle (count is cycle + 1)
+            assert_eq!(
+                count(&app),
+                cycle + 1,
+                "Cycle {cycle}: Post-cooldown 3-finger tap MUST redo rectangle back to {0}",
+                cycle + 1
+            );
+
+            let taps_after_redo: Option<crate::touch::Taps> = ctx.data(|d| d.get_temp(egui::Id::new("canvas-touch")));
+            assert!(
+                taps_after_redo.as_ref().map_or(true, |t| !t.is_down()),
+                "Cycle {cycle}: No zombie touches in Taps after redo"
+            );
+            if let Some(p) = ctx.data(|d| d.get_temp::<f32>(egui::Id::new("canvas-pressure-stable"))) {
+                pressure_leaks.push((cycle, "after_redo", p));
+            }
+
+            // 5. Two-finger pan/zoom drag (dt >= 0.3s after redo)
+            let t_drag = t_redo + 0.3;
+            let delta = vec2(30.0, 20.0);
+
+            frame_with_time(
+                &mut app,
+                &ctx,
+                vec![touch(id0, egui::TouchPhase::Start, at0), egui::Event::PointerMoved(at0), button(at0, true)],
+                t_drag,
+            );
+            frame_with_time(&mut app, &ctx, vec![touch(id1, egui::TouchPhase::Start, at1)], t_drag + 0.016);
+            frame_with_time(
+                &mut app,
+                &ctx,
+                vec![
+                    touch(id0, egui::TouchPhase::Move, at0 + delta),
+                    egui::Event::PointerMoved(at0 + delta),
+                    touch(id1, egui::TouchPhase::Move, at1 + delta),
+                    egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        delta,
+                        modifiers: Default::default(),
+                        phase: egui::TouchPhase::Move,
+                    },
+                    egui::Event::Zoom(1.05),
+                ],
+                t_drag + 0.032,
+            );
+            frame_with_time(
+                &mut app,
+                &ctx,
+                vec![
+                    touch(id0, egui::TouchPhase::End, at0 + delta),
+                    button(at0 + delta, false),
+                    egui::Event::PointerGone,
+                ],
+                t_drag + 0.048,
+            );
+            frame_with_time(&mut app, &ctx, vec![touch(id1, egui::TouchPhase::End, at1 + delta)], t_drag + 0.064);
+            frame_with_time(&mut app, &ctx, vec![], t_drag + 0.080);
+
+            // Verify pan/zoom drag did NOT alter document element count
+            assert_eq!(
+                count(&app),
+                cycle + 1,
+                "Cycle {cycle}: Pan/zoom drag must not alter document element count"
+            );
+
+            // Verify NO zombie touches accumulate in Taps, StylusProximityState, or canvas-pressure-stable
+            let taps_after_drag: Option<crate::touch::Taps> = ctx.data(|d| d.get_temp(egui::Id::new("canvas-touch")));
+            assert!(
+                taps_after_drag.as_ref().map_or(true, |t| !t.is_down()),
+                "Cycle {cycle}: No zombie touches in Taps after pan/zoom drag"
+            );
+
+            let prox_after_drag: StylusProximityState =
+                ctx.data(|d| d.get_temp(egui::Id::new("canvas-stylus-proximity"))).unwrap_or_default();
+            assert!(
+                !prox_after_drag.in_proximity,
+                "Cycle {cycle}: Stylus proximity must remain false after pan/zoom drag"
+            );
+
+            let drag_after: Option<Drag> = ctx.data(|d| d.get_temp(drag_id()));
+            assert!(
+                drag_after.is_none(),
+                "Cycle {cycle}: Drag state must be cleared after pan/zoom release"
+            );
+
+            if let Some(p) = ctx.data(|d| d.get_temp::<f32>(egui::Id::new("canvas-pressure-stable"))) {
+                pressure_leaks.push((cycle, "after_pan_zoom", p));
+            }
+        }
+
+        // Final verification across the entire sequence
+        assert_eq!(count(&app), 12, "All 12 cycles successfully committed their rectangles");
+        assert!(
+            pressure_leaks.is_empty(),
+            "NO zombie touches or pressure state may accumulate in canvas-pressure-stable across cycles! Leaks detected: {pressure_leaks:?}"
+        );
     }
 }
