@@ -17,6 +17,10 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, mode: u8) {
     let full = ui.max_rect();
     let below = if mode < 3 { Rect::from_min_max(pos2(full.left(), tabs(app, ui, full)), full.max) } else { full };
     let mut canvas = ui.new_child(egui::UiBuilder::new().max_rect(below).layout(*ui.layout()));
+    if crate::menus::home_showing(app) {
+        home::show(app, &mut canvas, below);
+        return;
+    }
     crate::canvas::show(app, &mut canvas);
     if mode < 3 {
         overlays(app, &mut canvas);
@@ -111,9 +115,14 @@ fn tab(ui: &Ui, id: egui::Id, r: Rect, label: &str, current: bool, close: bool, 
 /// shows when all of them fit; "Not saved" when the current one does, else its dot, which says it
 /// on hover. Returns where it begins.
 fn corner(app: &VectorcraftApp, ui: &Ui, strip: Rect, home: bool, need: [f32; 2], t: &Tokens) -> f32 {
-    let Some(d) = app.session.active().filter(|_| !home) else { return strip.right() };
     let cy = strip.center().y;
     let right = strip.right() - 12.0;
+    if home {
+        let label = "열린 도면집 없음";
+        let r = text(ui, pos2(right, cy), Align2::RIGHT_CENTER, label, font(12.0), t.text_dim);
+        return r.left() - 8.0;
+    }
+    let Some(d) = app.session.active().filter(|_| !home) else { return strip.right() };
     let dirty = d.is_dirty();
     let (dot, note) = if dirty { (6.0, width_of(ui, tw!("Not saved"), font(12.0)) + 5.0) } else { (0.0, 0.0) };
     let name = width_of(ui, &d.title(), font(12.0)) + if dirty { 8.0 } else { 0.0 };

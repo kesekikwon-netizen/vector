@@ -34,6 +34,29 @@ pub const FIT_TO: (f64, f64) = (612.0, 792.0);
 /// Why a binary DXF can't be opened.
 pub const BINARY: &str = "this is a binary DXF file, which can't be read: save it from the CAD app as an ASCII DXF and open that";
 
+/// Supported DXF text encodings.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CadEncoding {
+    #[default]
+    Auto,
+    Utf8,
+    Cp949,
+    Windows1252,
+}
+
+impl CadEncoding {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "auto" => Some(Self::Auto),
+            "utf8" | "utf-8" => Some(Self::Utf8),
+            "cp949" | "euc-kr" | "euckr" | "korean" => Some(Self::Cp949),
+            "windows-1252" | "windows1252" | "ansi" | "1252" => Some(Self::Windows1252),
+            _ => None,
+        }
+    }
+}
+
 /// How a drawing comes in.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImportOptions {
@@ -54,11 +77,32 @@ pub struct ImportOptions {
     pub center: bool,
     /// All art on one layer.
     pub merge_layers: bool,
+    /// Preserve original CAD world coordinates instead of recentering (J007).
+    pub preserve_coords: bool,
+    /// Text encoding (default: Auto -> UTF-8 with CP949 / Windows-1252 fallback).
+    pub encoding: Option<CadEncoding>,
+    /// Apply desca section DXF conventions (layer remapping, m suffix, elevation lines).
+    pub desca: bool,
+    /// Source DXF filesystem path (for resolving relative raster images and companion .sections.json).
+    pub source_path: Option<std::path::PathBuf>,
 }
 
 impl Default for ImportOptions {
     fn default() -> Self {
-        Self { layout: None, fit: false, fit_to: FIT_TO, unit: None, scale: None, scale_lineweights: false, center: true, merge_layers: false }
+        Self {
+            layout: None,
+            fit: false,
+            fit_to: FIT_TO,
+            unit: None,
+            scale: None,
+            scale_lineweights: false,
+            center: true,
+            merge_layers: false,
+            preserve_coords: false,
+            encoding: None,
+            desca: false,
+            source_path: None,
+        }
     }
 }
 
@@ -105,14 +149,14 @@ pub fn is_dxf(bytes: &[u8]) -> bool {
 }
 
 /// The pairs of a DXF file and where it is damaged (binary and DWG files are refused).
-fn text(bytes: &[u8]) -> Result<std::borrow::Cow<'_, str>, String> {
+fn text(bytes: &[u8], enc: CadEncoding) -> Result<std::borrow::Cow<'_, str>, String> {
     if bytes.starts_with(reader::BINARY_SENTINEL) {
         return Err(BINARY.into());
     }
     if bytes.starts_with(b"AC10") || bytes.starts_with(b"AC1.") {
         return Err("this is a DWG drawing, which can't be read: save it from the CAD app as an ASCII DXF and open that".into());
     }
-    Ok(reader::decode(bytes))
+    Ok(reader::decode(bytes, enc))
 }
 
 /// The unit of `$INSUNITS` code `code` and the scale that shows the drawing 1:1 in it.
@@ -161,7 +205,7 @@ fn units_name(code: i64) -> &'static str {
 
 /// Read what `bytes` holds: its version, units, layouts and layers.
 pub fn info(bytes: &[u8]) -> Result<DxfInfo, String> {
-    let text = text(bytes)?;
+    let text = text(bytes, CadEncoding::Auto)?;
     let (pairs, _) = reader::pairs(&text)?;
     let d = reader::Drawing::read(&pairs);
     if d.sections == 0 {
@@ -191,7 +235,7 @@ pub fn import(bytes: &[u8], o: &ImportOptions) -> Result<Imported, String> {
     {
         return Err(format!("scale must be a number from {} to {}, not {s}", SCALE_RANGE.start(), SCALE_RANGE.end()));
     }
-    let text = text(bytes)?;
+    let text = text(bytes, o.encoding.unwrap_or_default())?;
     let (pairs, damaged) = reader::pairs(&text)?;
     let d = reader::Drawing::read(&pairs);
     if d.sections == 0 {

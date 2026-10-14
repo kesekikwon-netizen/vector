@@ -7,13 +7,17 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use kurbo::BezPath;
+use kurbo::{BezPath, PathEl};
 use vectorcraft_color::{Color, Paint};
-use vectorcraft_doc::{Appearance, AppearanceItem, CharStyle, Dash, Document, LAYER_COLORS, LayerColor, LineCap, Node, NodeKind, Symbol, TextObject};
+use vectorcraft_doc::{
+    Appearance, AppearanceItem, CharStyle, CoordSystem, Dash, Document, ImageObject, LAYER_COLORS,
+    LayerColor, LineCap, LinkInfo, Node, NodeKind, PlacementOptions, ScaleConfig, ScaleRatio,
+    Symbol, TextObject,
+};
 use vectorcraft_geom::{Affine, FillRule, PathData, Point, Rect};
 
 use super::ImportOptions;
-use super::entity::{Alpha, Col, Converter, Geom, InsertItem, Item, Lw, Props, Span, TextItem};
+use super::entity::{Alpha, Col, Converter, Geom, ImageItem, InsertItem, Item, Lw, Props, Span, TextItem};
 use super::reader::{Drawing, LayoutDef};
 use crate::{CAP_HEIGHT, MAX_NEST};
 
@@ -102,7 +106,10 @@ impl<'d, 'a> Build<'d, 'a> {
         Self {
             d,
             o,
-            conv: Converter::default(),
+            conv: Converter {
+                imagedefs: d.imagedefs.clone(),
+                ..Converter::default()
+            },
             doc: Document::new(1.0, 1.0),
             blocks: HashMap::new(),
             bounds: HashMap::new(),
@@ -128,17 +135,31 @@ impl<'d, 'a> Build<'d, 'a> {
     pub fn run(mut self, layout: &LayoutDef, natural: f64, ratio: f64) -> Result<(Document, Vec<String>), String> {
         let items = self.conv.items(&self.d.layout_records(layout));
         let bounds = items.iter().fold(None, |acc, it| vectorcraft_geom::union_opt(acc, self.item_bounds(it, 0)));
-        let (k, size, offset) = self.placement(bounds, natural, ratio)?;
+        let (k, size, offset, world_origin) = self.placement(bounds, natural, ratio)?;
         self.map = Affine::new([k, 0.0, 0.0, -k, offset.x, offset.y]);
         self.symbol_map = Affine::new([k, 0.0, 0.0, -k, 0.0, 0.0]);
         self.lw_scale = if self.o.scale_lineweights { k / natural } else { 1.0 };
-        let layers = self.layers(&items);
+        let (layers, desca_scale) = self.layers(items);
         let Self { mut doc, conv, warnings: notes, .. } = self;
         if !layers.is_empty() {
             doc.layers = layers;
         }
         if let Some(a) = doc.artboards.first_mut() {
             a.rect = Rect::from_origin_size(Point::ZERO, size);
+        }
+        if self.o.preserve_coords || self.o.desca {
+            let scale_denom = self.o.scale.or(desca_scale).unwrap_or(20.0);
+            doc.scale = Some(ScaleConfig {
+                scale: ScaleRatio::new(scale_denom),
+                crs: CoordSystem::default(),
+                canvas_origin: Point::ZERO,
+                world_origin,
+            });
+        }
+        if let Some(ref src) = self.o.source_path
+            && let Some(comp_title) = crate::desca::read_companion_sections_json(src)
+        {
+            doc.title = comp_title;
         }
         doc.fix_next_id();
         let mut warnings = conv.warnings;
@@ -154,7 +175,7 @@ impl<'d, 'a> Build<'d, 'a> {
     }
 
     /// Points per drawing unit, the artboard's size, and where the drawing's origin goes.
-    fn placement(&self, bounds: Option<Rect>, natural: f64, ratio: f64) -> Result<(f64, vectorcraft_geom::Size, Point), String> {
+    fn placement(&self, bounds: Option<Rect>, natural: f64, ratio: f64) -> Result<(f64, vectorcraft_geom::Size, Point, (f64, f64)), String> {
         let b = bounds.unwrap_or(Rect::ZERO);
         let k = if self.o.fit {
             let (w, h) = self.fit_box(b);
@@ -169,17 +190,31 @@ impl<'d, 'a> Build<'d, 'a> {
         let size = if self.o.fit {
             let (w, h) = self.fit_box(b);
             vectorcraft_geom::Size::new(w, h)
+        } else if self.o.preserve_coords {
+            // In preserve_coords mode, ensure artboard comfortably accommodates the drawing (min A3: 1190.55 x 841.89 pt)
+            vectorcraft_geom::Size::new((b.width() * k).max(1190.55), (b.height() * k).max(841.89))
         } else {
             vectorcraft_geom::Size::new((b.width() * k).max(1.0), (b.height() * k).max(1.0))
         };
         // Centred: the art's centre on the artboard's; else the drawing's origin (fitted art: its
         // bottom-left corner) on the artboard's bottom-left corner.
-        let offset = if self.o.center {
-            Point::new(size.width / 2.0 - b.center().x * k, size.height / 2.0 + b.center().y * k)
+        let (offset, world_origin) = if self.o.preserve_coords {
+            let world_origin = if (b.x1 * k).abs() > MAX_EXTENT / 2.0
+                || (b.y1 * k).abs() > MAX_EXTENT / 2.0
+                || (b.x0 * k).abs() > MAX_EXTENT / 2.0
+                || (b.y0 * k).abs() > MAX_EXTENT / 2.0
+            {
+                (b.x0.floor(), b.y0.floor())
+            } else {
+                (0.0, 0.0)
+            };
+            (Point::new(-world_origin.0 * k, world_origin.1 * k), world_origin)
+        } else if self.o.center {
+            (Point::new(size.width / 2.0 - b.center().x * k, size.height / 2.0 + b.center().y * k), (0.0, 0.0))
         } else if self.o.fit {
-            Point::new(-b.x0 * k, size.height + b.y0 * k)
+            (Point::new(-b.x0 * k, size.height + b.y0 * k), (0.0, 0.0))
         } else {
-            Point::new(0.0, size.height)
+            (Point::new(0.0, size.height), (0.0, 0.0))
         };
         let corners = [Point::new(b.x0, b.y0), Point::new(b.x1, b.y1)].map(|p| Point::new(p.x * k + offset.x, -p.y * k + offset.y));
         let fits = corners.iter().all(|p| p.x.abs() <= MAX_EXTENT && p.y.abs() <= MAX_EXTENT) && size.width.max(size.height) <= MAX_EXTENT;
@@ -189,7 +224,7 @@ impl<'d, 'a> Build<'d, 'a> {
                 "at this scale the drawing is {w:.0} × {h:.0} pt, more than the canvas holds: choose a smaller scale or fit it to the artboard"
             ));
         }
-        Ok((k, size, offset))
+        Ok((k, size, offset, world_origin))
     }
 
     /// The box Fit to Artboard fills, turned to the art's orientation.
@@ -267,6 +302,19 @@ impl<'d, 'a> Build<'d, 'a> {
                 let cells = b.into_iter().flat_map(|b| ins.cells.iter().map(move |m| m.transform_rect_bbox(b)));
                 let attribs: Vec<Option<Rect>> = ins.attribs.iter().map(|a| self.item_bounds(a, depth)).collect();
                 cells.map(Some).chain(attribs).fold(None, vectorcraft_geom::union_opt)
+            }
+            Geom::Image(im) => {
+                let dw = im.width as f64;
+                let dh = im.height as f64;
+                let p0 = im.at;
+                let p1 = Point::new(im.at.x + im.u.x * dw, im.at.y + im.u.y * dw);
+                let p2 = Point::new(im.at.x + im.v.x * dh, im.at.y + im.v.y * dh);
+                let p3 = Point::new(im.at.x + im.u.x * dw + im.v.x * dh, im.at.y + im.u.y * dw + im.v.y * dh);
+                let min_x = p0.x.min(p1.x).min(p2.x).min(p3.x);
+                let max_x = p0.x.max(p1.x).max(p2.x).max(p3.x);
+                let min_y = p0.y.min(p1.y).min(p2.y).min(p3.y);
+                let max_y = p0.y.max(p1.y).max(p2.y).max(p3.y);
+                Some(Rect::new(min_x, min_y, max_x, max_y))
             }
         }
         .filter(|r| [r.x0, r.y0, r.x1, r.y1].iter().all(|v| v.is_finite()))
@@ -386,31 +434,74 @@ impl<'d, 'a> Build<'d, 'a> {
     // ---------- art ----------
 
     /// One doc layer per DXF layer holding art (in the order art first uses them), or one for all.
-    fn layers(&mut self, items: &[Item]) -> Vec<Arc<Node>> {
-        let mut layers: Vec<(String, Vec<Arc<Node>>)> = vec![];
+    fn layers(&mut self, mut items: Vec<Item>) -> (Vec<Arc<Node>>, Option<f64>) {
+        let mut desca_scale = None;
+        if self.o.desca {
+            for it in &mut items {
+                if it.props.layer.eq_ignore_ascii_case("LEVEL_TEXT")
+                    && let Geom::Text(ref mut t) = it.geom
+                {
+                    t.text = crate::desca::normalize_elevation_text(&t.text);
+                } else if it.props.layer.eq_ignore_ascii_case("SECTION_TITLE")
+                    && let Geom::Text(ref t) = it.geom
+                {
+                    let (title, denom) = crate::desca::parse_section_title(&t.text);
+                    if !title.is_empty() {
+                        self.doc.title = title;
+                    }
+                    if denom.is_some() {
+                        desca_scale = denom;
+                    }
+                }
+            }
+        }
+
+        let mut layers: Vec<(String, Vec<Arc<Node>>, Option<crate::desca::DescaLayerMapping>)> = vec![];
         let mut index: HashMap<String, usize> = HashMap::new();
         let top = Inherit::default();
         let map = self.map;
-        for it in items {
+        for it in &items {
             let Some(node) = self.item(it, map, &top, 0) else { continue };
-            let name = if self.o.merge_layers { "" } else { it.props.layer.as_str() };
+            let (name, desca_mapping) = if self.o.desca {
+                let is_closed = match &it.geom {
+                    Geom::Path { bp, .. } => bp.elements().last() == Some(&PathEl::ClosePath),
+                    _ => false,
+                };
+                if let Some(dm) = crate::desca::reclassify_layer(&it.props.layer, is_closed) {
+                    (dm.target_layer.to_string(), Some(dm))
+                } else {
+                    (it.props.layer.clone(), None)
+                }
+            } else if self.o.merge_layers {
+                ("".to_string(), None)
+            } else {
+                (it.props.layer.clone(), None)
+            };
             let i = *index.entry(name.to_uppercase()).or_insert_with(|| {
-                layers.push((name.to_string(), vec![]));
+                layers.push((name.clone(), vec![], desca_mapping));
                 layers.len() - 1
             });
-            if let Some((_, children)) = layers.get_mut(i) {
+            if let Some((_, children, _)) = layers.get_mut(i) {
                 children.push(Arc::new(node));
             }
         }
-        layers
+        let built = layers
             .into_iter()
             .enumerate()
-            .map(|(i, (name, children))| {
+            .map(|(i, (name, children, dm))| {
                 let id = self.doc.alloc_id();
                 let color = LayerColor::Preset((i % LAYER_COLORS.len()) as u8);
                 let label = if name.is_empty() { "Layer 1" } else { &name };
                 let mut l = Node::layer(id, label, color);
-                if let Some(def) = self.d.layer(&name) {
+                if let Some(dm) = dm {
+                    l.visible = !dm.hidden;
+                    l.locked = dm.locked;
+                    if let NodeKind::Layer { printable, template, legend, .. } = &mut l.kind {
+                        *printable = dm.printable;
+                        *template = dm.template;
+                        *legend = dm.legend.map(Box::new);
+                    }
+                } else if let Some(def) = self.d.layer(&name) {
                     l.visible = !def.hidden;
                     l.locked = def.locked;
                     if let NodeKind::Layer { printable, .. } = &mut l.kind {
@@ -422,7 +513,8 @@ impl<'d, 'a> Build<'d, 'a> {
                 }
                 Arc::new(l)
             })
-            .collect()
+            .collect();
+        (built, desca_scale)
     }
 
     /// One item as an object, drawn by `map` (world coordinates to its parent's space).
@@ -435,10 +527,41 @@ impl<'d, 'a> Build<'d, 'a> {
             Geom::Path { bp, fill, width } => self.path(bp, *fill, *width, &it.props, map, inh)?,
             Geom::Text(t) => self.text(t, &it.props, map, inh)?,
             Geom::Insert(ins) => return self.insert(ins, &it.props, map, inh, depth),
+            Geom::Image(im) => self.image(im, map)?,
         };
         node.opacity = self.opacity(&it.props, inh);
         self.nodes += 1;
         Some(node)
+    }
+
+    fn image(&mut self, im: &ImageItem, map: Affine) -> Option<Node> {
+        let xf = map
+            * Affine::new([
+                im.u.x,
+                im.u.y,
+                -im.v.x,
+                -im.v.y,
+                im.at.x + im.v.x * (im.height as f64),
+                im.at.y + im.v.y * (im.height as f64),
+            ]);
+        let link_path = if let Some(ref src) = self.o.source_path {
+            if let Some(parent) = src.parent() {
+                parent.join(&im.path).to_string_lossy().into_owned()
+            } else {
+                im.path.clone()
+            }
+        } else {
+            im.path.clone()
+        };
+        let img = ImageObject {
+            key: im.path.clone(),
+            width: im.width,
+            height: im.height,
+            xf,
+            link: Some(LinkInfo::new(link_path)),
+            placement: PlacementOptions::default(),
+        };
+        Some(Node::new(self.doc.alloc_id(), NodeKind::Image(img)))
     }
 
     fn path(&mut self, bp: &BezPath, fill: bool, width: f64, p: &Props, map: Affine, inh: &Inherit) -> Option<Node> {

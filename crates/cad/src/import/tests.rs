@@ -916,3 +916,57 @@ fn entities_extruded_along_minus_z_are_mirrored() {
     let b = bounds(&leaves(&doc)[0]);
     assert!((b.center().x + 50.0).abs() < 1e-6, "the centre's x is mirrored: {b:?}");
 }
+
+#[test]
+fn image_entity_and_imagedef_imported() {
+    let p: Vec<(i32, &str)> = vec![
+        (0, "SECTION"), (2, "HEADER"), (9, "$INSUNITS"), (70, "6"), (0, "ENDSEC"),
+        (0, "SECTION"), (2, "ENTITIES"),
+        (0, "IMAGE"), (8, "PHOTO_IMAGE"), (10, "10.0"), (20, "20.0"), (11, "0.05"), (21, "0.0"), (12, "0.0"), (22, "0.05"), (13, "640"), (23, "480"), (340, "1A"),
+        (0, "ENDSEC"),
+        (0, "SECTION"), (2, "OBJECTS"),
+        (0, "IMAGEDEF"), (5, "1A"), (1, "site_photo.jpg"), (10, "640"), (20, "480"),
+        (0, "ENDSEC"),
+    ];
+    let bytes = file(&p);
+    let opts = ImportOptions {
+        preserve_coords: true,
+        desca: true,
+        ..ImportOptions::default()
+    };
+    let imp = open(&bytes, &opts);
+    let lfs = leaves(&imp.document);
+    let img_node = lfs.iter().find(|n| matches!(n.kind, NodeKind::Image(_)));
+    assert!(img_node.is_some(), "expected image node to be created");
+    if let Some(Node { kind: NodeKind::Image(img), .. }) = img_node {
+        assert_eq!(img.width, 640);
+        assert_eq!(img.height, 480);
+        assert_eq!(img.key, "site_photo.jpg");
+    }
+    assert!(imp.document.scale.is_some());
+}
+
+#[test]
+fn cp949_text_decoding() {
+    use encoding_rs::EUC_KR;
+    let korean_text = "토층 단면도 A-B";
+    let (encoded, _, _) = EUC_KR.encode(korean_text);
+    
+    // Construct DXF header + text entity with CP949 bytes
+    let mut dxf_bytes = Vec::new();
+    let header_part = "  0\nSECTION\n  2\nHEADER\n  9\n$DWGCODEPAGE\n  3\nANSI_949\n  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n  0\nTEXT\n  8\nSECTION_TITLE\n 10\n0.0\n 20\n0.0\n 40\n2.5\n  1\n";
+    dxf_bytes.extend_from_slice(header_part.as_bytes());
+    dxf_bytes.extend_from_slice(&encoded);
+    dxf_bytes.extend_from_slice(b"\n  0\nENDSEC\n  0\nEOF\n");
+
+    let opts = ImportOptions {
+        encoding: Some(CadEncoding::Cp949),
+        desca: true,
+        ..ImportOptions::default()
+    };
+    let imp = open(&dxf_bytes, &opts);
+    let lfs = leaves(&imp.document);
+    let txt = lfs.iter().find_map(|n| if let NodeKind::Text(t) = &n.kind { t.runs.first().map(|r| &r.text) } else { None });
+    assert_eq!(txt, Some(&"토층 단면도 A-B".to_string()));
+}
+

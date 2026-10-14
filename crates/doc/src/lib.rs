@@ -11,6 +11,7 @@ pub mod blend;
 pub mod clipnest;
 pub mod cmyk;
 pub mod corners;
+pub mod elevation;
 pub mod graph;
 pub mod hatch;
 pub mod hit;
@@ -70,6 +71,7 @@ pub use appearance::{
 };
 pub use assets::ExportAsset;
 pub use corners::LiveCorners;
+pub use elevation::{ElevationLabelFormat, ElevationLabelPlacement, ElevationRangeMode, ElevationSpec};
 pub use graph::{GraphKind, GraphSpec, MAX_GRAPH_CATEGORIES, MAX_GRAPH_SERIES, SeriesPaint, TickLength, ValueAxisSide};
 pub use hit::{Hit, HitKind};
 pub use legend::{Legend, LegendGroup, LegendSample, LineType};

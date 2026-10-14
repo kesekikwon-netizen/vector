@@ -99,7 +99,7 @@ fn set(s: &mut Session, p: &Value) -> Result<Value> {
             if direction == HatchDirection::None {
                 node.hatch = None;
             } else {
-                let flipped = flipped_param.unwrap_or_else(|| node.hatch.as_ref().map_or(false, |h| h.flipped));
+                let flipped = flipped_param.unwrap_or_else(|| node.hatch.as_ref().is_some_and(|h| h.flipped));
                 node.hatch = Some(HatchStyle {
                     direction,
                     spacing_mm,
@@ -241,10 +241,10 @@ fn get(s: &mut Session, p: &Value) -> Result<Value> {
 fn update_document_hatch_directions(d: &mut vectorcraft_doc::Document) {
     let res = resolve_document_hatching(d);
     for (id, base_dir) in res.base_dirs {
-        if let Some(node) = d.node_mut(id) {
-            if let Some(hatch) = &mut node.hatch {
-                hatch.resolved_direction = Some(base_dir);
-            }
+        if let Some(node) = d.node_mut(id)
+            && let Some(hatch) = &mut node.hatch
+        {
+            hatch.resolved_direction = Some(base_dir);
         }
     }
 }

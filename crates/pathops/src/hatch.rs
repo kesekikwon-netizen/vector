@@ -199,10 +199,7 @@ pub fn bipartite_2color_components(adj: &[Vec<usize>]) -> (Vec<bool>, Vec<bool>)
         queue.push_back(start);
 
         while let Some(u) = queue.pop_front() {
-            let c = match color.get(u).copied().flatten() {
-                Some(val) => val,
-                None => false,
-            };
+            let c: bool = color.get(u).copied().flatten().unwrap_or_default();
             let neighbors = match adj.get(u) {
                 Some(list) => list.clone(),
                 None => Vec::new(),

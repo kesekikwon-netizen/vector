@@ -1,14 +1,14 @@
 //! Entities to drawing items: their geometry in world coordinates (drawing units, y up) and the
 //! properties they take from their layer or block (resolved when the items become art).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use kurbo::{BezPath, PathEl};
 use vectorcraft_doc::Justify;
 use vectorcraft_geom::{Affine, Point, Vec2};
 
 use super::curve::{self, Vertex};
-use super::reader::{Groups, Pair, Record, groups, number};
+use super::reader::{Groups, ImageDef, Pair, Record, groups, number};
 use crate::aci::aci_rgb;
 
 /// How far below the baseline the lowest descender reaches, as a fraction of the cap height.
@@ -158,6 +158,17 @@ pub(crate) struct InsertItem {
     pub attribs: Vec<Item>,
 }
 
+/// A raster image entity (IMAGE).
+#[derive(Clone, Debug)]
+pub(crate) struct ImageItem {
+    pub path: String,
+    pub at: Point,
+    pub u: Vec2,
+    pub v: Vec2,
+    pub width: u32,
+    pub height: u32,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum Geom {
     /// A path in world coordinates; `fill`: a filled area (hatch, solid), else a line of
@@ -169,6 +180,7 @@ pub(crate) enum Geom {
     },
     Text(TextItem),
     Insert(InsertItem),
+    Image(ImageItem),
 }
 
 /// An entity as art: its geometry and its properties.
@@ -184,6 +196,7 @@ pub(crate) struct Converter {
     /// Entity types left out, with how many.
     pub skipped: BTreeMap<String, usize>,
     pub warnings: Vec<String>,
+    pub imagedefs: HashMap<String, ImageDef>,
 }
 
 const PATTERN_HATCH: &str = "pattern hatches come in as their boundaries";
@@ -255,8 +268,20 @@ impl Converter {
             "TEXT" | "ATTRIB" => text(g, head.kind == "ATTRIB").map(Geom::Text),
             "MTEXT" => mtext(g).map(Geom::Text),
             "INSERT" => self.insert(g, group.get(1..).unwrap_or(&[])),
-            // A dimension draws the anonymous block of its lines, arrows and text.
             "DIMENSION" => Some(Geom::Insert(InsertItem { block: g.name(2)?.to_uppercase(), cells: vec![Affine::IDENTITY], attribs: vec![] })),
+            "IMAGE" => {
+                let at = g.point(10);
+                let u = g.point_opt(11).map(|p| Vec2::new(p.x, p.y)).unwrap_or(Vec2::new(1.0, 0.0));
+                let v = g.point_opt(12).map(|p| Vec2::new(p.x, p.y)).unwrap_or(Vec2::new(0.0, 1.0));
+                let dw = g.num_or(13, 0.0).max(0.0) as u32;
+                let dh = g.num_or(23, 0.0).max(0.0) as u32;
+                let handle = g.name(340).unwrap_or("");
+                let imagedef = self.imagedefs.get(&handle.to_uppercase());
+                let path = imagedef.map(|d| d.path.clone()).unwrap_or_default();
+                let width = if dw > 0 { dw } else { imagedef.map(|d| d.width).unwrap_or(100) };
+                let height = if dh > 0 { dh } else { imagedef.map(|d| d.height).unwrap_or(100) };
+                Some(Geom::Image(ImageItem { path, at, u, v, width, height }))
+            }
             _ => None,
         }
     }
@@ -336,6 +361,7 @@ fn in_range(g: &Geom) -> bool {
         }
         Geom::Text(t) => origin(&t.xf) && t.height <= MAX_COORD,
         Geom::Insert(i) => i.cells.iter().all(|m| origin(m) && m.as_coeffs().iter().all(|v| v.is_finite() && v.abs() <= MAX_COORD)),
+        Geom::Image(im) => near(im.at),
     }
 }
 
@@ -359,6 +385,7 @@ fn is_known(kind: &str) -> bool {
             | "MTEXT"
             | "INSERT"
             | "DIMENSION"
+            | "IMAGE"
             | "ATTDEF"
             | "SEQEND"
             | "VERTEX"

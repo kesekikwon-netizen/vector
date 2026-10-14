@@ -8,6 +8,7 @@
 
 mod boolean;
 mod edit;
+pub mod elevation;
 mod fit;
 pub mod hatch;
 mod offset;
@@ -19,6 +20,7 @@ pub use edit::{
     AverageAxis, SimplifyOptions, add_anchor_points, average, join, remove_anchor, remove_redundant_points, simplify, simplify_with, smooth,
     split_into_grid,
 };
+pub use elevation::{ElevationLabel, ElevationOutput, ElevationSegment, clip_elevation_scanline, generate_elevation};
 pub use hatch::{
     DocumentHatchResolution, HatchFace, HatchFaceResult, bipartite_2color, bipartite_2color_components,
     build_adjacency_graph, emit_hatch_lines, resolve_document_hatching, solve_face_hatching,

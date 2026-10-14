@@ -89,12 +89,12 @@ fn parse_scale_denom(val: &Value) -> Option<f64> {
 }
 
 fn parse_point(v: &Value) -> Option<Point> {
-    if let Some(arr) = v.as_array() {
-        if arr.len() >= 2 {
-            let x = arr.get(0)?.as_f64()?;
-            let y = arr.get(1)?.as_f64()?;
-            return Some(Point::new(x, y));
-        }
+    if let Some(arr) = v.as_array()
+        && arr.len() >= 2
+    {
+        let x = arr.first()?.as_f64()?;
+        let y = arr.get(1)?.as_f64()?;
+        return Some(Point::new(x, y));
     }
     if let Some(obj) = v.as_object() {
         let x = obj.get("x")?.as_f64()?;
@@ -105,12 +105,12 @@ fn parse_point(v: &Value) -> Option<Point> {
 }
 
 fn parse_world_coords(v: &Value) -> Option<(f64, f64)> {
-    if let Some(arr) = v.as_array() {
-        if arr.len() >= 2 {
-            let e = arr.get(0)?.as_f64()?;
-            let n = arr.get(1)?.as_f64()?;
-            return Some((e, n));
-        }
+    if let Some(arr) = v.as_array()
+        && arr.len() >= 2
+    {
+        let e = arr.first()?.as_f64()?;
+        let n = arr.get(1)?.as_f64()?;
+        return Some((e, n));
     }
     if let Some(obj) = v.as_object() {
         let e = obj.get("east").or_else(|| obj.get("x"))?.as_f64()?;
@@ -259,7 +259,7 @@ fn graticule_ticks(s: &mut Session, p: &Value) -> Result<Value> {
 
     let bounds = if let Some(arr) = p.get("bounds").and_then(Value::as_array) {
         if arr.len() >= 4 {
-            let x0 = arr.get(0).and_then(Value::as_f64).unwrap_or(0.0);
+            let x0 = arr.first().and_then(Value::as_f64).unwrap_or(0.0);
             let y0 = arr.get(1).and_then(Value::as_f64).unwrap_or(0.0);
             let x1 = arr.get(2).and_then(Value::as_f64).unwrap_or(800.0);
             let y1 = arr.get(3).and_then(Value::as_f64).unwrap_or(600.0);

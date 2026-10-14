@@ -10,6 +10,15 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     egui::Panel::bottom(STATUS).exact_size(STATUS_H).show_separator_line(false).frame(egui::Frame::NONE.fill(t.panel)).show(ui, |ui| {
         let r = ui.max_rect();
         line_above(ui, r, t.border);
+        if crate::menus::home_showing(app) {
+            let ver = cell(ui, r, r.right(), false, &[("Trowel 0.2".into(), font(12.0), t.text_dim)], &t);
+            let count = cell(ui, r, ver.left(), false, &[("도면집 3개".into(), font(12.0), t.text)], &t);
+            let room = Rect::from_min_max(pos2(r.left() + 16.0, r.top()), pos2(count.left() - 12.0, r.bottom()));
+            let p = ui.painter().with_clip_rect(room);
+            let msg = message(app, ui.ctx()).unwrap_or_else(|| "「이어서 그리기」를 누르면 하던 도면이 그대로 열립니다.".to_string());
+            p.text(pos2(room.left(), r.center().y), Align2::LEFT_CENTER, msg, font(12.0), t.text_dim);
+            return;
+        }
         // The cells, right to left.
         let doc_scale = app.session.active().and_then(|d| d.doc.scale.clone());
         let (scale_label, scale_color) = if let Some(ref cfg) = doc_scale {

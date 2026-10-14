@@ -216,7 +216,11 @@ pub fn load_with(name: &str, bytes: &[u8], opts: &LoadOptions) -> Result<Loaded>
             })?
         }
         "dxf" => {
-            let (doc, warnings) = super::dxfimport::import(bytes, &opts.dxf)?;
+            let mut dxf_opts = opts.dxf.clone();
+            if dxf_opts.source_path.is_none() && std::path::Path::new(name).exists() {
+                dxf_opts.source_path = Some(std::path::PathBuf::from(name));
+            }
+            let (doc, warnings) = super::dxfimport::import(bytes, &dxf_opts)?;
             (doc, warnings, false)
         }
         "emf" | "wmf" => {

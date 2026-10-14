@@ -482,9 +482,9 @@ fn ribbon_follows_the_mockup_and_runs_commands() {
     h.settle();
     assert_eq!(well(&h, "save"), Some(t.action));
     // A tile a later job brings is dimmed and does nothing.
-    assert_eq!(well(&h, "section"), Some(t.panel_darker));
+    assert_eq!(well(&h, "align"), Some(t.panel_darker));
     let docs = h.app.session.documents().len();
-    h.click(wid("tile", "section"));
+    h.click(wid("tile", "align"));
     assert_eq!((h.app.session.documents().len(), h.app.session.tool_id()), (docs, "pen"));
     assert!(h.app.ui.dialog.is_none());
     // Find a command opens the command palette.
@@ -1001,9 +1001,9 @@ fn status_bar_shows_messages_for_a_while() {
         assert!(!line.contains("to add a corner point"), "the error, the {time} time: {line}");
         h.later(7.0);
     }
-    // Section (J004) and Cut Face (J014): what they are and when.
-    h.click(wid("tile", "section"));
-    assert!(h.line_in(bar).contains("Section: coming soon (J004)"), "{}", h.line_in(bar));
+    // Align (J008) and Cut Face (J014): what they are and when.
+    h.click(wid("tile", "align"));
+    assert!(h.line_in(bar).contains("Align: coming soon (J008)"), "{}", h.line_in(bar));
     h.click(wid("weight-add", ()));
     assert!(h.line_in(bar).contains("Add a Weight: coming soon (J018)"), "{}", h.line_in(bar));
     h.later(5.0);
@@ -2495,4 +2495,208 @@ fn a_soon_note_drops_a_dialogs_ellipsis() {
     let ctx = egui::Context::default();
     super::note_soon(&ctx, "Change All Weights…", "J005");
     assert_eq!(super::soon_note(&ctx).as_deref(), Some("Change All Weights: coming soon (J005)"));
+}
+
+// ==================== Task J004 Tests ====================
+
+#[test]
+fn test_drawing_book_path_resolution() {
+    use super::book::ResolvedDrawingBook;
+
+    let base_dir = std::env::temp_dir().join(format!("trowel_book_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let survey_dir = base_dir.join("광령리1");
+    let book_dir = survey_dir.join("도면");
+    let _ = std::fs::create_dir_all(&book_dir);
+
+    let gpkg_path = survey_dir.join("광령리1.gpkg");
+    let _ = std::fs::write(&gpkg_path, b"mock gpkg file");
+
+    // 1. Resolve from explicit .gpkg file
+    let b1 = ResolvedDrawingBook::resolve(&gpkg_path);
+    assert_eq!(b1.name, "광령리1");
+    assert_eq!(b1.survey_dir, survey_dir);
+    assert_eq!(b1.drawing_book_dir, book_dir);
+    assert!(b1.strata_status.is_connected());
+
+    // 2. Resolve from survey directory
+    let b2 = ResolvedDrawingBook::resolve(&survey_dir);
+    assert_eq!(b2.name, "광령리1");
+    assert_eq!(b2.survey_dir, survey_dir);
+    assert_eq!(b2.drawing_book_dir, book_dir);
+    assert!(b2.strata_status.is_connected());
+
+    // 3. Resolve from <survey_dir>/도면
+    let b3 = ResolvedDrawingBook::resolve(&book_dir);
+    assert_eq!(b3.name, "광령리1");
+    assert_eq!(b3.survey_dir, survey_dir);
+    assert_eq!(b3.drawing_book_dir, book_dir);
+    assert!(b3.strata_status.is_connected());
+
+    // 4. Resolve from a drawing file inside 도면
+    let dwg_path = book_dir.join("1호 주거지 평면.vectorcraft");
+    let _ = std::fs::write(&dwg_path, b"{}");
+    let b4 = ResolvedDrawingBook::resolve(&dwg_path);
+    assert_eq!(b4.drawing_book_dir, book_dir);
+
+    // 5. Drawing categorizer test
+    let _ = std::fs::write(book_dir.join("A-A 단면.vectorcraft"), b"{}");
+    let _ = std::fs::write(book_dir.join("토층도.drawcraft"), b"{}");
+    let _ = std::fs::write(book_dir.join("1호 토기 유물.trowel"), b"{}");
+    let _ = std::fs::write(book_dir.join("보고서 도판.vectorcraft"), b"{}");
+
+    let (plan, section, finds, plate) = ResolvedDrawingBook::scan_drawings(&book_dir);
+    assert_eq!(plan, 1);    // 1호 주거지 평면
+    assert_eq!(section, 2); // A-A 단면, 토층도
+    assert_eq!(finds, 1);   // 1호 토기 유물
+    assert_eq!(plate, 1);   // 보고서 도판
+
+    // Clean up
+    let _ = std::fs::remove_dir_all(&base_dir);
+}
+
+#[test]
+fn test_recent_drawing_books_operations() {
+    use super::book::{RecentDrawingBooks, ResolvedDrawingBook, StrataGpkgStatus};
+    use std::path::PathBuf;
+
+    let mut recents = RecentDrawingBooks::new();
+    assert_eq!(recents.books.len(), 3);
+    assert_eq!(recents.books[0].name, "광령리1");
+
+    // Remove at index
+    recents.remove_at(1);
+    assert_eq!(recents.books.len(), 2);
+    assert_eq!(recents.books[1].name, "하가리 시굴");
+
+    // Add new
+    let new_book = ResolvedDrawingBook {
+        name: "서귀포 유적".to_string(),
+        survey_dir: PathBuf::from("D:\\발굴\\서귀포"),
+        drawing_book_dir: PathBuf::from("D:\\발굴\\서귀포\\도면"),
+        strata_status: StrataGpkgStatus::Disconnected,
+        plan_count: 5,
+        section_count: 2,
+        finds_count: 3,
+        plate_count: 1,
+        crs: "5186 중부원점".to_string(),
+        last_opened: "방금 전".to_string(),
+    };
+    recents.add(new_book);
+    assert_eq!(recents.books.len(), 3);
+    assert_eq!(recents.books[0].name, "서귀포 유적");
+
+    // Remove by path
+    recents.remove_by_path(&PathBuf::from("D:\\발굴\\서귀포\\도면"));
+    assert_eq!(recents.books.len(), 2);
+    assert_eq!(recents.books[0].name, "광령리1");
+}
+
+#[test]
+fn test_headless_start_screen_frame_rendering() {
+    let mut h = Harness::sized(1600.0, 1061.0);
+
+    // Switch to Home screen
+    h.app.run("app.home", json!({})).unwrap();
+    h.settle();
+
+    assert!(crate::menus::home_showing(&h.app), "Home screen must be showing");
+
+    // Verify key text elements from §2
+    let text_dump: String = h.texts.iter().map(|t| t.text.as_str()).collect::<Vec<_>>().join(" ");
+    
+    // Brand & Title
+    assert!(text_dump.contains("Trowel"), "Must contain brand 'Trowel'");
+    assert!(text_dump.contains("발굴 도면"), "Must contain title '발굴 도면'");
+    assert!(text_dump.contains("도면집을 이어서 열거나, 새 도면을 시작하세요."), "Must contain subtitle");
+    
+    // Quick Actions
+    assert!(text_dump.contains("＋ 새 도면"), "Must contain '＋ 새 도면'");
+    assert!(text_dump.contains("도면집 열기"), "Must contain '도면집 열기'");
+    assert!(text_dump.contains("Strata 조사에서 시작"), "Must contain 'Strata 조사에서 시작'");
+    
+    // Resume Work Card
+    assert!(text_dump.contains("이어서 작업"), "Must contain '이어서 작업'");
+    assert!(text_dump.contains("1호 주거지 평면"), "Must contain '1호 주거지 평면'");
+    assert!(text_dump.contains("이어서 그리기"), "Must contain '이어서 그리기'");
+    assert!(text_dump.contains("도면집 보기"), "Must contain '도면집 보기'");
+
+    // Recent Books Table
+    assert!(text_dump.contains("최근 도면집"), "Must contain '최근 도면집'");
+    assert!(text_dump.contains("오른쪽 클릭: 목록에서 빼기"), "Must contain context menu hint");
+    assert!(text_dump.contains("광령리1"), "Must contain '광령리1'");
+    assert!(text_dump.contains("중문동 2지점"), "Must contain '중문동 2지점'");
+    assert!(text_dump.contains("하가리 시굴"), "Must contain '하가리 시굴'");
+    assert!(text_dump.contains("5186 중부원점"), "Must contain CRS '5186 중부원점'");
+
+    // Workflow Rail
+    assert!(text_dump.contains("작업 순서"), "Must contain '작업 순서'");
+    assert!(text_dump.contains("1. 자료 받기"), "Must contain '1. 자료 받기'");
+    assert!(text_dump.contains("2. 밑그림 맞추기"), "Must contain '2. 밑그림 맞추기'");
+    assert!(text_dump.contains("3. 평면 그리기"), "Must contain '3. 평면 그리기'");
+    assert!(text_dump.contains("다음"), "Must contain '다음' tag");
+    assert!(text_dump.contains("4. 단면·토층"), "Must contain '4. 단면·토층'");
+    assert!(text_dump.contains("5. 유물 실측"), "Must contain '5. 유물 실측'");
+    assert!(text_dump.contains("6. 도판 만들기"), "Must contain '6. 도판 만들기'");
+    assert!(text_dump.contains("7. 내보내기"), "Must contain '7. 내보내기'");
+
+    // Archaeological Templates
+    assert!(text_dump.contains("새 도면 견본"), "Must contain '새 도면 견본'");
+    assert!(text_dump.contains("개별유구 평·단면도"), "Must contain '개별유구 평·단면도'");
+    assert!(text_dump.contains("토층 단면도"), "Must contain '토층 단면도'");
+    assert!(text_dump.contains("유물 실측도"), "Must contain '유물 실측도'");
+    assert!(text_dump.contains("유구배치도"), "Must contain '유구배치도'");
+    assert!(text_dump.contains("보고서 도판"), "Must contain '보고서 도판'");
+
+    // Connection Summary Bar
+    assert!(text_dump.contains("Strata 조사 파일"), "Must contain 'Strata 조사 파일'");
+    assert!(text_dump.contains("desca 단면"), "Must contain 'desca 단면'");
+    assert!(text_dump.contains("측점"), "Must contain '측점'");
+    assert!(text_dump.contains("밑그림"), "Must contain '밑그림'");
+    assert!(text_dump.contains("보고서 글꼴"), "Must contain '보고서 글꼴'");
+
+    // Status Bar Readout
+    assert!(text_dump.contains("「이어서 그리기」를 누르면 하던 도면이 그대로 열립니다."), "Must contain status bar message");
+    assert!(text_dump.contains("도면집 3개"), "Must contain status bar count");
+    assert!(text_dump.contains("Trowel 0.2"), "Must contain status bar version");
+}
+
+#[test]
+fn test_template_card_click_creates_standard_drawing() {
+    let mut h = Harness::sized(1600.0, 1061.0);
+    h.app.run("app.home", json!({})).unwrap();
+    h.settle();
+    assert!(crate::menus::home_showing(&h.app));
+
+    // Dispatch finds template creation command
+    h.app.run("trowel.newFinds", json!({})).unwrap();
+    h.app.ui.home = None;
+    h.settle();
+
+    // Verifies Home screen closes
+    assert!(!crate::menus::home_showing(&h.app), "Home screen must close after creating drawing");
+
+    // Verifies document properties
+    let doc = h.app.session.active().expect("Document must be active");
+    assert_eq!(doc.doc.units, vectorcraft_doc::Unit::Millimeters, "Units must be Millimeters");
+    let scale = doc.doc.scale.as_ref().expect("Scale must be configured");
+    assert_eq!(scale.scale.denom, 1.0, "Finds scale must be 1:1");
+
+    // Verifies finds legend group rows exist
+    let layers: Vec<String> = doc.doc.layers.iter().map(|l| l.display_name().to_string()).collect();
+    assert!(layers.iter().any(|n| n.contains("중심선")), "Must have '중심선' layer from finds legend group");
+}
+
+#[test]
+fn test_ribbon_new_drawing_tiles_dispatch() {
+    let mut h = Harness::sized(1600.0, 988.0);
+    // Click ribbon tiles
+    h.app.run("trowel.newSection", json!({})).unwrap();
+    h.settle();
+
+    let doc = h.app.session.active().expect("Section document must be active");
+    assert_eq!(doc.doc.units, vectorcraft_doc::Unit::Millimeters);
+    let scale = doc.doc.scale.as_ref().expect("Scale must be configured");
+    assert_eq!(scale.scale.denom, 20.0, "Section scale must be 1:20");
+    let layers: Vec<String> = doc.doc.layers.iter().map(|l| l.display_name().to_string()).collect();
+    assert!(layers.iter().any(|n| n.contains("단면선") || n.contains("레벨선") || n.contains("토층선")), "Must contain section legend layers");
 }

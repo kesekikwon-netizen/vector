@@ -18,6 +18,7 @@ mod docmenu;
 pub(crate) mod docsetup;
 mod draw2;
 mod edit;
+pub(crate) mod elevation;
 mod effectcmd;
 pub mod expand;
 pub(crate) mod fileinfo;
@@ -78,6 +79,7 @@ mod textedit;
 pub mod textstyles;
 pub(crate) mod textwrap;
 pub(crate) mod threads;
+pub mod trowel;
 pub(crate) mod typecmd;
 mod typemenu;
 mod variablecmds;
@@ -284,6 +286,8 @@ pub fn command_specs() -> &'static [CommandSpec] {
         v.extend(legend::specs());
         v.extend(hatch::specs());
         v.extend(scale::specs());
+        v.extend(elevation::specs());
+        v.extend(trowel::specs());
         v
     })
 }

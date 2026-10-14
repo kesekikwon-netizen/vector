@@ -588,4 +588,170 @@ fn test_adversarial_disconnected_component_conflict_isolation() {
     );
 }
 
+#[test]
+fn test_adversarial_multi_component_k3_c4_isolated_stress() {
+    // 1. Direct pathops level stress-test
+    // Graph of 8 nodes:
+    // Component A: K3 (nodes 0, 1, 2)
+    // Component B: C4 (nodes 3, 4, 5, 6: 3-4, 4-5, 5-6, 6-3)
+    // Component C: Isolated face (node 7: no neighbors)
+    let adj = vec![
+        vec![1, 2], // 0 (K3)
+        vec![0, 2], // 1 (K3)
+        vec![0, 1], // 2 (K3)
+        vec![4, 6], // 3 (C4)
+        vec![3, 5], // 4 (C4)
+        vec![4, 6], // 5 (C4)
+        vec![5, 3], // 6 (C4)
+        vec![],     // 7 (Isolated)
+    ];
+
+    let (assignments, conflicts) = vectorcraft_pathops::hatch::bipartite_2color_components(&adj);
+    assert_eq!(assignments.len(), 8);
+    assert_eq!(conflicts.len(), 8);
+
+    // Component A (K3) MUST report conflict on all faces
+    assert!(conflicts[0], "K3 node 0 must have conflict");
+    assert!(conflicts[1], "K3 node 1 must have conflict");
+    assert!(conflicts[2], "K3 node 2 must have conflict");
+
+    // Component B (C4) MUST have ZERO conflict badges
+    assert!(!conflicts[3], "C4 node 3 must have NO conflict");
+    assert!(!conflicts[4], "C4 node 4 must have NO conflict");
+    assert!(!conflicts[5], "C4 node 5 must have NO conflict");
+    assert!(!conflicts[6], "C4 node 6 must have NO conflict");
+
+    // Component B (C4) MUST alternate colors cleanly around the 4-cycle
+    assert_ne!(assignments[3], assignments[4], "C4 nodes 3 and 4 must alternate");
+    assert_ne!(assignments[4], assignments[5], "C4 nodes 4 and 5 must alternate");
+    assert_ne!(assignments[5], assignments[6], "C4 nodes 5 and 6 must alternate");
+    assert_ne!(assignments[6], assignments[3], "C4 nodes 6 and 3 must alternate");
+    assert_eq!(assignments[3], assignments[5], "C4 opposite nodes 3 and 5 must have same color");
+    assert_eq!(assignments[4], assignments[6], "C4 opposite nodes 4 and 6 must have same color");
+
+    // Component C (Isolated) MUST have ZERO conflict badges
+    assert!(!conflicts[7], "Isolated node 7 must have NO conflict");
+
+    // 2. Full Engine & Session Level Stress Test
+    let mut s = test_session();
+
+    // --- Component A: K3 (3 mutually touching triangles meeting at (50, 50)) ---
+    let ra0 = s.execute("path.create", &json!({
+        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 50.0, "y": 0.0}, {"x": 100.0, "y": 50.0}],
+        "closed": true
+    })).unwrap();
+    let id_a0 = ra0["id"].as_u64().unwrap();
+
+    let ra1 = s.execute("path.create", &json!({
+        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 100.0, "y": 50.0}, {"x": 0.0, "y": 100.0}],
+        "closed": true
+    })).unwrap();
+    let id_a1 = ra1["id"].as_u64().unwrap();
+
+    let ra2 = s.execute("path.create", &json!({
+        "anchors": [{"x": 50.0, "y": 50.0}, {"x": 0.0, "y": 100.0}, {"x": 50.0, "y": 0.0}],
+        "closed": true
+    })).unwrap();
+    let id_a2 = ra2["id"].as_u64().unwrap();
+
+    // --- Component B: C4 (4 adjacent squares in an even cycle at (300, 300)) ---
+    // [B0: 300,300] [B1: 340,300]
+    // [B3: 300,340] [B2: 340,340]
+    let rb0 = s.execute("shape.rectangle", &json!({"x": 300.0, "y": 300.0, "width": 40.0, "height": 40.0})).unwrap();
+    let id_b0 = rb0["id"].as_u64().unwrap();
+
+    let rb1 = s.execute("shape.rectangle", &json!({"x": 340.0, "y": 300.0, "width": 40.0, "height": 40.0})).unwrap();
+    let id_b1 = rb1["id"].as_u64().unwrap();
+
+    let rb2 = s.execute("shape.rectangle", &json!({"x": 340.0, "y": 340.0, "width": 40.0, "height": 40.0})).unwrap();
+    let id_b2 = rb2["id"].as_u64().unwrap();
+
+    let rb3 = s.execute("shape.rectangle", &json!({"x": 300.0, "y": 340.0, "width": 40.0, "height": 40.0})).unwrap();
+    let id_b3 = rb3["id"].as_u64().unwrap();
+
+    // --- Component C: Isolated single face at (700, 700) ---
+    let rc0 = s.execute("shape.rectangle", &json!({"x": 700.0, "y": 700.0, "width": 50.0, "height": 50.0})).unwrap();
+    let id_c0 = rc0["id"].as_u64().unwrap();
+
+    // Set ALL 8 faces to Alternate hatch mode
+    let set_res = s.execute("hatch.set", &json!({
+        "direction": "alt",
+        "ids": [id_a0, id_a1, id_a2, id_b0, id_b1, id_b2, id_b3, id_c0]
+    })).unwrap();
+
+    let conflicts = set_res["conflicts"].as_array().unwrap();
+    let conflict_ids: Vec<u64> = conflicts.iter().filter_map(|v| v.as_u64()).collect();
+
+    // Verify conflicts in set_res: MUST contain Component A faces, and MUST NOT contain Component B or C faces
+    assert!(conflict_ids.contains(&id_a0), "Conflict list must contain K3 face A0");
+    assert!(conflict_ids.contains(&id_a1), "Conflict list must contain K3 face A1");
+    assert!(conflict_ids.contains(&id_a2), "Conflict list must contain K3 face A2");
+
+    assert!(!conflict_ids.contains(&id_b0), "Conflict list must NOT contain C4 face B0");
+    assert!(!conflict_ids.contains(&id_b1), "Conflict list must NOT contain C4 face B1");
+    assert!(!conflict_ids.contains(&id_b2), "Conflict list must NOT contain C4 face B2");
+    assert!(!conflict_ids.contains(&id_b3), "Conflict list must NOT contain C4 face B3");
+    assert!(!conflict_ids.contains(&id_c0), "Conflict list must NOT contain Isolated face C0");
+
+    // Check individual hatch.get queries (which drives the UI '!' badge in trowel/palette.rs)
+    // Component A: ALL 3 faces must show conflict
+    let get_a0 = s.execute("hatch.get", &json!({"id": id_a0})).unwrap();
+    let get_a1 = s.execute("hatch.get", &json!({"id": id_a1})).unwrap();
+    let get_a2 = s.execute("hatch.get", &json!({"id": id_a2})).unwrap();
+    assert!(get_a0["has_conflict"].as_bool().unwrap(), "Component A face A0 must display '!' conflict badge");
+    assert!(get_a1["has_conflict"].as_bool().unwrap(), "Component A face A1 must display '!' conflict badge");
+    assert!(get_a2["has_conflict"].as_bool().unwrap(), "Component A face A2 must display '!' conflict badge");
+
+    // Component B: ZERO conflict badges
+    let get_b0 = s.execute("hatch.get", &json!({"id": id_b0})).unwrap();
+    let get_b1 = s.execute("hatch.get", &json!({"id": id_b1})).unwrap();
+    let get_b2 = s.execute("hatch.get", &json!({"id": id_b2})).unwrap();
+    let get_b3 = s.execute("hatch.get", &json!({"id": id_b3})).unwrap();
+    assert!(!get_b0["has_conflict"].as_bool().unwrap(), "Component B face B0 must have NO conflict badge");
+    assert!(!get_b1["has_conflict"].as_bool().unwrap(), "Component B face B1 must have NO conflict badge");
+    assert!(!get_b2["has_conflict"].as_bool().unwrap(), "Component B face B2 must have NO conflict badge");
+    assert!(!get_b3["has_conflict"].as_bool().unwrap(), "Component B face B3 must have NO conflict badge");
+
+    // Component C: ZERO conflict badge
+    let get_c0 = s.execute("hatch.get", &json!({"id": id_c0})).unwrap();
+    assert!(!get_c0["has_conflict"].as_bool().unwrap(), "Component C face C0 must have NO conflict badge");
+
+    // Verify document resolved effective directions for Component B (C4)
+    let doc = s.doc().unwrap();
+    let nb0 = doc.doc.node(NodeId(id_b0)).unwrap();
+    let nb1 = doc.doc.node(NodeId(id_b1)).unwrap();
+    let nb2 = doc.doc.node(NodeId(id_b2)).unwrap();
+    let nb3 = doc.doc.node(NodeId(id_b3)).unwrap();
+
+    let dir_b0 = nb0.hatch.as_ref().unwrap().effective_direction();
+    let dir_b1 = nb1.hatch.as_ref().unwrap().effective_direction();
+    let dir_b2 = nb2.hatch.as_ref().unwrap().effective_direction();
+    let dir_b3 = nb3.hatch.as_ref().unwrap().effective_direction();
+
+    assert_ne!(dir_b0, dir_b1, "Adjacent C4 faces B0 and B1 must alternate");
+    assert_ne!(dir_b1, dir_b2, "Adjacent C4 faces B1 and B2 must alternate");
+    assert_ne!(dir_b2, dir_b3, "Adjacent C4 faces B2 and B3 must alternate");
+    assert_ne!(dir_b3, dir_b0, "Adjacent C4 faces B3 and B0 must alternate");
+    assert_eq!(dir_b0, dir_b2, "Opposite C4 faces B0 and B2 must share the same direction");
+    assert_eq!(dir_b1, dir_b3, "Opposite C4 faces B1 and B3 must share the same direction");
+
+    let is_valid_angles = (dir_b0 == HatchDirection::Deg45 && dir_b1 == HatchDirection::Deg135)
+        || (dir_b0 == HatchDirection::Deg135 && dir_b1 == HatchDirection::Deg45);
+    assert!(is_valid_angles, "C4 directions must alternate between 45° and 135°");
+
+    // Verify Component C has valid hatch direction and emits lines
+    let nc0 = doc.doc.node(NodeId(id_c0)).unwrap();
+    let dir_c0 = nc0.hatch.as_ref().unwrap().effective_direction();
+    assert!(dir_c0 == HatchDirection::Deg45 || dir_c0 == HatchDirection::Deg135);
+
+    // Verify SVG and PDF export succeed with all three components present
+    let svg = vectorcraft_svg::export(&doc.doc, &vectorcraft_svg::ExportOptions::default());
+    assert!(svg.contains("<path d="), "SVG export must include hatch line paths");
+    assert!(svg.contains("stroke-width=\"0.1\""), "SVG must include hatch stroke width");
+
+    let pdf = vectorcraft_pdf::export(&doc.doc, &vectorcraft_pdf::PdfOptions::default()).unwrap();
+    assert!(pdf.starts_with(b"%PDF-"), "PDF must have valid header");
+}
+
+
 

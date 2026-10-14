@@ -562,6 +562,9 @@ pub struct Node {
     /// Trowel: hatching style applied to this closed planar face.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hatch: Option<crate::HatchStyle>,
+    /// Trowel: elevation line group specification (design 2.1 §4-1, §14).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elevation: Option<Box<crate::elevation::ElevationSpec>>,
 }
 
 /// Opacity mask: the luminance of the mask art sets the object's opacity (white = opaque).
@@ -615,6 +618,7 @@ impl Node {
             bbox_angle: 0.0,
             perspective: None,
             hatch: None,
+            elevation: None,
         }
     }
     pub fn path(id: NodeId, path: PathData, appearance: Appearance) -> Self {

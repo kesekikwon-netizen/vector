@@ -18,6 +18,7 @@
 //! - `import`: the reader, entities to art, blocks to symbols.
 
 mod aci;
+pub mod desca;
 pub mod import;
 mod scene;
 mod writer;
@@ -26,7 +27,7 @@ use vectorcraft_doc::{Document, Unit};
 use vectorcraft_geom::Rect;
 
 pub use aci::{aci_rgb, nearest_aci};
-pub use import::{DxfInfo, ImportOptions, Imported, import, info, is_dxf};
+pub use import::{CadEncoding, DxfInfo, ImportOptions, Imported, import, info, is_dxf};
 
 /// How deep symbols, blocks and brush art may nest in one another (deeper art is left out).
 const MAX_NEST: u32 = 8;

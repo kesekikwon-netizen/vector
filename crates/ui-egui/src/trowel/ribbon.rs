@@ -63,10 +63,10 @@ fn groups() -> [(&'static str, Vec<Tile>); 7] {
         (
             tw!("New Drawing"),
             vec![
-                tile("plan", "tw-plan", tw!("Plan"), Cmd("file.new")),
-                tile("section", "tw-section", tw!("Section"), Soon("J004")),
-                tile("finds", "tw-finds", tw!("Finds"), Soon("J004")),
-                tile("sheet", "tw-sheet", tw!("Plate"), Soon("J004")),
+                tile("plan", "tw-plan", tw!("Plan"), Cmd("trowel.newPlan")),
+                tile("section", "tw-section", tw!("Section"), Cmd("trowel.newSection")),
+                tile("finds", "tw-finds", tw!("Finds"), Cmd("trowel.newFinds")),
+                tile("sheet", "tw-sheet", tw!("Plate"), Cmd("trowel.newPlate")),
             ],
         ),
         (tw!("Underlay"), vec![tile("align", "tw-align", tw!("Align"), Soon("J008")), tile("underlay", "tw-underlay", tw!("Underlay"), Underlay)]),

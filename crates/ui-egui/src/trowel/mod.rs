@@ -12,11 +12,13 @@ use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Str
 use crate::VectorcraftApp;
 use crate::theme::{self, Tokens};
 
+pub mod book;
 mod caption;
 mod card;
 mod center;
 mod control;
 mod drawings;
+pub mod home;
 mod legend;
 mod menu;
 mod palette;

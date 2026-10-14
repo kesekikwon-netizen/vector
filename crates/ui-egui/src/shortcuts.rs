@@ -456,13 +456,13 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context) {
         });
     }
 
-    if z_released || (!z_down && app.spring_zoom.is_some()) {
-        if let Some(state) = app.spring_zoom.take() {
-            let now = ctx.input(|i| i.time);
-            let held = now - state.start_time;
-            if held >= (SPRING_LOADED_DELAY_SECS - 1e-4) || state.dragged {
-                app.select_tool(&state.prev_tool);
-            }
+    if (z_released || (!z_down && app.spring_zoom.is_some()))
+        && let Some(state) = app.spring_zoom.take()
+    {
+        let now = ctx.input(|i| i.time);
+        let held = now - state.start_time;
+        if held >= (SPRING_LOADED_DELAY_SECS - 1e-4) || state.dragged {
+            app.select_tool(&state.prev_tool);
         }
     }
 
