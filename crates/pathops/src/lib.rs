@@ -9,6 +9,7 @@
 mod boolean;
 mod edit;
 mod fit;
+pub mod hatch;
 mod offset;
 mod pathfinder;
 mod planar;
@@ -18,6 +19,7 @@ pub use edit::{
     AverageAxis, SimplifyOptions, add_anchor_points, average, join, remove_anchor, remove_redundant_points, simplify, simplify_with, smooth,
     split_into_grid,
 };
+pub use hatch::{HatchFace, HatchFaceResult, bipartite_2color, build_adjacency_graph, emit_hatch_lines, solve_face_hatching};
 pub use offset::{Cap, Join, offset_path, outline_stroke, stroke_region};
 pub use pathfinder::{FaceMerger, PathfinderOp, Region, Shape, merge_regions, pathfinder, region_at, regions};
 pub use planar::{BuilderArrangement, SHAPE_BUILDER_MAX_SEGMENTS, cut_out, encloses_area, interior_point, live_paint, shape_builder};

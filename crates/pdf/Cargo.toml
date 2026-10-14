@@ -15,6 +15,7 @@ vectorcraft-effects = { workspace = true }
 vectorcraft-brush = { workspace = true }
 vectorcraft-color = { workspace = true }
 vectorcraft-text = { workspace = true }
+vectorcraft-pathops = { workspace = true }
 skrifa = { workspace = true }
 kurbo = { workspace = true }
 thiserror = { workspace = true }

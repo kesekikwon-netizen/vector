@@ -950,6 +950,7 @@ impl Writer<'_> {
             p.extend(css::transparency(n));
             let a = self.attrs(&p);
             self.line(&format!("<path{id} d=\"{d}\"{a}/>"));
+            self.emit_hatch(n, paths);
             return;
         }
         let a = self.attrs(&css::transparency(n));
@@ -1058,6 +1059,30 @@ impl Writer<'_> {
         }
         self.depth -= 1;
         self.line("</g>");
+        self.emit_hatch(n, paths);
+    }
+
+    fn emit_hatch(&mut self, n: &Node, paths: &[&PathData]) {
+        let Some(hatch) = &n.hatch else { return };
+        let dir = hatch.effective_direction();
+        if dir == vectorcraft_doc::HatchDirection::None {
+            return;
+        }
+        let mut full_bp = BezPath::new();
+        for p in paths {
+            full_bp.extend(p.to_bezpath());
+        }
+        if full_bp.elements().is_empty() {
+            return;
+        }
+        let lines = vectorcraft_pathops::hatch::emit_hatch_lines(&full_bp, dir, hatch.spacing_pt());
+        if lines.elements().is_empty() {
+            return;
+        }
+        let pd = PathData::from_bezpath(&lines);
+        let d = self.path_d(&pd, self.xf);
+        let stroke_w = self.num(hatch.weight_pt);
+        self.line(&format!("<path d=\"{d}\" fill=\"none\" stroke=\"#000000\" stroke-width=\"{stroke_w}\"/>"));
     }
 
     /// A stroke whose gradient runs along or across it ([`stroke::written_slices`]): a group (with

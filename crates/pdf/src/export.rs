@@ -1048,6 +1048,23 @@ impl Exporter<'_> {
                 }
             }
         }
+        if let Some(hatch) = &n.hatch {
+            let dir = hatch.effective_direction();
+            if dir != vectorcraft_doc::HatchDirection::None {
+                let lines = vectorcraft_pathops::hatch::emit_hatch_lines(bp, dir, hatch.spacing_pt());
+                if let Some(hpath) = to_path(&lines) {
+                    s.set_fill(None);
+                    let stroke_paint = rgb::Color::new(0, 0, 0).into();
+                    s.set_stroke(Some(Stroke {
+                        paint: stroke_paint,
+                        width: hatch.weight_pt as f32,
+                        opacity: norm(1.0),
+                        ..Default::default()
+                    }));
+                    s.draw_path(&hpath);
+                }
+            }
+        }
         s.set_fill(None);
         s.set_stroke(None);
     }

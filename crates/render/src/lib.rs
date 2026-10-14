@@ -1232,6 +1232,18 @@ impl Renderer {
                 }
             }
         }
+        if let Some(hatch) = &n.hatch {
+            let dir = hatch.effective_direction();
+            if dir != vectorcraft_doc::HatchDirection::None {
+                let lines = vectorcraft_pathops::hatch::emit_hatch_lines(bp, dir, hatch.spacing_pt());
+                if !lines.elements().is_empty() {
+                    ctx.set_transform(f.view);
+                    ctx.set_stroke(kurbo::Stroke::new(hatch.weight_pt));
+                    ctx.set_paint(f.ink.fixed([0, 0, 0, 255]));
+                    ctx.stroke_path(&lines);
+                }
+            }
+        }
     }
 
     /// Multiply the folded object opacity into a solid paint.

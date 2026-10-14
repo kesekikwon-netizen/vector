@@ -58,31 +58,53 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     chip_soon(ui, add, &t);
     crate::icons::paint(ui, "plus", Rect::from_center_size(add.center(), vec2(12.0, 12.0)), t.text_disabled);
     soon_widget(ui, wid("weight-add", ()), add, tw!("Add a Weight"), "J018");
-    // Hatch: none until J014 brings them.
+    // Hatch: 45°, 135°, Alternate, None.
     let cy = row(1);
     text(ui, pos2(r.left() + 14.0, cy), Align2::LEFT_CENTER, tw!("Hatch"), font(11.0), t.text_dim);
     let mut x = r.left() + CHIPS_X;
+
+    let hatch_info = app.session.execute("hatch.get", &json!({})).ok();
+    let current_dir = hatch_info.as_ref().and_then(|v| v["direction"].as_str()).unwrap_or("none");
+    let has_conflict = hatch_info.as_ref().and_then(|v| v["has_conflict"].as_bool()).unwrap_or(false);
+
     for (key, label) in [("45", "45°"), ("135", "135°"), ("alt", tw!("Alternate")), ("none", tw!("None"))] {
         let sample = key != "none";
-        let w = 6.0 + if sample { 16.0 + 4.0 } else { 0.0 } + width_of(ui, label, font(11.0)) + 6.0;
+        let is_alt = key == "alt";
+        let conflict_extra = if is_alt && has_conflict { 14.0 } else { 0.0 };
+        let w = 6.0 + if sample { 16.0 + 4.0 } else { 0.0 } + width_of(ui, label, font(11.0)) + conflict_extra + 6.0;
         let chip_r = Rect::from_min_size(pos2(x, cy - CHIP_H / 2.0), vec2(w, CHIP_H));
-        let on = key == "none";
-        if on {
-            chip(ui, chip_r, true, false, &t);
-        } else {
-            chip_soon(ui, chip_r, &t);
-        }
-        let color = if on { t.text } else { t.text_disabled };
+        let on = current_dir == key;
+        let resp = ui.interact(chip_r, wid("hatch", key), Sense::click());
+        chip(ui, chip_r, on, resp.hovered(), &t);
+        let color = if on { t.text } else { t.text_dim };
         let mut tx = chip_r.left() + 6.0;
         if sample {
             hatch_sample(ui, Rect::from_min_size(pos2(tx, cy - 6.0), vec2(16.0, 12.0)), key, color);
             tx += 16.0 + 4.0;
         }
         text(ui, pos2(tx, cy), Align2::LEFT_CENTER, label, font(11.0), color);
-        if on {
-            ui.interact(chip_r, wid("hatch", key), Sense::hover());
+        if is_alt && has_conflict {
+            let badge_r = Rect::from_center_size(pos2(chip_r.right() - 10.0, cy), vec2(14.0, 14.0));
+            ui.painter().rect(badge_r, CornerRadius::same(4), t.caution_wash, Stroke::new(1.0, t.caution_edge), StrokeKind::Inside);
+            text(ui, badge_r.center(), Align2::CENTER_CENTER, "!", font(10.0), t.caution);
+        }
+
+        let hover_text = if is_alt {
+            if has_conflict {
+                tw!("Odd-cycle conflict (3+ mutually adjacent faces)! Click to flip direction")
+            } else {
+                tw!("Alternating Hatch (45°/135°). Click to flip direction")
+            }
         } else {
-            soon_widget(ui, wid("hatch", key), chip_r, &format!("{} {label}", tw!("Hatch")), "J014");
+            label
+        };
+
+        if resp.on_hover_text(hover_text).clicked() {
+            if is_alt && on {
+                app.run("hatch.flip", json!({})).ok();
+            } else {
+                app.run("hatch.set", json!({ "direction": key })).ok();
+            }
         }
         x = chip_r.right() + 4.0;
     }
@@ -102,8 +124,13 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     }
     // Cut Face, and the legend's own buttons.
     let cy = head.bottom() + 2.0 + 3.0 * ROW_H + 4.0 + 13.0;
-    let x = button_soon(ui, wid("palette-cut", ()), pos2(r.left() + 14.0, cy), tw!("Cut Face"), true, "J014", &t) + 4.0;
     let open = app.session.active().is_some();
+    let cut_btn = small_button(ui, wid("palette-cut", ()), pos2(r.left() + 14.0, cy), 26.0, tw!("Cut Face"), open, &t)
+        .on_hover_text(tw!("Cut border (0.8 pt) and alternating hatch"));
+    if cut_btn.clicked() {
+        app.run("hatch.cutFace", json!({})).ok();
+    }
+    let x = cut_btn.rect.right() + 4.0;
     let add = small_button(ui, wid("palette-to-legend", ()), pos2(x, cy), 26.0, tw!("Add to Legend"), open, &t)
         .on_hover_text(tw!("Make a legend row of this look and put the selected lines on it"));
     let back = small_button(ui, wid("palette-from-legend", ()), pos2(add.rect.right() + 4.0, cy), 26.0, tw!("Back to the Legend"), open, &t)

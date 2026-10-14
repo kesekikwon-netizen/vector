@@ -34,6 +34,7 @@ pub mod help;
 pub(crate) mod inline;
 mod layer;
 mod layerpanel;
+pub mod hatch;
 pub mod legend;
 pub mod library;
 pub mod links;
@@ -280,6 +281,7 @@ pub fn command_specs() -> &'static [CommandSpec] {
         v.extend(halftone::specs());
         v.extend(perspgrid::specs());
         v.extend(legend::specs());
+        v.extend(hatch::specs());
         v
     })
 }

@@ -559,6 +559,9 @@ pub struct Node {
     /// Object › Perspective: the perspective grid plane the object is attached to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub perspective: Option<Box<crate::PerspectiveAttachment>>,
+    /// Trowel: hatching style applied to this closed planar face.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hatch: Option<crate::HatchStyle>,
 }
 
 /// Opacity mask: the luminance of the mask art sets the object's opacity (white = opaque).
@@ -611,6 +614,7 @@ impl Node {
             slice: None,
             bbox_angle: 0.0,
             perspective: None,
+            hatch: None,
         }
     }
     pub fn path(id: NodeId, path: PathData, appearance: Appearance) -> Self {
