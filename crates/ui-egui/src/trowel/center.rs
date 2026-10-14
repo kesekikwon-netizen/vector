@@ -155,6 +155,7 @@ fn overlays(app: &mut VectorcraftApp, ui: &mut Ui) {
     band(app, ui, canvas, &t);
     zoom_buttons(app, ui, canvas, &t);
     readout(app, ui, canvas, &t);
+    super::canvas_penbar::show(app, ui, canvas, &t);
 }
 
 /// A card floating over the canvas: its shadow, `surface` fill and edge.

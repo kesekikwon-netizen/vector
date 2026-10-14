@@ -13,6 +13,7 @@ mod fit;
 pub mod hatch;
 mod offset;
 mod pathfinder;
+pub mod plan;
 mod planar;
 
 pub use boolean::{BoolOp, DEFAULT_PRECISION, area, boolean, boolean_n, normalize, try_boolean, try_normalize, unite_all};
@@ -22,11 +23,18 @@ pub use edit::{
 };
 pub use elevation::{ElevationLabel, ElevationOutput, ElevationSegment, clip_elevation_scanline, generate_elevation};
 pub use hatch::{
-    DocumentHatchResolution, HatchFace, HatchFaceResult, bipartite_2color, bipartite_2color_components,
-    build_adjacency_graph, emit_hatch_lines, resolve_document_hatching, solve_face_hatching,
+    DocumentHatchResolution, HatchFace, HatchFaceResult, bipartite_2color, bipartite_2color_components, build_adjacency_graph, emit_hatch_lines,
+    resolve_document_hatching, solve_face_hatching,
 };
 pub use offset::{Cap, Join, offset_path, outline_stroke, stroke_region};
 pub use pathfinder::{FaceMerger, PathfinderOp, Region, Shape, merge_regions, pathfinder, region_at, regions};
+pub use plan::{
+    DEFAULT_HACHURE_SHORT_RATIO, DEFAULT_HACHURE_SPACING_MM, DEFAULT_PLAN_WEIGHT_PT, DepthMarkerGeometry,
+    DepthMarkerKind, DepthMarkerSpec, FeatureStats, HOUSE_1_POLYGON_METERS, SECTION_LINE_DASH_PATTERN,
+    SectionLineGeometry, SectionLineSpec, SlopeHachureSpec, SpotElevationGeometry, SpotMarkerKind,
+    SpotElevationSpec, ViewDirection, compute_polygon_stats, generate_depth_marker_geometry,
+    generate_section_line_geometry, generate_slope_hachures, generate_spot_elevation_geometry,
+};
 pub use planar::{BuilderArrangement, SHAPE_BUILDER_MAX_SEGMENTS, cut_out, encloses_area, interior_point, live_paint, shape_builder};
 
 /// Errors from fallible operations.

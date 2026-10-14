@@ -13,6 +13,7 @@ use crate::VectorcraftApp;
 use crate::theme::{self, Tokens};
 
 pub mod book;
+pub mod canvas_penbar;
 mod caption;
 mod card;
 mod center;

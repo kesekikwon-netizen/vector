@@ -57,11 +57,19 @@ pub struct PenTool {
 /// first anchor of a new path) and whether it closes that path (the press was on its first
 /// anchor). The drag only shapes its handles, whatever the path looks like meanwhile: a closing
 /// preview leaves the path closed, so no longer one the pen draws on.
+/// Stylus tap-jitter suppression threshold (design 2.1 §12, A3). Drags within 3 pt of press
+/// preserve sharp corner points without creating unintended Bezier handles.
+const TAP_JITTER_THRESHOLD_PT: f64 = 3.0;
+
+/// Start-point closure snap threshold in screen pixels (design 2.1 §12, A3).
+const CLOSE_RADIUS_PX: f64 = 8.0;
+
 #[derive(Clone, Copy)]
 struct Place {
     at: Point,
     path: Option<NodeId>,
     closing: bool,
+    pulled: bool,
 }
 
 /// The open path the pen is extending: the single selected open path.
@@ -138,7 +146,7 @@ impl Tool for PenTool {
         self.drag.is_some() || self.handle.is_some() || self.convert.is_some()
     }
     fn pointer(&mut self, cx: &ToolContext, ev: &PointerEvent) -> Vec<Action> {
-        let tol = cx.tol(5.0).max(cx.point_tol());
+        let tol = cx.tol(CLOSE_RADIUS_PX).max(cx.point_tol());
         // The path a press began is the selected one by the next event.
         if self.drawing && self.path.is_none() {
             self.path = active_path(cx).map(|a| a.0);
@@ -166,7 +174,7 @@ impl Tool for PenTool {
                     let end = last_anchor(cx, id);
                     // A one-anchor path doesn't close on itself: its anchor is the last one too.
                     if p.distance(first) <= tol && end.is_some_and(|(_, ai)| ai > 0) {
-                        self.drag = Some(Place { at: first, path: Some(id), closing: true });
+                        self.drag = Some(Place { at: first, path: Some(id), closing: true, pulled: false });
                         return vec![Action::Begin("Close Path".into()), Action::Preview("path.close".into(), json!({"id": id.0}))];
                     }
                     if p.distance(last) <= tol
@@ -184,7 +192,7 @@ impl Tool for PenTool {
                     if let Some(acts) = self.alt_convert(cx, ev) {
                         return acts;
                     }
-                    self.drag = Some(Place { at: p, path: Some(id), closing: false });
+                    self.drag = Some(Place { at: p, path: Some(id), closing: false, pulled: false });
                     self.in_h = p;
                     return vec![Action::Begin("Pen".into()), Action::Preview("path.appendAnchor".into(), json!({"id": id.0, "x": p.x, "y": p.y}))];
                 }
@@ -218,7 +226,7 @@ impl Tool for PenTool {
                     return vec![act];
                 }
                 (self.drawing, self.path) = (true, None);
-                self.drag = Some(Place { at: p, path: None, closing: false });
+                self.drag = Some(Place { at: p, path: None, closing: false, pulled: false });
                 vec![Action::Begin("Pen".into()), Action::Preview("path.create".into(), json!({"anchors": [{"x": p.x, "y": p.y}]}))]
             }
             PointerKind::Drag => {
@@ -232,13 +240,19 @@ impl Tool for PenTool {
                     }
                     return vec![set_out_handle(id, si, ai, h)];
                 }
-                let Some(Place { at: mut a, path, closing }) = self.drag else { return vec![] };
+                let Some(Place { at: mut a, path, closing, ref mut pulled }) = self.drag else { return vec![] };
+                let dist = ev.pos.distance(a);
+                if !*pulled && dist <= TAP_JITTER_THRESHOLD_PT {
+                    // Suppress unintentional Bezier handles caused by stylus contact jitter
+                    return vec![];
+                }
+                *pulled = true;
                 // Space held moves the anchor being placed, handles and all.
                 if ev.mods.space && !closing {
                     let d = ev.pos - self.last;
                     a += d;
                     self.in_h += d;
-                    self.drag = Some(Place { at: a, path, closing });
+                    self.drag = Some(Place { at: a, path, closing, pulled: true });
                 }
                 self.last = ev.pos;
                 let mut out_h = ev.pos;
@@ -283,7 +297,16 @@ impl Tool for PenTool {
                 }
                 vec![Action::Commit]
             }
-            PointerKind::DoubleClick => vec![],
+            PointerKind::DoubleClick => {
+                if self.drawing {
+                    self.stop();
+                    self.drag = None;
+                    self.handle = None;
+                    self.snap.clear();
+                    return vec![Action::Commit];
+                }
+                vec![]
+            }
         }
     }
     fn key(&mut self, cx: &ToolContext, key: ToolKey, _m: Mods) -> Vec<Action> {

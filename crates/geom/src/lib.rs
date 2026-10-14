@@ -14,6 +14,7 @@ pub mod hit;
 pub mod path;
 pub mod projective;
 pub mod recognize;
+pub mod registration;
 pub mod shapes;
 pub mod snap;
 
@@ -22,6 +23,10 @@ pub use kurbo;
 pub use kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathEl, PathSeg, Point, Rect, Shape, Size, Vec2};
 pub use path::{Anchor, AnchorKind, FillRule, PathData, SubPath};
 pub use projective::Homography;
+pub use registration::{
+    AxisAlignment, PointPair, PointResidual, RegistrationError, RegistrationResult, TwoPointResult,
+    evaluate_residuals, fit_affine, fit_auto, fit_similarity, fit_two_point,
+};
 
 /// Tolerance used when comparing handle positions to anchor positions.
 pub const EPS: f64 = 1e-9;

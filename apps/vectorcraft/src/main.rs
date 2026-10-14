@@ -390,6 +390,37 @@ fn set_taskbar_icon(w: &winit::window::Window) {
     }
 }
 
+/// Suppresses Windows Ink press-and-hold right-click rings and pen tap ripples (design 2.1 §12, A1).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn suppress_windows_pen_gestures(w: &winit::window::Window) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let Ok(handle) = w.window_handle() else { return };
+    let RawWindowHandle::Win32(win32_handle) = handle.as_raw() else { return };
+    let hwnd = win32_handle.hwnd.get() as *mut std::ffi::c_void;
+    if hwnd.is_null() {
+        return;
+    }
+    // Windows Tablet PC API property flags (A1)
+    const TABLET_DISABLE_PRESSANDHOLD: usize = 0x00000001;
+    const TABLET_DISABLE_PENTAPFEEDBACK: usize = 0x00000008;
+    const TABLET_DISABLE_PENBARRELFEEDBACK: usize = 0x00000010;
+    const TABLET_DISABLE_FLICKS: usize = 0x00010000;
+    let flags = TABLET_DISABLE_PRESSANDHOLD
+        | TABLET_DISABLE_PENTAPFEEDBACK
+        | TABLET_DISABLE_PENBARRELFEEDBACK
+        | TABLET_DISABLE_FLICKS;
+
+    unsafe {
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn SetPropW(hWnd: *mut std::ffi::c_void, lpString: *const u16, hData: *mut std::ffi::c_void) -> i32;
+        }
+        let prop_name: Vec<u16> = "MicrosoftTabletPenServiceProperty\0".encode_utf16().collect();
+        let _ = SetPropW(hwnd, prop_name.as_ptr(), flags as *mut std::ffi::c_void);
+    }
+}
+
 /// "name (backend, kind)" of the adapter the window renders with, for Help › About and bug reports.
 #[cfg(feature = "wgpu")]
 fn adapter_summary(info: &eframe::wgpu::AdapterInfo) -> String {
@@ -558,7 +589,10 @@ fn main() -> std::process::ExitCode {
                 if let Some(w) = cc.winit_window() {
                     app.ui.window = Some(window::restore(w, saved_window));
                     #[cfg(windows)]
-                    set_taskbar_icon(w);
+                    {
+                        set_taskbar_icon(w);
+                        suppress_windows_pen_gestures(w);
+                    }
                 }
                 // User Defined swatch and graphic style libraries live next to the preferences.
                 let swatches = prefs_path().and_then(|p| Some(p.parent()?.join("Swatches").to_string_lossy().to_string()));
