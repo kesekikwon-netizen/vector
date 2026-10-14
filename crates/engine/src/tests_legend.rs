@@ -808,3 +808,25 @@ fn legend_undo_steps_are_named_after_their_commands() {
         assert!(specs.iter().any(|c| c.label == l), "{l} is a command's name");
     }
 }
+
+#[test]
+fn drawing_weights_at_once_compatibility_alias() {
+    let (mut s, w) = weights_doc();
+    // 1. Invocation with legacy format { "ratio": 0.8 }
+    let r = run(&mut s, "drawing.weightsAtOnce", json!({"ratio": 0.8}));
+    assert_eq!(r["ratio"], json!(0.8));
+    assert!(r["modified"].as_u64().unwrap_or(0) > 0);
+    assert_eq!(row_weight(&s, w.rows[0]), Some(0.8));
+
+    // 2. Invocation with default empty object {} -> defaults to ratio 0.8
+    let r_default = run(&mut s, "drawing.weightsAtOnce", json!({}));
+    assert_eq!(r_default["ratio"], json!(0.8));
+
+    // 3. Invocation with explicit legend.weights format { "how": "ratio", "ratio": 0.5 }
+    let r_explicit = run(&mut s, "drawing.weightsAtOnce", json!({"how": "ratio", "ratio": 0.5}));
+    assert_eq!(r_explicit["ratio"], json!(0.5));
+
+    // 4. Parameter validation: rejects negative or zero ratio
+    assert!(s.execute("drawing.weightsAtOnce", &json!({"ratio": -1.0})).is_err());
+    assert!(s.execute("drawing.weightsAtOnce", &json!({"ratio": 0.0})).is_err());
+}

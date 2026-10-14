@@ -58,6 +58,15 @@ pub fn specs() -> Vec<CommandSpec> {
             weights
         ),
         cmd!(
+            "drawing.weightsAtOnce",
+            "Change Weights at Once",
+            [],
+            None,
+            "{ratio?: f64, how?: ratio|value|step, ...} compatibility alias for legend.weights → {rows, lines, skipped, modified, ratio}",
+            has_doc,
+            weights_compat
+        ),
+        cmd!(
             "legend.addGroup",
             "Add Legend Group",
             [],
@@ -501,6 +510,33 @@ fn weights(s: &mut Session, p: &Value) -> Result<Value> {
         })?;
     }
     Ok(json!({ "rows": plan.rows, "lines": plan.lines.len(), "skipped": plan.skipped }))
+}
+
+fn weights_compat(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut adapted = p.clone();
+    if adapted.get("how").is_none() {
+        if let Some(obj) = adapted.as_object_mut() {
+            obj.insert("how".to_string(), json!("ratio"));
+            if !obj.contains_key("ratio") {
+                obj.insert("ratio".to_string(), json!(0.8));
+            }
+            if !obj.contains_key("overrides") {
+                obj.insert("overrides".to_string(), json!(true));
+            }
+        } else {
+            adapted = json!({"how": "ratio", "ratio": 0.8, "overrides": true});
+        }
+    }
+    let res = weights(s, &adapted)?;
+    let lines = res.get("lines").and_then(Value::as_u64).unwrap_or(0);
+    let rows_count = res.get("rows").and_then(Value::as_array).map(|a| a.len() as u64).unwrap_or(0);
+    let ratio = adapted.get("ratio").and_then(Value::as_f64).unwrap_or(0.8);
+    let mut out = res;
+    if let Some(obj) = out.as_object_mut() {
+        obj.insert("modified".to_string(), json!(lines + rows_count));
+        obj.insert("ratio".to_string(), json!(ratio));
+    }
+    Ok(out)
 }
 
 /// How a group row shows: a line, an area or a mark.
