@@ -8,6 +8,19 @@ use vectorcraft_tools::{Mods, ToolKey};
 
 use crate::VectorcraftApp;
 
+/// Spring-loaded tool state for Z key zoom (J002b).
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpringZoomState {
+    /// Timestamp when Z key was pressed down (seconds).
+    pub start_time: f64,
+    /// The tool active before Z was pressed down.
+    pub prev_tool: String,
+    /// Whether pointer dragging occurred while Z was held.
+    pub dragged: bool,
+}
+
+pub const SPRING_LOADED_DELAY_SECS: f64 = 0.300;
+
 /// Parse "Cmd+Shift+]" into an egui shortcut. `Cmd` is Command on macOS and Ctrl elsewhere.
 /// `+` and `=` name one chord key ([`Key::Equals`]): `+` is Shift+`=` on many layouts, so a
 /// `Cmd+=` chord also answers `+` however it is typed (see [`consume`]).
@@ -418,6 +431,41 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context) {
     {
         let _ = app.run("edit.clear", json!({}));
     }
+
+    // Spring-loaded Z zoom (J002b):
+    // Holding Z >= 300ms (or dragging while Z is down) temporarily activates Zoom tool
+    // and releasing Z returns to the previous tool; quick tap on Z switches to Zoom tool permanently.
+    let z_down = ctx.input(|i| i.key_down(Key::Z));
+    let z_pressed = ctx.input(|i| {
+        i.events.iter().any(|e| {
+            matches!(e, egui::Event::Key { key: Key::Z, pressed: true, repeat: false, modifiers, .. } if !(modifiers.command || modifiers.ctrl || modifiers.alt))
+        })
+    });
+    let z_released = ctx.input(|i| {
+        i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Z, pressed: false, .. }))
+    });
+
+    if z_pressed && app.spring_zoom.is_none() {
+        let now = ctx.input(|i| i.time);
+        let cur_tool = app.session.tool_id().to_string();
+        app.select_tool("zoom");
+        app.spring_zoom = Some(SpringZoomState {
+            start_time: now,
+            prev_tool: cur_tool,
+            dragged: false,
+        });
+    }
+
+    if z_released || (!z_down && app.spring_zoom.is_some()) {
+        if let Some(state) = app.spring_zoom.take() {
+            let now = ctx.input(|i| i.time);
+            let held = now - state.start_time;
+            if held >= SPRING_LOADED_DELAY_SECS || state.dragged {
+                app.select_tool(&state.prev_tool);
+            }
+        }
+    }
+
     // Single-key tool shortcuts (no Cmd/Ctrl/Alt). With a layout without Latin letters (Persian,
     // Arabic, Russian, Greek…) the key's position stands in for what it types (#793).
     let events: Vec<(String, Modifiers)> = ctx.input(|i| {
@@ -450,6 +498,9 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context) {
             continue;
         }
         if let Some(t) = lookup(crate::shortcut_editor::tool_for_key) {
+            if t == "zoom" && app.spring_zoom.is_some() {
+                continue;
+            }
             app.select_tool(t);
         }
     }
@@ -808,5 +859,88 @@ mod tests {
                 assert!(parse(c.2).is_some(), "{} has unparsable shortcut {}", c.0, c.2);
             }
         }
+    }
+
+    #[test]
+    fn test_spring_loaded_z_zoom() {
+        let mut app = VectorcraftApp::new(vectorcraft_engine::Session::new(), Default::default());
+        app.session.execute("file.new", &json!({"width": 800, "height": 600})).unwrap();
+        let ctx = egui::Context::default();
+
+        let run = |ctx: &egui::Context, app: &mut VectorcraftApp, time: f64, events: Vec<egui::Event>| {
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    time: Some(time),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    handle(app, ui.ctx());
+                    app.logic(ui.ctx());
+                },
+            );
+            out.textures_delta.clear();
+        };
+
+        let z_down = || egui::Event::Key {
+            key: Key::Z,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        };
+        let z_up = || egui::Event::Key {
+            key: Key::Z,
+            physical_key: None,
+            pressed: false,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        };
+
+        // 1. Quick tap (< 300ms): switches permanently to zoom tool
+        app.select_tool("pen");
+        assert_eq!(app.session.tool_id(), "pen");
+        run(&ctx, &mut app, 1.0, vec![z_down()]);
+        assert_eq!(app.session.tool_id(), "zoom");
+        assert!(app.spring_zoom.is_some());
+        // Release after 100ms
+        run(&ctx, &mut app, 1.1, vec![z_up()]);
+        assert_eq!(app.session.tool_id(), "zoom", "Quick tap stays in zoom tool");
+        assert!(app.spring_zoom.is_none());
+
+        // 2. Hold >= 300ms: temporary zoom, reverts to previous tool on release
+        app.select_tool("pen");
+        assert_eq!(app.session.tool_id(), "pen");
+        run(&ctx, &mut app, 2.0, vec![z_down()]);
+        assert_eq!(app.session.tool_id(), "zoom");
+        assert!(app.spring_zoom.is_some());
+        // Release after 400ms (held >= 300ms)
+        run(&ctx, &mut app, 2.4, vec![z_up()]);
+        assert_eq!(app.session.tool_id(), "pen", "Holding >= 300ms reverts to prior tool");
+        assert!(app.spring_zoom.is_none());
+
+        // 3. Hold < 300ms with drag: reverts to previous tool on release
+        app.select_tool("rectangle");
+        assert_eq!(app.session.tool_id(), "rectangle");
+        run(&ctx, &mut app, 3.0, vec![z_down()]);
+        assert_eq!(app.session.tool_id(), "zoom");
+        // Simulate dragging while Z held
+        app.spring_zoom.as_mut().unwrap().dragged = true;
+        // Release after 150ms (< 300ms, but dragged)
+        run(&ctx, &mut app, 3.15, vec![z_up()]);
+        assert_eq!(app.session.tool_id(), "rectangle", "Dragging while Z held reverts to prior tool");
+        assert!(app.spring_zoom.is_none());
+
+        // 4. Modifier combination (e.g. Cmd+Z / Ctrl+Z) does not trigger spring zoom
+        app.select_tool("pen");
+        let cmd_z = egui::Event::Key {
+            key: Key::Z,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::COMMAND,
+        };
+        run(&ctx, &mut app, 4.0, vec![cmd_z]);
+        assert!(app.spring_zoom.is_none(), "Cmd+Z must not trigger spring zoom");
     }
 }

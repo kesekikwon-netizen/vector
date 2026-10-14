@@ -577,6 +577,9 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
         ui.ctx().memory_mut(|mem| mem.stop_text_input());
         app.ui.flyout = None;
         let d = if zoom_mode {
+            if let Some(ref mut sz) = app.spring_zoom {
+                sz.dragged = true;
+            }
             if animated_zoom(&app.session.prefs) { Drag::ZoomScrub { start: p, held: 0.0, moved: false } } else { Drag::ZoomBox { start: p } }
         } else if pan_mode {
             Drag::Pan { start: p, center: v.center, middle: false }
@@ -605,6 +608,9 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
         let p = pointer.interact_pos().or_else(|| ui.data(|dd| dd.get_temp(drag_pos_id()))).unwrap_or(rect.center());
         let held = if middle_pan { pointer.button_down(egui::PointerButton::Middle) } else { pointer.primary_down() };
         if held {
+            if zoom_mode && let Some(ref mut sz) = app.spring_zoom {
+                sz.dragged = true;
+            }
             ui.data_mut(|dd| dd.insert_temp(drag_pos_id(), p));
             match d {
                 Drag::Pan { start, center, .. } => {

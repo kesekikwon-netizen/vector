@@ -353,6 +353,8 @@ pub struct VectorcraftApp {
     pub canvas_rect: Option<egui::Rect>,
     /// Hover position in document coordinates.
     pub hover_doc: Option<vectorcraft_geom::Point>,
+    /// Spring-loaded Z zoom state (J002b).
+    pub spring_zoom: Option<shortcuts::SpringZoomState>,
     /// System clipboard: SVG to publish next frame, the last SVG we published (so pasting it back
     /// uses the lossless internal clipboard) and what came with a paste (a Paste event's text, a
     /// picture or file the host read: [`Self::paste_from_host`]).
@@ -475,6 +477,7 @@ impl VectorcraftApp {
             last_time: 0.0,
             canvas_rect: None,
             hover_doc: None,
+            spring_zoom: None,
             custom_titlebar: false,
             last_window_title: String::new(),
             graphics_adapter: None,
