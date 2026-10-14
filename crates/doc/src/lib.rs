@@ -36,6 +36,7 @@ pub mod range;
 pub mod rastersettings;
 mod reach;
 pub mod recolor;
+pub mod scale;
 pub mod selection;
 pub mod setup;
 pub mod shaper;
@@ -86,6 +87,7 @@ pub use placed_document::PlacedDocument;
 pub use profiles::ColorProfiles;
 pub use puppet::{PuppetPin, PuppetPins};
 pub use rastersettings::{RasterColorModel, RasterEffectsSettings};
+pub use scale::{CoordOrder, CoordSystem, GraticuleTick, ScaleConfig, ScaleRatio, compute_graticule_ticks};
 pub use selection::{AnchorRef, Selection};
 pub use setup::{Background, DocSetup, ExportText, GridSize, Quotes};
 pub use slices::{CellAlign, CellVAlign, Slice, SliceArea, SliceKind, SliceOptions, SliceSource};
@@ -613,6 +615,9 @@ pub struct Document {
     /// File → File Info (the title is [`Document::title`]).
     #[serde(default, skip_serializing_if = "skip::is_default")]
     pub metadata: DocMetadata,
+    /// Drawing scale and real-world TM coordinate system (Trowel Archaeological CAD, J006).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale: Option<ScaleConfig>,
     /// Effect → Document Raster Effects Settings besides the resolution
     /// ([`Document::raster_effects_ppi`]).
     #[serde(default, skip_serializing_if = "skip::is_default")]
@@ -717,6 +722,7 @@ impl Document {
             setup: DocSetup::default(),
             paste_remembers_layers: false,
             metadata: DocMetadata::default(),
+            scale: None,
             raster_effects: RasterEffectsSettings::default(),
             last_view: None,
             layers_open: None,

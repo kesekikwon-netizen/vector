@@ -65,6 +65,7 @@ pub mod rasterfx;
 mod recolor;
 pub mod recovery;
 mod select;
+pub mod scale;
 pub(crate) mod shaper;
 pub(crate) mod slices;
 mod stroke;
@@ -282,6 +283,7 @@ pub fn command_specs() -> &'static [CommandSpec] {
         v.extend(perspgrid::specs());
         v.extend(legend::specs());
         v.extend(hatch::specs());
+        v.extend(scale::specs());
         v
     })
 }

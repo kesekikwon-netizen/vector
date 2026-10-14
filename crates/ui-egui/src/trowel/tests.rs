@@ -857,14 +857,11 @@ fn palette_weight_chip_sets_the_next_stroke() {
     assert!(stroke.dash.is_some());
     h.click(wid("dash", "solid"));
     assert!(h.app.session.shown_stroke().unwrap().dash.is_none());
-    // Hatches and adding a weight wait for J014 and J018: on the wash, like the other things that
-    // come later (the line types run since J005).
-    for id in [wid("hatch", "45"), wid("hatch", "135"), wid("hatch", "alt"), wid("weight-add", ())] {
-        assert_eq!(h.fill_at(h.rect(id).unwrap()), Some(t.panel_darker), "{id:?}");
-    }
+    // Adding a weight waits for J018: on the wash (hatches run since J014).
+    assert_eq!(h.fill_at(h.rect(wid("weight-add", ())).unwrap()), Some(t.panel_darker));
     h.click(wid("hatch", "45"));
     assert_eq!(h.app.session.shown_stroke().unwrap().width, 0.8);
-    assert_eq!(h.fill_at(h.rect(wid("hatch", "none")).unwrap()), Some(t.row_selected), "no hatch yet");
+    assert_eq!(h.fill_at(h.rect(wid("hatch", "45")).unwrap()), Some(t.row_selected), "hatch 45 is active");
     // ⋯ pops the Stroke panel out.
     h.click(wid("palette-more", ()));
     assert_eq!(h.app.ui.open_panel.as_deref(), Some("stroke"));
@@ -1007,8 +1004,8 @@ fn status_bar_shows_messages_for_a_while() {
     // Section (J004) and Cut Face (J014): what they are and when.
     h.click(wid("tile", "section"));
     assert!(h.line_in(bar).contains("Section: coming soon (J004)"), "{}", h.line_in(bar));
-    h.click(wid("palette-cut", ()));
-    assert!(h.line_in(bar).contains("Cut Face: coming soon (J014)"), "{}", h.line_in(bar));
+    h.click(wid("weight-add", ()));
+    assert!(h.line_in(bar).contains("Add a Weight: coming soon (J018)"), "{}", h.line_in(bar));
     h.later(5.0);
     assert!(!h.line_in(bar).contains("coming soon"), "{}", h.line_in(bar));
 }
@@ -1142,6 +1139,41 @@ fn status_bar_shows_tool_snap_unsaved_and_position() {
     let line = h.line_in(bar);
     assert!(line.contains("1 not saved"), "{line}");
     assert!(line.contains(&u.readout(p.x)) && line.contains(&u.readout(p.y)), "{line}");
+}
+
+#[test]
+fn status_bar_shows_scale_and_tm_coordinates() {
+    let mut h = Harness::new();
+    h.settle();
+    let bar = h.panel(STATUS);
+    assert!(h.line_in(bar).contains("Scale and coordinate system not set"));
+
+    // Set scale 1:20 and bind origin to CP1 (152840.123, 512340.456)
+    h.app.run("doc.setScale", json!({"scale": "1:20"})).unwrap();
+    h.app.run("doc.setOrigin", json!({
+        "canvas": [100.0, 100.0],
+        "world": [152840.123, 512340.456]
+    })).unwrap();
+    h.settle();
+
+    let line = h.line_in(bar);
+    assert!(line.contains("1:20 · TM"), "{line}");
+
+    // Hover over canvas -> live TM coordinates readout
+    let at = h.app.canvas_rect.unwrap().center();
+    h.frame(vec![Event::PointerMoved(at)]);
+    h.settle();
+    let p = h.app.hover_doc.expect("over the canvas");
+    let cfg = h.app.session.active().unwrap().doc.scale.as_ref().unwrap();
+    let (exp_x, exp_y) = cfg.format_coords(p);
+    let line = h.line_in(bar);
+    assert!(line.contains(&exp_x) && line.contains(&exp_y), "{line}");
+
+    // Switch scale to 1:50
+    h.app.run("doc.setScale", json!({"scale": 50.0})).unwrap();
+    h.settle();
+    let line = h.line_in(bar);
+    assert!(line.contains("1:50 · TM"), "{line}");
 }
 
 /// Trowel's colours come from the theme tokens, as everywhere in the app.

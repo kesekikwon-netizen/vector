@@ -11,10 +11,37 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         let r = ui.max_rect();
         line_above(ui, r, t.border);
         // The cells, right to left.
-        let scale = cell(ui, r, r.right(), false, &[(tw!("Scale and coordinate system not set").into(), font(12.0), t.text_dim)], &t);
-        soon_widget(ui, wid("status-scale", ()), scale, tw!("Scale and coordinate system"), "J006");
-        let u = app.session.general_unit();
-        let (x, y) = app.hover_doc.map_or(("–".to_string(), "–".to_string()), |p| (u.readout(p.x), u.readout(p.y)));
+        let doc_scale = app.session.active().and_then(|d| d.doc.scale.clone());
+        let (scale_label, scale_color) = if let Some(ref cfg) = doc_scale {
+            (format!("{} · TM", cfg.scale.label()), t.text)
+        } else {
+            (tw!("Scale and coordinate system not set").to_string(), t.text_dim)
+        };
+        let scale = cell(ui, r, r.right(), false, &[(scale_label, font(12.0), scale_color)], &t);
+        let scale_interact = ui.interact(scale, ui.id().with("status_scale_cell"), Sense::click());
+        if scale_interact.clicked() {
+            let next_denom = if let Some(cfg) = &doc_scale {
+                let presets = vectorcraft_doc::scale::ScaleRatio::PRESETS;
+                let cur = cfg.scale.denom;
+                let idx = presets.iter().position(|s| (s.denom - cur).abs() < 1e-4);
+                let next_idx = idx.map_or(0, |i| (i + 1) % presets.len());
+                presets.get(next_idx).map(|s| s.denom).unwrap_or(20.0)
+            } else {
+                20.0
+            };
+            let _ = app.run("doc.setScale", serde_json::json!({ "scale": next_denom }));
+        }
+
+        let (x, y) = if let Some(p) = app.hover_doc {
+            if let Some(ref cfg) = doc_scale {
+                cfg.format_coords(p)
+            } else {
+                let u = app.session.general_unit();
+                (u.readout(p.x), u.readout(p.y))
+            }
+        } else {
+            ("–".to_string(), "–".to_string())
+        };
         let at = cell(
             ui,
             r,
