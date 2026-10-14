@@ -51,6 +51,7 @@ impl Circle3Point {
 /// Uses the circumcircle formula:
 /// - $R = \frac{a \cdot b \cdot c}{4 |A|}$
 /// - $D = 2R = \frac{a \cdot b \cdot c}{2 |A|}$
+///
 /// where $a, b, c$ are side lengths and $A$ is the triangle area.
 ///
 /// Returns `Err(CircleFitError::CollinearPoints)` if $|A| < 10^{-9}$.

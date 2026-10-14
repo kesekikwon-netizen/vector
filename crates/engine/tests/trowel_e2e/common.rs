@@ -116,8 +116,12 @@ pub fn pca_azimuth_and_length(pts: &[(f64, f64)]) -> (f64, f64) {
     let mut max_proj = f64::NEG_INFINITY;
     for p in pts {
         let proj = (p.0 - cx) * cos_a + (p.1 - cy) * sin_a;
-        if proj < min_proj { min_proj = proj; }
-        if proj > max_proj { max_proj = proj; }
+        if proj < min_proj {
+            min_proj = proj;
+        }
+        if proj > max_proj {
+            max_proj = proj;
+        }
     }
     let length = max_proj - min_proj;
     (deg, length)
@@ -143,12 +147,7 @@ pub fn circle_fit_3pt(p1: (f64, f64), p2: (f64, f64), p3: (f64, f64)) -> Option<
 
 /// 1D horizontal line segment clipping against solid obstacle rectangles [x1, x2, y1, y2].
 /// Clips out solid ground/stone regions, retaining strictly open air intervals.
-pub fn clip_horizontal_line_against_void(
-    y: f64,
-    x_min: f64,
-    x_max: f64,
-    obstacles: &[(f64, f64, f64, f64)],
-) -> Vec<(f64, f64)> {
+pub fn clip_horizontal_line_against_void(y: f64, x_min: f64, x_max: f64, obstacles: &[(f64, f64, f64, f64)]) -> Vec<(f64, f64)> {
     let mut intervals = vec![(x_min, x_max)];
     for &(ox1, ox2, oy1, oy2) in obstacles {
         let (min_y, max_y) = if oy1 <= oy2 { (oy1, oy2) } else { (oy2, oy1) };
@@ -234,9 +233,7 @@ pub fn solve_affine_least_squares(src: &[(f64, f64)], dst: &[(f64, f64)]) -> Opt
 
     // 3x3 matrix inversion for [s_xx s_xy s_x; s_xy s_yy s_y; s_x s_y n]
     let nf = n as f64;
-    let det = s_xx * (s_yy * nf - s_y * s_y)
-        - s_xy * (s_xy * nf - s_y * s_x)
-        + s_x * (s_xy * s_y - s_yy * s_x);
+    let det = s_xx * (s_yy * nf - s_y * s_y) - s_xy * (s_xy * nf - s_y * s_x) + s_x * (s_xy * s_y - s_yy * s_x);
 
     if det.abs() < 1e-9 {
         return None; // Singular (collinear)
@@ -278,10 +275,7 @@ pub fn solve_affine_least_squares(src: &[(f64, f64)], dst: &[(f64, f64)]) -> Opt
 /// Dual-graph 2-coloring for alternating hatch (§14(e)):
 /// Assigns 45° (false) and 135° (true).
 /// Returns (assignments, has_odd_cycle_conflict).
-pub fn bipartite_alternating_hatch(
-    adjacencies: &[(usize, usize)],
-    num_faces: usize,
-) -> (Vec<bool>, bool) {
+pub fn bipartite_alternating_hatch(adjacencies: &[(usize, usize)], num_faces: usize) -> (Vec<bool>, bool) {
     let mut adj = vec![Vec::new(); num_faces];
     for &(u, v) in adjacencies {
         if u < num_faces && v < num_faces {
@@ -348,4 +342,3 @@ pub fn world_to_paper_mm(world_m: f64, scale_denom: f64) -> f64 {
 pub fn world_to_paper_pt(world_m: f64, scale_denom: f64) -> f64 {
     mm_to_pt(world_to_paper_mm(world_m, scale_denom))
 }
-

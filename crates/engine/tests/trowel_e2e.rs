@@ -11,15 +11,14 @@
 #[path = "trowel_e2e/common.rs"]
 pub mod common;
 
-// #[path = "trowel_e2e/tier1_features.rs"]
-// pub mod tier1_features;
+#[path = "trowel_e2e/tier1_features.rs"]
+pub mod tier1_features;
 
-// #[path = "trowel_e2e/tier2_boundaries.rs"]
-// pub mod tier2_boundaries;
+#[path = "trowel_e2e/tier2_boundaries.rs"]
+pub mod tier2_boundaries;
 
-// #[path = "trowel_e2e/tier3_combinations.rs"]
-// pub mod tier3_combinations;
+#[path = "trowel_e2e/tier3_combinations.rs"]
+pub mod tier3_combinations;
 
-// #[path = "trowel_e2e/tier4_scenarios.rs"]
-// pub mod tier4_scenarios;
-
+#[path = "trowel_e2e/tier4_scenarios.rs"]
+pub mod tier4_scenarios;
