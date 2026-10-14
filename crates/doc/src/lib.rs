@@ -29,8 +29,9 @@ pub mod orient;
 pub mod overprint;
 pub mod pattern;
 pub mod perspective;
-mod pixels;
+pub mod pixels;
 pub mod placed_document;
+pub mod plate;
 pub mod pottery;
 pub mod profiles;
 pub mod puppet;
@@ -45,6 +46,7 @@ pub mod shaper;
 pub mod slices;
 pub mod stratigraphy;
 pub mod style_libs;
+pub mod style_template;
 pub mod swatches;
 pub mod text;
 pub mod trace;
@@ -76,7 +78,7 @@ pub use corners::LiveCorners;
 pub use elevation::{ElevationLabelFormat, ElevationLabelPlacement, ElevationRangeMode, ElevationSpec};
 pub use graph::{GraphKind, GraphSpec, MAX_GRAPH_CATEGORIES, MAX_GRAPH_SERIES, SeriesPaint, TickLength, ValueAxisSide};
 pub use hit::{Hit, HitKind};
-pub use legend::{Legend, LegendGroup, LegendSample, LineType};
+pub use legend::{Legend, LegendEntry, LegendGroup, LegendLayoutOptions, LegendSample, LegendTable, LineType};
 pub use links::{LinkInfo, PlacementOptions};
 pub use live::{BlendOrientation, BlendSpacing, BlendSpec, EnvelopeKind, GradientMesh, MeshPoint};
 pub use metadata::{CopyrightStatus, DocMetadata};
@@ -88,9 +90,21 @@ pub use orient::OrientedBox;
 pub use pattern::{Overlap, PatternDef, PatternEdit, RepeatKind, RepeatSpec, TileType};
 pub use perspective::PerspectiveAttachment;
 pub use placed_document::PlacedDocument;
+pub use plate::{
+    BorderFrame, NorthArrowItem, NorthArrowStyle, PlateOrientation, PlateSheet, PlateSize,
+    ScaleBarItem, ScaleBarStyle, TitleBlockData, ViewportItem, ViewportSource,
+};
 pub use pottery::{MM, PotteryMeasurements, PotteryVessel, SectionFillMode, SectionSide, VesselType};
 pub use profiles::ColorProfiles;
 pub use puppet::{PuppetPin, PuppetPins};
+pub use style_template::{
+    DiffStatus, ElevationStyleRules, HatchPreset, ItemDiff, MergeAction, PropertyDiff,
+    SoilPaletteEntry, StrokeWeightTier, StyleCategory, StyleDiff, StyleMergeResolution,
+    TemplateLegendRow, TitleBlockTemplate, TrowelStyleTemplate, TypographyStyle,
+    default_hatch_presets, default_soil_palettes, default_stroke_weights,
+    default_template_legend_rows, diff_template, TROWEL_STYLE_EXTENSION, TROWEL_STYLE_FORMAT,
+    TROWEL_STYLE_VERSION,
+};
 pub use rastersettings::{RasterColorModel, RasterEffectsSettings};
 pub use scale::{CoordOrder, CoordSystem, GraticuleTick, ScaleConfig, ScaleRatio, compute_graticule_ticks};
 pub use selection::{AnchorRef, Selection};
@@ -634,6 +648,9 @@ pub struct Document {
     /// Artifact pottery vessels (Trowel Archaeological CAD, J011).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pottery_vessels: Vec<PotteryVessel>,
+    /// Report plate sheets (Trowel Archaeological CAD, J012).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plate_sheets: Vec<PlateSheet>,
     /// Effect → Document Raster Effects Settings besides the resolution
     /// ([`Document::raster_effects_ppi`]).
     #[serde(default, skip_serializing_if = "skip::is_default")]
@@ -741,6 +758,7 @@ impl Document {
             scale: None,
             stratigraphy_tables: vec![],
             pottery_vessels: vec![],
+            plate_sheets: vec![],
             raster_effects: RasterEffectsSettings::default(),
             last_view: None,
             layers_open: None,

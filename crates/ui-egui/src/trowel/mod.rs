@@ -18,17 +18,20 @@ mod caption;
 mod card;
 mod center;
 mod control;
-mod drawings;
+pub mod drawings;
+pub mod gpkg_browser;
 pub mod home;
 mod legend;
 mod menu;
 mod palette;
+pub mod plate;
 pub mod pottery;
 mod props;
 mod ribbon;
 mod rowedit;
 pub mod section;
 mod status;
+pub mod style_dialog;
 mod tools;
 mod weights;
 
@@ -97,6 +100,9 @@ pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {
         }
     }
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.pasteboard)).show(ui, |ui| center::show(app, ui, mode));
+    plate::show_dialog(app, ui.ctx());
+    style_dialog::show_dialog(app, ui.ctx());
+    gpkg_browser::show_dialog(app, ui.ctx());
 }
 
 /// The right column: the drawing palette on top, the properties at the bottom, the legend and

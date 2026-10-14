@@ -55,9 +55,12 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         x = chip_r.right() + 4.0;
     }
     let add = Rect::from_min_size(pos2(x, cy - CHIP_H / 2.0), vec2(24.0, CHIP_H));
-    chip_soon(ui, add, &t);
-    crate::icons::paint(ui, "plus", Rect::from_center_size(add.center(), vec2(12.0, 12.0)), t.text_disabled);
-    soon_widget(ui, wid("weight-add", ()), add, tw!("Add a Weight"), "J018");
+    let add_resp = ui.interact(add, wid("weight-add", ()), Sense::click());
+    chip(ui, add, false, add_resp.hovered(), &t);
+    crate::icons::paint(ui, "plus", Rect::from_center_size(add.center(), vec2(12.0, 12.0)), t.text);
+    if add_resp.on_hover_text("도면 양식 템플릿 관리 (J018)").clicked() {
+        super::style_dialog::toggle_dialog(ui.ctx());
+    }
     // Hatch: 45°, 135°, Alternate, None.
     let cy = row(1);
     text(ui, pos2(r.left() + 14.0, cy), Align2::LEFT_CENTER, tw!("Hatch"), font(11.0), t.text_dim);
@@ -196,6 +199,7 @@ fn chip(ui: &Ui, r: Rect, on: bool, hovered: bool, t: &Tokens) {
 }
 
 /// The chip of something a later job brings: on the wash, like its other controls.
+#[allow(dead_code)]
 fn chip_soon(ui: &Ui, r: Rect, t: &Tokens) {
     ui.painter().rect(r, CornerRadius::same(6), t.panel_darker, Stroke::new(1.0, t.input_border), StrokeKind::Inside);
 }

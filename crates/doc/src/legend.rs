@@ -242,6 +242,161 @@ impl Document {
     }
 }
 
+use vectorcraft_geom::{Point, Rect};
+
+/// A generated legend entry corresponding to an active layer/feature in the drawing.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LegendEntry {
+    /// Layer identifier or unique key.
+    pub layer_id: NodeId,
+    /// Layer or feature name (e.g. "굴광선 (유구 면)").
+    pub label: String,
+    /// Stroke weight in points, if any.
+    pub weight_pt: Option<f64>,
+    /// Line type / dash pattern.
+    pub line_type: LineType,
+    /// Sample visual kind: Line, Area, or Mark(String).
+    pub sample_kind: LegendSample,
+    /// Optional hatch style, if area hatch is associated with this layer.
+    pub hatch: Option<crate::hatch::HatchStyle>,
+    /// Optional description or subtitle (e.g. "유구 윤곽", "0.8 pt").
+    pub description: Option<String>,
+    /// Total count of active stroked/filled elements found on this layer.
+    pub element_count: usize,
+}
+
+/// Layout and formatting options for rendering a legend table block onto paper (§6, §7).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LegendLayoutOptions {
+    /// Anchor position on paper/sheet (pt).
+    pub origin: Point,
+    /// Total width of the legend block in points (default: 148.8 pt / ~52.5 mm).
+    pub table_width_pt: f64,
+    /// Row height in points (default: 11.0 pt, as in design 2.1 §6).
+    pub row_height_pt: f64,
+    /// Width of the sample swatch line/rectangle (default: 28.0 pt / ~10 mm).
+    pub swatch_width_pt: f64,
+    /// Height of the sample swatch rectangle for area/pattern (default: 8.0 pt / ~2.8 mm).
+    pub swatch_height_pt: f64,
+    /// Gap between sample swatch and text label (default: 8.0 pt).
+    pub swatch_gap_pt: f64,
+    /// Font size for label text in points (default: 8.0 pt, per §7).
+    pub font_size_pt: f64,
+    /// Optional font family (e.g. "Noto Sans KR", "Malgun Gothic").
+    pub font_family: Option<String>,
+    /// Whether to render a 0.7 pt horizontal rule above the table (default: true).
+    pub top_rule: bool,
+    /// Whether to render a 0.7 pt horizontal rule below the table (default: true).
+    pub bottom_rule: bool,
+    /// Whether to draw an enclosing border box around the entire table (default: false).
+    pub enclosing_box: bool,
+    /// Number of columns (default: 1; >1 splits entries into multiple columns).
+    pub column_count: usize,
+    /// Gap between columns in points (default: 14.0 pt).
+    pub column_gap_pt: f64,
+    /// Hide unused layers (layers with 0 stroked/filled elements, default: true).
+    pub filter_unused: bool,
+}
+
+impl Default for LegendLayoutOptions {
+    fn default() -> Self {
+        Self {
+            origin: Point::new(0.0, 0.0),
+            table_width_pt: 148.8,
+            row_height_pt: 11.0,
+            swatch_width_pt: 28.0,
+            swatch_height_pt: 8.0,
+            swatch_gap_pt: 8.0,
+            font_size_pt: 8.0,
+            font_family: None,
+            top_rule: true,
+            bottom_rule: true,
+            enclosing_box: false,
+            column_count: 1,
+            column_gap_pt: 14.0,
+            filter_unused: true,
+        }
+    }
+}
+
+/// Generated Auto Legend Table model.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct LegendTable {
+    /// Active entries extracted from the document.
+    pub entries: Vec<LegendEntry>,
+    /// Layout and styling options applied.
+    pub options: LegendLayoutOptions,
+    /// Computed bounding box of the entire table on the artboard/sheet.
+    pub bounds: Rect,
+}
+
+impl LegendTable {
+    /// Build a LegendTable model by scanning the active document layers.
+    /// Strictly filters out unused layers when `options.filter_unused` is true.
+    pub fn build_from_document(doc: &Document, options: &LegendLayoutOptions) -> Self {
+        let mut entries = Vec::new();
+
+        for layer in &doc.layers {
+            if !layer.visible || layer.is_template() {
+                continue;
+            }
+            let line_nodes = lines(layer);
+            let elem_count = if !line_nodes.is_empty() {
+                line_nodes.len()
+            } else {
+                layer.children().map_or(0, |c| c.len())
+            };
+
+            if options.filter_unused && elem_count == 0 {
+                continue; // "쓰지 않은 줄은 범례표에 나오지 않습니다"
+            }
+
+            let Some(legend) = layer.legend() else { continue };
+
+            entries.push(LegendEntry {
+                layer_id: layer.id,
+                label: layer.display_name().trim().to_string(),
+                weight_pt: legend.weight,
+                line_type: legend.line.clone(),
+                sample_kind: legend.sample.clone(),
+                hatch: None,
+                description: None,
+                element_count: elem_count,
+            });
+        }
+
+        // Sort: favourites (★) first, then by group or layer order
+        entries.sort_by(|a, b| {
+            let fav_a = doc.node(a.layer_id).and_then(Node::legend).is_some_and(|l| l.favourite);
+            let fav_b = doc.node(b.layer_id).and_then(Node::legend).is_some_and(|l| l.favourite);
+            fav_b.cmp(&fav_a)
+        });
+
+        let rows_per_col = if options.column_count > 1 {
+            (entries.len() + options.column_count - 1) / options.column_count
+        } else {
+            entries.len()
+        };
+
+        let total_h = if entries.is_empty() {
+            0.0
+        } else {
+            (rows_per_col as f64) * options.row_height_pt + 8.0
+        };
+
+        let bounds = Rect::from_origin_size(
+            options.origin,
+            vectorcraft_geom::Size::new(options.table_width_pt, total_h),
+        );
+
+        Self {
+            entries,
+            options: options.clone(),
+            bounds,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -493,4 +648,54 @@ mod tests {
         let custom = Legend { line: LineType::Custom(vec![1.0, 2.0]), sample: LegendSample::Area, ..Legend::default() };
         assert_eq!(serde_json::to_value(&custom).unwrap_or_default(), serde_json::json!({"line": {"custom": [1.0, 2.0]}, "sample": "area"}));
     }
+
+    #[test]
+    fn test_legend_table_filters_unused_layers() {
+        let mut doc = Document::new(500.0, 500.0);
+        let id1 = doc.alloc_id();
+        let mut l1 = Node::layer(id1, "굴광선 (유구 면)", LayerColor::Preset(0));
+        let p = line(doc.alloc_id().0, 0.8);
+        if let Some(c) = l1.children_mut() {
+            c.push(Arc::new(p));
+        }
+        if let NodeKind::Layer { legend, .. } = &mut l1.kind {
+            *legend = Some(Box::new(Legend {
+                weight: Some(0.8),
+                line: LineType::Solid,
+                favourite: true,
+                sample: LegendSample::Area,
+                strata: Some("feature_poly".into()),
+                group: Some(LegendGroup::Plan),
+            }));
+        }
+
+        let id2 = doc.alloc_id();
+        let mut l2 = Node::layer(id2, "시굴격자", LayerColor::Preset(1));
+        // l2 has no child lines (unused!)
+        if let NodeKind::Layer { legend, .. } = &mut l2.kind {
+            *legend = Some(Box::new(Legend {
+                weight: Some(0.5),
+                line: LineType::Solid,
+                favourite: false,
+                sample: LegendSample::Area,
+                strata: Some("trial_trench".into()),
+                group: Some(LegendGroup::Plan),
+            }));
+        }
+
+        doc.layers = vec![Arc::new(l1), Arc::new(l2)];
+
+        let opts = LegendLayoutOptions::default();
+        let table = LegendTable::build_from_document(&doc, &opts);
+        // Only l1 should be present because l2 has 0 elements and filter_unused is true!
+        assert_eq!(table.entries.len(), 1);
+        assert_eq!(table.entries[0].label, "굴광선 (유구 면)");
+
+        // If filter_unused is false, both appear
+        let mut opts_all = opts.clone();
+        opts_all.filter_unused = false;
+        let table_all = LegendTable::build_from_document(&doc, &opts_all);
+        assert_eq!(table_all.entries.len(), 2);
+    }
 }
+

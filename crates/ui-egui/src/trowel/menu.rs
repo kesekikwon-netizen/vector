@@ -15,6 +15,10 @@ use super::*;
 enum Item {
     Weights,
     Revert,
+    InsertLegend,
+    PlateLayout,
+    StyleTemplate,
+    GpkgSurvey,
 }
 
 pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
@@ -41,17 +45,26 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
                     app.status(e);
                 }
             }
+            Some(Item::InsertLegend) => {
+                let _ = app.run("style.generateLegend", json!({ "filterUnused": true, "replaceExisting": true }));
+            }
+            Some(Item::PlateLayout) => super::plate::toggle_dialog(ui.ctx()),
+            Some(Item::StyleTemplate) => super::style_dialog::toggle_dialog(ui.ctx()),
+            Some(Item::GpkgSurvey) => super::gpkg_browser::toggle_dialog(ui.ctx()),
             None => {}
         }
     });
 }
 
-/// The Drawing menu's items, in groups: the two that run (with a drawing open), then the others,
-/// each with the job that brings it.
+/// The Drawing menu's items, in groups: the active items that run, then upcoming ones.
 fn drawing_menu(ui: &mut Ui, open: bool, chosen: &Cell<Option<Item>>) {
     let live = [
         (tw!("Change Weights at Once…"), tw!("Change every line's weight at once"), Item::Weights),
         (tw!("Revert to the Legend"), tw!("The selected lines, or every line set apart when nothing is selected"), Item::Revert),
+        ("캔버스 범례표 삽입", "도면에서 실제 사용된 줄로 자동 범례표를 삽입합니다 (J018)", Item::InsertLegend),
+        ("보고서 도판 배치 및 표제란…", "출판용 도판 배치·표제란·축척 막대·벡터 PDF 내보내기 (J012)", Item::PlateLayout),
+        ("도면 양식 템플릿 관리 (.trowel-style)…", "기관별 표준 양식 비교 및 병합 (J018)", Item::StyleTemplate),
+        ("Strata GeoPackage 발굴조사 데이터…", "현장 측량 데이터 레이어 불러오기 및 동기화 (J019)", Item::GpkgSurvey),
     ];
     for (label, tip, item) in live {
         if ui.add_enabled(open, egui::Button::new(label)).on_hover_text(tip).clicked() {
@@ -59,11 +72,9 @@ fn drawing_menu(ui: &mut Ui, open: bool, chosen: &Cell<Option<Item>>) {
             ui.close();
         }
     }
-    let groups: [&[(&str, &str)]; 4] = [
+    let groups: [&[(&str, &str)]; 2] = [
         &[(tw!("Cut Face"), "J014"), (tw!("Make Level Lines"), "J015")],
         &[(tw!("Scale and Coordinate System…"), "J006"), (tw!("Align Underlay…"), "J008")],
-        &[(tw!("Insert Legend Table"), "J012"), (tw!("Insert Title Block"), "J012")],
-        &[(tw!("Send to Strata…"), "J019")],
     ];
     for group in groups {
         ui.separator();

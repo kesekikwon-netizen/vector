@@ -27,6 +27,7 @@ pub mod fileio;
 pub mod findfiles;
 pub mod flatten;
 pub mod fontfiles;
+pub mod geopackage;
 mod fonts;
 pub(crate) mod freeform;
 pub(crate) mod gradient;
@@ -57,6 +58,7 @@ mod patterncmds;
 pub mod pdfcmds;
 pub mod perspgrid;
 pub(crate) mod place;
+pub mod plate;
 pub mod plugin;
 pub mod pottery;
 pub mod prefscmds;
@@ -75,6 +77,7 @@ pub mod stratigraphy;
 mod stroke;
 mod style;
 pub mod stylelib;
+pub mod style_template;
 mod swatch;
 pub mod swatchlib;
 pub(crate) mod tabs;
@@ -296,6 +299,9 @@ pub fn command_specs() -> &'static [CommandSpec] {
         v.extend(trowel_plan::specs());
         v.extend(stratigraphy::specs());
         v.extend(pottery::specs());
+        v.extend(plate::specs());
+        v.extend(style_template::specs());
+        v.extend(geopackage::specs());
         v
     })
 }
