@@ -31,6 +31,7 @@ pub mod pattern;
 pub mod perspective;
 mod pixels;
 pub mod placed_document;
+pub mod pottery;
 pub mod profiles;
 pub mod puppet;
 pub mod range;
@@ -42,6 +43,7 @@ pub mod selection;
 pub mod setup;
 pub mod shaper;
 pub mod slices;
+pub mod stratigraphy;
 pub mod style_libs;
 pub mod swatches;
 pub mod text;
@@ -86,6 +88,7 @@ pub use orient::OrientedBox;
 pub use pattern::{Overlap, PatternDef, PatternEdit, RepeatKind, RepeatSpec, TileType};
 pub use perspective::PerspectiveAttachment;
 pub use placed_document::PlacedDocument;
+pub use pottery::{MM, PotteryMeasurements, PotteryVessel, SectionFillMode, SectionSide, VesselType};
 pub use profiles::ColorProfiles;
 pub use puppet::{PuppetPin, PuppetPins};
 pub use rastersettings::{RasterColorModel, RasterEffectsSettings};
@@ -93,6 +96,11 @@ pub use scale::{CoordOrder, CoordSystem, GraticuleTick, ScaleConfig, ScaleRatio,
 pub use selection::{AnchorRef, Selection};
 pub use setup::{Background, DocSetup, ExportText, GridSize, Quotes};
 pub use slices::{CellAlign, CellVAlign, Slice, SliceArea, SliceKind, SliceOptions, SliceSource};
+pub use stratigraphy::{
+    CircledNumberSpec, LayerNumberingStyle, NumberingStyle, SoilDescription, StratigraphyFillStyle,
+    StratigraphyLayer, StratigraphyPatternKind, StratigraphyTable, StratigraphyTablePlacement,
+    TableRenderFormat,
+};
 pub use style_libs::StyleLibrary;
 pub use text::{
     AreaFit, AreaOptions, Burasagari, CharAlign, CharPosition, CharStyle, Composer, FirstBaseline, InlineArt, Justify, Kinsoku, LeadingModel,
@@ -620,6 +628,12 @@ pub struct Document {
     /// Drawing scale and real-world TM coordinate system (Trowel Archaeological CAD, J006).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scale: Option<ScaleConfig>,
+    /// Stratigraphy tables (Trowel Archaeological CAD, J010).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stratigraphy_tables: Vec<StratigraphyTable>,
+    /// Artifact pottery vessels (Trowel Archaeological CAD, J011).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pottery_vessels: Vec<PotteryVessel>,
     /// Effect → Document Raster Effects Settings besides the resolution
     /// ([`Document::raster_effects_ppi`]).
     #[serde(default, skip_serializing_if = "skip::is_default")]
@@ -725,6 +739,8 @@ impl Document {
             paste_remembers_layers: false,
             metadata: DocMetadata::default(),
             scale: None,
+            stratigraphy_tables: vec![],
+            pottery_vessels: vec![],
             raster_effects: RasterEffectsSettings::default(),
             last_view: None,
             layers_open: None,

@@ -34,6 +34,9 @@ pub fn is_visible(app: &VectorcraftApp) -> bool {
             | "find-number"
             | "posthole"
             | "hachure"
+            | "stratigraphy"
+            | "pottery"
+            | "pottery-rim"
     )
 }
 

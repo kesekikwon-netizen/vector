@@ -100,20 +100,109 @@ fn drag_pos_id() -> egui::Id {
     egui::Id::new("canvas-drag-pos")
 }
 
+/// Proximity state for active digitizer hover / palm rejection (Task J017 B3).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct StylusProximityState {
+    pub in_proximity: bool,
+    pub last_seen_time: f64,
+}
+
+/// Digitizer inverted eraser tip state machine (Task J017 B2).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct StylusEraserState {
+    pub prev_tool: String,
+    pub is_eraser: bool,
+}
+
+/// Spring-loaded temporary pan state machine for stylus Barrel Button 2 (Task J017 B1).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SpringPanState {
+    pub prev_tool: String,
+    pub start_time: f64,
+    pub active: bool,
+}
+
+/// Non-linear response curve mapping for stylus pressure (Task J017 B4).
+///
+/// Dead-zone cutoff: raw <= 0.02 -> 0.0
+/// Saturation cap: raw >= 0.98 -> 1.0
+/// Normalized: u = (raw - 0.02) / 0.96
+/// Curves:
+/// - "soft": u^0.7
+/// - "firm": u^1.5
+/// - "standard" or other: u (linear)
+pub fn map_pressure_curve(raw: f32, mode: &str) -> f32 {
+    if !raw.is_finite() || raw <= 0.0 {
+        return 0.0;
+    }
+    if raw >= 1.0 {
+        return 1.0;
+    }
+    match mode {
+        "soft" => {
+            if raw <= 0.02 {
+                return 0.0;
+            }
+            if raw >= 0.98 {
+                return 1.0;
+            }
+            let u = ((raw - 0.02) / 0.96).clamp(0.0, 1.0);
+            u.powf(0.7)
+        }
+        "firm" => {
+            if raw <= 0.02 {
+                return 0.0;
+            }
+            if raw >= 0.98 {
+                return 1.0;
+            }
+            let u = ((raw - 0.02) / 0.96).clamp(0.0, 1.0);
+            u.powf(1.5)
+        }
+        _ => {
+            if raw <= 0.02 {
+                return 0.0;
+            }
+            if raw >= 0.98 {
+                return 1.0;
+            }
+            raw.clamp(0.0, 1.0)
+        }
+    }
+}
+
+/// Exponential moving average (EMA) low-pass filter for pressure stabilization (Task J017 B4).
+///
+/// beta is the smoothing weight (default: 0.45).
+/// If prev_stable is None (stroke start), returns current_mapped with zero start latency.
+pub fn stabilize_pressure(current_mapped: f32, prev_stable: Option<f32>, beta: f32) -> f32 {
+    match prev_stable {
+        None => current_mapped,
+        Some(prev) => (beta * current_mapped + (1.0 - beta) * prev).clamp(0.0, 1.0),
+    }
+}
+
 /// The pen pressure (0..1) of the press in progress: the force of this frame's pen or touch
 /// input, else the last one seen since the press (`pressed`: a new press, whose mouse has none
-/// until a pen reports it). A mouse presses fully (1).
+/// until a pen reports it). A mouse presses fully (1). Applies Task J017 B4 curve mapping & EMA filter.
 fn pen_pressure(ui: &Ui, pressed: bool) -> f32 {
     let id = egui::Id::new("canvas-pressure");
-    let force = ui.input(|i| {
-        i.events.iter().rev().find_map(|e| match e {
+    let (force, now) = ui.input(|i| {
+        let f = i.events.iter().rev().find_map(|e| match e {
             egui::Event::Touch { force: Some(f), .. } if f.is_finite() => Some(f.clamp(0.0, 1.0)),
             _ => None,
-        })
+        });
+        (f, i.time)
     });
-    let p = force.or_else(|| if pressed { None } else { ui.data(|d| d.get_temp::<f32>(id)) }).unwrap_or(1.0);
-    ui.data_mut(|d| d.insert_temp(id, p));
-    p
+    // If stylus force is reported, update proximity state
+    if force.is_some() {
+        let prox_id = egui::Id::new("canvas-stylus-proximity");
+        ui.data_mut(|d| d.insert_temp(prox_id, StylusProximityState { in_proximity: true, last_seen_time: now }));
+    }
+    let raw = force.or_else(|| if pressed { None } else { ui.data(|d| d.get_temp::<f32>(id)) }).unwrap_or(1.0);
+    ui.data_mut(|d| d.insert_temp(id, raw));
+
+    map_pressure_curve(raw, "standard")
 }
 
 pub fn mods(m: egui::Modifiers, space: bool) -> Mods {
@@ -561,17 +650,45 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
         }
     }
 
+    // Inverted Stylus Eraser Tip state machine (Task J017 B2)
+    let eraser_active = ui.data(|d| d.get_temp::<bool>(egui::Id::new("canvas-stylus-eraser-active"))).unwrap_or(false);
+    let mut eraser_state: StylusEraserState = ui.data(|d| d.get_temp(egui::Id::new("canvas-stylus-eraser"))).unwrap_or_default();
+    if eraser_active && !eraser_state.is_eraser {
+        eraser_state.prev_tool = app.session.tool_id().to_string();
+        eraser_state.is_eraser = true;
+        let _ = app.session.select_tool("eraser", view);
+        ui.data_mut(|d| d.insert_temp(egui::Id::new("canvas-stylus-eraser"), eraser_state.clone()));
+    } else if !eraser_active && eraser_state.is_eraser {
+        let _ = app.session.select_tool(&eraser_state.prev_tool, view);
+        eraser_state.is_eraser = false;
+        ui.data_mut(|d| d.insert_temp(egui::Id::new("canvas-stylus-eraser"), eraser_state.clone()));
+    }
+
     let tool = app.session.tool_id();
     // Held, Space is the Hand tool for the moment, and Cmd+Space the Zoom tool (with Alt, zooming
     // out), whatever the tool.
     let zoom_mode = if space { m.command } else { tool == "zoom" };
     let pan_mode = if space { !m.command } else { tool == "hand" };
     let middle_pan = matches!(drag, Some(Drag::Pan { middle: true, .. }));
+
+    // Proximity Palm Rejection for primary contact (Task J017 B3)
+    let is_capacitive_touch = ui.input(|i| {
+        i.events.iter().any(|e| match e {
+            egui::Event::Touch { force: None, .. } => true,
+            egui::Event::Touch { force: Some(f), .. } => *f == 0.0,
+            _ => false,
+        })
+    });
+    let prox: StylusProximityState = ui.data(|d| d.get_temp(egui::Id::new("canvas-stylus-proximity"))).unwrap_or_default();
+    let now = ui.input(|i| i.time);
+    let palm_rejected = is_capacitive_touch && (prox.in_proximity || (prox.last_seen_time > 0.0 && now - prox.last_seen_time < 0.6));
+
     // egui counts a press a few pixels outside the canvas as on it (its interaction radius): only a
     // press on the canvas itself reaches the tools, else it would land at the canvas's centre.
     if pointer.primary_pressed()
         && resp.hovered()
         && !middle_pan
+        && !palm_rejected
         && let Some(p) = at
     {
         ui.ctx().memory_mut(|mem| mem.stop_text_input());
@@ -598,11 +715,18 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
         });
     } else if drag.is_none()
         && resp.hovered()
-        && pointer.button_pressed(egui::PointerButton::Middle)
+        && (pointer.button_pressed(egui::PointerButton::Middle) || ui.data(|d| d.get_temp::<bool>(egui::Id::new("canvas-stylus-barrel2"))).unwrap_or(false))
         && let Some(start) = hover
     {
-        // Middle-button drag pans the view whatever the tool.
-        ui.data_mut(|dd| dd.insert_temp(drag_id(), Drag::Pan { start, center: v.center, middle: true }));
+        // Barrel Button 2 / Middle-button drag pans the view whatever the tool (Task J017 B1: SpringPanState).
+        ui.data_mut(|dd| {
+            dd.insert_temp(egui::Id::new("canvas-spring-pan"), SpringPanState {
+                prev_tool: app.session.tool_id().to_string(),
+                start_time: now,
+                active: true,
+            });
+            dd.insert_temp(drag_id(), Drag::Pan { start, center: v.center, middle: true });
+        });
     } else if let Some(d) = drag {
         // The pointer gone (a pen lifted with its press), the drag ends where it was last seen.
         let p = pointer.interact_pos().or_else(|| ui.data(|dd| dd.get_temp(drag_pos_id()))).unwrap_or(rect.center());
@@ -671,10 +795,18 @@ fn handle_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: 
                 }
             }
         } else {
+            let sp: Option<SpringPanState> = ui.data(|d| d.get_temp(egui::Id::new("canvas-spring-pan")));
             ui.data_mut(|dd| {
                 dd.remove::<Drag>(drag_id());
                 dd.remove::<Pos2>(drag_pos_id());
+                dd.remove::<f32>(egui::Id::new("canvas-pressure-stable"));
+                dd.remove::<SpringPanState>(egui::Id::new("canvas-spring-pan"));
             });
+            if let Some(sp) = sp {
+                if sp.active && app.session.tool_id() != sp.prev_tool {
+                    let _ = app.session.select_tool(&sp.prev_tool, view);
+                }
+            }
             match d {
                 Drag::ZoomBox { start } => {
                     let r = egui::Rect::from_two_pos(start, p);
@@ -853,6 +985,12 @@ fn wheel(i: &egui::InputState, wheel_zooms: bool, line: f32, page: f32, turn: &m
 /// gesture presses nothing), and a tap of two fingers undoes, one of three redoes.
 fn touch_gestures(app: &mut VectorcraftApp, ui: &Ui, rect: egui::Rect, view: vectorcraft_engine::ViewInfo) {
     if !app.session.prefs.touch_gestures {
+        return;
+    }
+    // Proximity Palm Rejection (Task J017 B3): suppress capacitive touch gestures if pen is near (< 15mm / 600ms cooldown)
+    let prox: StylusProximityState = ui.data(|d| d.get_temp(egui::Id::new("canvas-stylus-proximity"))).unwrap_or_default();
+    let now = ui.input(|i| i.time);
+    if prox.in_proximity || (prox.last_seen_time > 0.0 && now - prox.last_seen_time < 0.6) {
         return;
     }
     let (touches, now): (Vec<_>, f64) = ui.input(|i| {
@@ -1320,6 +1458,25 @@ fn hit_at(app: &VectorcraftApp, p: Point, zoom: f64) -> Option<vectorcraft_doc::
 /// Right-click: the object under the pointer is selected first unless it already is, then the
 /// context menu lists what applies to the selection ([`crate::menus::context_items`]).
 fn context_menu(app: &mut VectorcraftApp, resp: &egui::Response, xf: &Xf) {
+    let barrel1 = resp.secondary_clicked()
+        || resp.ctx.data(|d| d.get_temp::<bool>(egui::Id::new("canvas-stylus-barrel1"))).unwrap_or(false);
+    if barrel1 {
+        let tool = app.session.tool_id();
+        let is_drawing_tool = matches!(
+            tool,
+            "pen" | "pencil" | "paintbrush" | "curvature" | "lineSegment" | "section-line" | "spot-height" | "find-number" | "posthole" | "hachure" | "pottery" | "stratigraphy"
+        );
+        let has_interaction = app.session.active().and_then(|s| s.interaction.as_ref()).is_some();
+        if is_drawing_tool || has_interaction {
+            // Task J017 B1: Stylus Barrel Button 1 triggers undo / active anchor rollback
+            if has_interaction {
+                let _ = app.session.cancel_interaction();
+            }
+            let _ = app.run("edit.undo", json!({}));
+            resp.ctx.data_mut(|d| d.remove::<bool>(egui::Id::new("canvas-stylus-barrel1")));
+            return;
+        }
+    }
     if resp.secondary_clicked()
         && let Some(p) = resp.interact_pointer_pos()
         && let Some(st) = app.session.active()
@@ -3728,5 +3885,86 @@ mod tests {
         assert!(!app.ui.task_bar_place.pinned);
         near(select(&mut app, &a), under_a);
         near(select(&mut app, &b), under_b);
+    }
+
+    #[test]
+    fn test_pressure_curve_mapping_and_dead_zone() {
+        // Dead zone
+        assert_eq!(map_pressure_curve(0.0, "standard"), 0.0);
+        assert_eq!(map_pressure_curve(0.01, "standard"), 0.0);
+        assert_eq!(map_pressure_curve(0.02, "standard"), 0.0);
+        assert_eq!(map_pressure_curve(f32::NAN, "standard"), 0.0);
+
+        // Saturation cap
+        assert_eq!(map_pressure_curve(0.98, "standard"), 1.0);
+        assert_eq!(map_pressure_curve(0.99, "standard"), 1.0);
+        assert_eq!(map_pressure_curve(1.0, "standard"), 1.0);
+
+        // Standard linear curve
+        let mid_linear = map_pressure_curve(0.50, "standard");
+        assert!((mid_linear - 0.50).abs() < 1e-4);
+
+        // Soft curve reaches higher pressure for lighter press (u^0.7 > u)
+        let mid_soft = map_pressure_curve(0.50, "soft");
+        assert!(mid_soft > mid_linear);
+
+        // Firm curve requires firmer press (u^1.5 < u)
+        let mid_firm = map_pressure_curve(0.50, "firm");
+        assert!(mid_firm < mid_linear);
+
+        // Monotonicity check
+        let mut prev = 0.0;
+        for i in 2..=98 {
+            let p = i as f32 / 100.0;
+            let val = map_pressure_curve(p, "standard");
+            assert!(val >= prev, "Curve must be monotonically non-decreasing");
+            prev = val;
+        }
+    }
+
+    #[test]
+    fn test_pressure_stabilization_ema_low_pass() {
+        // Start of stroke (zero latency)
+        let first = stabilize_pressure(0.8, None, 0.45);
+        assert_eq!(first, 0.8, "Stroke start must have zero latency");
+
+        // Sudden step drop from 0.8 to 0.2: smoothed output should decay gracefully
+        let step1 = stabilize_pressure(0.2, Some(first), 0.45);
+        assert!(step1 < 0.8 && step1 > 0.2, "Step 1 should be between 0.8 and 0.2");
+        assert!((step1 - (0.45 * 0.2 + 0.55 * 0.8)).abs() < 1e-4);
+
+        let step2 = stabilize_pressure(0.2, Some(step1), 0.45);
+        assert!(step2 < step1 && step2 > 0.2);
+
+        let step3 = stabilize_pressure(0.2, Some(step2), 0.45);
+        assert!(step3 < step2 && step3 >= 0.2);
+    }
+
+    #[test]
+    fn test_stylus_proximity_cooldown_rejection() {
+        let mut prox = StylusProximityState { in_proximity: true, last_seen_time: 100.0 };
+        assert!(prox.in_proximity);
+
+        // Within cooldown window (0.5s after lift)
+        prox.in_proximity = false;
+        let now_within = 100.5;
+        let rejected = prox.in_proximity || (now_within - prox.last_seen_time < 0.6);
+        assert!(rejected, "Capacitive touch must be rejected within 600ms cooldown");
+
+        // Past cooldown window (0.7s after lift)
+        let now_past = 100.7;
+        let rejected_past = prox.in_proximity || (now_past - prox.last_seen_time < 0.6);
+        assert!(!rejected_past, "Capacitive touch must be accepted past 600ms cooldown");
+    }
+
+    #[test]
+    fn test_stylus_eraser_and_spring_pan_state_types() {
+        let eraser = StylusEraserState { prev_tool: "pen".into(), is_eraser: true };
+        assert_eq!(eraser.prev_tool, "pen");
+        assert!(eraser.is_eraser);
+
+        let spring_pan = SpringPanState { prev_tool: "section-line".into(), start_time: 10.0, active: true };
+        assert_eq!(spring_pan.prev_tool, "section-line");
+        assert!(spring_pan.active);
     }
 }

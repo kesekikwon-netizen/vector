@@ -58,6 +58,7 @@ pub mod pdfcmds;
 pub mod perspgrid;
 pub(crate) mod place;
 pub mod plugin;
+pub mod pottery;
 pub mod prefscmds;
 pub mod print;
 pub(crate) mod printadvanced;
@@ -70,6 +71,7 @@ pub mod scale;
 mod select;
 pub(crate) mod shaper;
 pub(crate) mod slices;
+pub mod stratigraphy;
 mod stroke;
 mod style;
 pub mod stylelib;
@@ -292,6 +294,8 @@ pub fn command_specs() -> &'static [CommandSpec] {
         v.extend(trowel::specs());
         v.extend(calibrate::specs());
         v.extend(trowel_plan::specs());
+        v.extend(stratigraphy::specs());
+        v.extend(pottery::specs());
         v
     })
 }

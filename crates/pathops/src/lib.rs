@@ -15,6 +15,7 @@ mod offset;
 mod pathfinder;
 pub mod plan;
 mod planar;
+pub mod pottery;
 
 pub use boolean::{BoolOp, DEFAULT_PRECISION, area, boolean, boolean_n, normalize, try_boolean, try_normalize, unite_all};
 pub use edit::{
@@ -36,6 +37,10 @@ pub use plan::{
     generate_section_line_geometry, generate_slope_hachures, generate_spot_elevation_geometry,
 };
 pub use planar::{BuilderArrangement, SHAPE_BUILDER_MAX_SEGMENTS, cut_out, encloses_area, interior_point, live_paint, shape_builder};
+pub use pottery::{
+    build_section_polygon, compute_vessel_measurements, generate_horizontal_ridge,
+    generate_section_hatch, offset_wall_profile, reflect_path_across_centerline,
+};
 
 /// Errors from fallible operations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
