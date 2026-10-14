@@ -5,9 +5,7 @@
 //! - `hatch.get`: query hatch settings and odd-cycle conflict detection on selection.
 
 use serde_json::{Value, json};
-use vectorcraft_doc::hatch::{
-    DEFAULT_CUT_BORDER_PT, DEFAULT_HATCH_SPACING_MM, DEFAULT_HATCH_WEIGHT_PT, HatchDirection, HatchStyle,
-};
+use vectorcraft_doc::hatch::{DEFAULT_CUT_BORDER_PT, DEFAULT_HATCH_SPACING_MM, DEFAULT_HATCH_WEIGHT_PT, HatchDirection, HatchStyle};
 use vectorcraft_doc::{AppearanceItem, NodeId, NodeKind, StrokeLayer};
 use vectorcraft_pathops::hatch::resolve_document_hatching;
 
@@ -22,7 +20,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Set Hatch",
             [],
             None,
-            "{direction: \"45\"|\"135\"|\"alt\"|\"none\", spacing_mm?: f64, weight_pt?: f64, flipped?: bool, ids?: [u64]} set hatching on target paths",
+            "{direction: \"0\"|\"45\"|\"90\"|\"135\"|\"cross\"|\"diagonal_cross\"|\"alt\"|\"none\", spacing_mm?: f64, weight_pt?: f64, flipped?: bool, ids?: [u64]} set hatching on target paths",
             has_doc,
             set
         ),
@@ -35,15 +33,7 @@ pub fn specs() -> Vec<CommandSpec> {
             has_doc,
             cut_face
         ),
-        cmd!(
-            "hatch.cut_face",
-            "Cut Face",
-            [],
-            None,
-            "{ids?: [u64]} alias for hatch.cutFace",
-            has_doc,
-            cut_face
-        ),
+        cmd!("hatch.cut_face", "Cut Face", [], None, "{ids?: [u64]} alias for hatch.cutFace", has_doc, cut_face),
         cmd!(
             "hatch.flip",
             "Flip Hatch Direction",
@@ -53,22 +43,18 @@ pub fn specs() -> Vec<CommandSpec> {
             has_doc,
             flip
         ),
-        cmd!(
-            "hatch.get",
-            "Get Hatch Info",
-            [],
-            None,
-            "{id?: u64} get hatch style and conflict status for target path",
-            has_doc,
-            get
-        ),
+        cmd!("hatch.get", "Get Hatch Info", [], None, "{id?: u64} get hatch style and conflict status for target path", has_doc, get),
     ]
 }
 
 fn parse_direction(val: &str) -> Option<HatchDirection> {
     match val.trim().to_lowercase().as_str() {
+        "0" | "deg0" | "0°" => Some(HatchDirection::Deg0),
         "45" | "deg45" | "45°" => Some(HatchDirection::Deg45),
+        "90" | "deg90" | "90°" => Some(HatchDirection::Deg90),
         "135" | "deg135" | "135°" => Some(HatchDirection::Deg135),
+        "cross" | "cross_ortho" | "┼" | "십자" => Some(HatchDirection::Cross),
+        "diagonal_cross" | "diag_cross" | "cross_diag" | "╳" | "사선십자" => Some(HatchDirection::DiagonalCross),
         "alt" | "alternate" | "번갈아" => Some(HatchDirection::Alternate),
         "none" | "없음" => Some(HatchDirection::None),
         _ => None,
@@ -100,13 +86,7 @@ fn set(s: &mut Session, p: &Value) -> Result<Value> {
                 node.hatch = None;
             } else {
                 let flipped = flipped_param.unwrap_or_else(|| node.hatch.as_ref().is_some_and(|h| h.flipped));
-                node.hatch = Some(HatchStyle {
-                    direction,
-                    spacing_mm,
-                    weight_pt,
-                    flipped,
-                    resolved_direction: None,
-                });
+                node.hatch = Some(HatchStyle { direction, spacing_mm, weight_pt, flipped, resolved_direction: None });
             }
             count += 1;
         }
@@ -215,8 +195,12 @@ fn get(s: &mut Session, p: &Value) -> Result<Value> {
 
     if let Some(hatch) = &node.hatch {
         let dir_str = match hatch.direction {
+            HatchDirection::Deg0 => "0",
             HatchDirection::Deg45 => "45",
+            HatchDirection::Deg90 => "90",
             HatchDirection::Deg135 => "135",
+            HatchDirection::Cross => "cross",
+            HatchDirection::DiagonalCross => "diagonal_cross",
             HatchDirection::Alternate => "alt",
             HatchDirection::None => "none",
         };

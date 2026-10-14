@@ -70,13 +70,20 @@ fn gpkg_import_layers(s: &mut Session, p: &Value) -> Result<Value> {
     let reader = GpkgReader::open(path).map_err(|e| bad("gpkg.importLayers", e))?;
     let survey_info = reader.inspect().map_err(|e| bad("gpkg.importLayers", e))?;
 
-    let filter_layers: Option<Vec<String>> = p.get("layers").and_then(Value::as_array).map(|a| {
-        a.iter().filter_map(Value::as_str).map(String::from).collect()
-    });
+    let filter_layers: Option<Vec<String>> = p.get("layers")
+        .and_then(|v| {
+            if let Some(arr) = v.as_array() {
+                Some(arr.iter().filter_map(Value::as_str).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+            } else if let Some(s) = v.as_str() {
+                Some(s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect())
+            } else {
+                None
+            }
+        });
 
     let scale_denom = p.get("scale").and_then(Value::as_f64).unwrap_or(20.0);
     let set_origin = p.get("setOrigin").or_else(|| p.get("set_origin")).and_then(Value::as_bool).unwrap_or(true);
-    let _apply_hatch_presets = p.get("applyHatchPresets").or_else(|| p.get("apply_hatch_presets")).and_then(Value::as_bool).unwrap_or(true);
+    let apply_hatch_presets = p.get("applyHatchPresets").or_else(|| p.get("apply_hatch_presets")).and_then(Value::as_bool).unwrap_or(true);
 
     let mut imported_layers_count = 0;
     let mut imported_features_count = 0;
@@ -90,7 +97,13 @@ fn gpkg_import_layers(s: &mut Session, p: &Value) -> Result<Value> {
 
     for layer_info in &survey_info.layers {
         if let Some(ref filter) = filter_layers {
-            if !filter.iter().any(|f| f == &layer_info.table_name || f == &layer_info.target_layer) {
+            let matched = filter.iter().any(|f| {
+                f.eq_ignore_ascii_case(&layer_info.table_name)
+                    || f.eq_ignore_ascii_case(&layer_info.target_layer)
+                    || layer_info.table_name.contains(f)
+                    || layer_info.target_layer.contains(f)
+            });
+            if !matched {
                 continue;
             }
         }
@@ -223,7 +236,22 @@ fn gpkg_import_layers(s: &mut Session, p: &Value) -> Result<Value> {
                             }
                         }
 
-                        let path_node = Node::path(doc.alloc_id(), path_data, app);
+                        let mut path_node = Node::path(doc.alloc_id(), path_data, app);
+
+                        // If hatch presets enabled, inspect feature attributes and assign hatch to polygon geometries
+                        if apply_hatch_presets && matches!(f.geometry, GpkgGeometry::Polygon { .. } | GpkgGeometry::MultiPolygon { .. }) {
+                            let type_hint = f.attributes.get("feature_type")
+                                .or_else(|| f.attributes.get("kind"))
+                                .or_else(|| f.attributes.get("type"))
+                                .or_else(|| f.attributes.get("feature_name"))
+                                .or_else(|| f.attributes.get("name"))
+                                .and_then(Value::as_str)
+                                .unwrap_or(&layer_info.table_name);
+                            if let Some(hatch) = vectorcraft_cad::resolve_feature_hatch(type_hint) {
+                                path_node.hatch = Some(hatch);
+                            }
+                        }
+
                         child_nodes.push(Arc::new(path_node));
                     }
                 }

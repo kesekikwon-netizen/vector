@@ -2899,6 +2899,88 @@ fn test_adversarial_recent_books_json_roundtrip() {
     let helper_json = recents.to_json().expect("to_json helper failed");
     let roundtripped_helper = RecentDrawingBooks::from_json(&helper_json).expect("from_json helper failed");
     assert_eq!(recents, roundtripped_helper);
+
+    // 5. Adversarial Stress Test: Deserialization of minimal JSON "{}" verifying #[serde(default)]
+    let minimal_json = "{}";
+    let from_minimal: RecentDrawingBooks =
+        serde_json::from_str(minimal_json).expect("deserialization of minimal '{}' must succeed via #[serde(default)]");
+    assert!(from_minimal.books.is_empty(), "deserializing '{{}}' must yield empty books");
+    let from_minimal_helper = RecentDrawingBooks::from_json(minimal_json).expect("from_json of minimal '{}' must succeed");
+    assert!(from_minimal_helper.books.is_empty());
+
+    // 6. Adversarial Stress Test: Malformed JSON syntax with RecentDrawingBooks::from_json -> returns Err gracefully without panic
+    let malformed_cases = [
+        "",
+        "{",
+        "{ \"books\": ",
+        "{\"books\": [ { \"name\": 123 } ]}",
+        "not a json string at all",
+        "{\"books\": \"invalid_type_not_a_vec\"}",
+        "{\"books\": [ { \"strata_status\": \"InvalidStatusEnumVariant\" } ]}",
+        "null",
+        "12345",
+        "\"a string\"",
+    ];
+    for bad_json in malformed_cases {
+        let res = RecentDrawingBooks::from_json(bad_json);
+        assert!(res.is_err(), "malformed or invalid JSON '{bad_json}' must return Err, but got Ok({:?})", res.ok());
+    }
+
+    // 7. Adversarial Stress Test: Round-trip with multiple books containing complex Korean strings, Windows path separators (\\ vs /), and all 3 statuses
+    let complex_recents = RecentDrawingBooks {
+        books: vec![
+            super::book::ResolvedDrawingBook {
+                name: "제주 용담동 유적 (제1차 발굴·조사) [특수문자: ★/①/㎡]".to_string(),
+                survey_dir: PathBuf::from("D:/발굴_2026/용담동_특수/조사_1"),
+                drawing_book_dir: PathBuf::from("D:/발굴_2026/용담동_특수/조사_1/도면"),
+                strata_status: StrataGpkgStatus::Connected {
+                    filename: "용담동_조사_1.gpkg".to_string(),
+                    path: PathBuf::from("D:/발굴_2026/용담동_특수/조사_1/용담동_조사_1.gpkg"),
+                },
+                plan_count: 10,
+                section_count: 20,
+                finds_count: 30,
+                plate_count: 4,
+                crs: "5186 중부원점 (EPSG:5186)".to_string(),
+                last_opened: "2026-10-14 18:00:00 (KST)".to_string(),
+            },
+            super::book::ResolvedDrawingBook {
+                name: "강릉 초당동 유구\\하부층 2호 주거지".to_string(),
+                survey_dir: PathBuf::from("C:\\Survey\\Gangneung\\Chodang"),
+                drawing_book_dir: PathBuf::from("C:\\Survey\\Gangneung\\Chodang\\도면"),
+                strata_status: StrataGpkgStatus::Disconnected,
+                plan_count: 0,
+                section_count: 0,
+                finds_count: 0,
+                plate_count: 0,
+                crs: "5187 동부원점".to_string(),
+                last_opened: "방금 전".to_string(),
+            },
+            super::book::ResolvedDrawingBook {
+                name: "경주 황남동 120호분 [누락 파일 테스트 / Missing GPKG]".to_string(),
+                survey_dir: PathBuf::from("E:\\Excavation\\Gyeongju\\Hwangnam_120"),
+                drawing_book_dir: PathBuf::from("E:\\Excavation\\Gyeongju\\Hwangnam_120\\도면"),
+                strata_status: StrataGpkgStatus::Missing {
+                    filename: "hwangnam_missing.gpkg".to_string(),
+                    expected_path: PathBuf::from("E:\\Excavation\\Gyeongju\\Hwangnam_120\\hwangnam_missing.gpkg"),
+                },
+                plan_count: 5,
+                section_count: 7,
+                finds_count: 12,
+                plate_count: 3,
+                crs: "5186 중부원점".to_string(),
+                last_opened: "1개월 전".to_string(),
+            },
+        ],
+    };
+
+    let complex_json = complex_recents.to_json().expect("complex serialization failed");
+    let roundtripped_complex = RecentDrawingBooks::from_json(&complex_json).expect("complex deserialization failed");
+    assert_eq!(complex_recents, roundtripped_complex, "Complex Korean & path roundtrip failed");
+    assert_eq!(roundtripped_complex.books.len(), 3);
+    assert!(roundtripped_complex.books[0].strata_status.is_connected());
+    assert_eq!(roundtripped_complex.books[1].strata_status, StrataGpkgStatus::Disconnected);
+    assert!(roundtripped_complex.books[2].strata_status.is_missing());
 }
 
 #[test]
@@ -2947,6 +3029,67 @@ fn test_adversarial_drawing_book_resolve_missing_status() {
     assert_eq!(book_sub_disconnected.strata_status, StrataGpkgStatus::Disconnected, "도면 folder of survey without .gpkg must return Disconnected");
     assert_eq!(book_sub_disconnected.survey_dir, survey_no_gpkg);
     assert_eq!(book_sub_disconnected.drawing_book_dir, book_dir_no_gpkg);
+    assert_eq!(
+        book_sub_disconnected.drawing_book_dir,
+        book_sub_disconnected.survey_dir.join("도면"),
+        "Drawing book must be <survey_dir>/도면 per §14(1)"
+    );
+
+    // 4. Target is an existing .gpkg file -> StrataGpkgStatus::Connected
+    let survey_with_gpkg = base_dir.join("광령리1");
+    let _ = std::fs::create_dir_all(&survey_with_gpkg);
+    let existing_gpkg = survey_with_gpkg.join("광령리1.gpkg");
+    let _ = std::fs::write(&existing_gpkg, b"sqlite gpkg header mock");
+    let book_connected = ResolvedDrawingBook::resolve(&existing_gpkg);
+    assert!(book_connected.strata_status.is_connected(), "Existing .gpkg file must return Connected");
+    match &book_connected.strata_status {
+        StrataGpkgStatus::Connected { filename, path } => {
+            assert_eq!(filename, "광령리1.gpkg");
+            assert_eq!(path, &existing_gpkg);
+        }
+        other => panic!("Expected StrataGpkgStatus::Connected, got {:?}", other),
+    }
+    assert_eq!(book_connected.name, "광령리1");
+    assert_eq!(book_connected.survey_dir, survey_with_gpkg);
+    assert_eq!(book_connected.drawing_book_dir, survey_with_gpkg.join("도면"), "Drawing book must be <survey_dir>/도면 per §14(1)");
+
+    // 5. Target is a non-gpkg drawing file (.vectorcraft, .drawcraft)
+    // 5a. .vectorcraft file inside <survey_dir>/도면 when survey lacks .gpkg -> Disconnected
+    let vec_file = book_dir_no_gpkg.join("1호주거지.vectorcraft");
+    let _ = std::fs::write(&vec_file, b"{}");
+    let book_vec = ResolvedDrawingBook::resolve(&vec_file);
+    assert_eq!(book_vec.strata_status, StrataGpkgStatus::Disconnected, "Drawing file without GPKG must return Disconnected");
+    assert_eq!(book_vec.survey_dir, survey_no_gpkg);
+    assert_eq!(book_vec.drawing_book_dir, book_dir_no_gpkg);
+    assert_eq!(book_vec.drawing_book_dir, book_vec.survey_dir.join("도면"), "Drawing book must be <survey_dir>/도면 per §14(1)");
+
+    // 5b. .drawcraft file inside <survey_dir>/도면 when survey lacks .gpkg -> Disconnected
+    let draw_file = book_dir_no_gpkg.join("2호주거지.drawcraft");
+    let _ = std::fs::write(&draw_file, b"{}");
+    let book_draw = ResolvedDrawingBook::resolve(&draw_file);
+    assert_eq!(book_draw.strata_status, StrataGpkgStatus::Disconnected, "Drawing file without GPKG must return Disconnected");
+    assert_eq!(book_draw.survey_dir, survey_no_gpkg);
+    assert_eq!(book_draw.drawing_book_dir, book_dir_no_gpkg);
+    assert_eq!(book_draw.drawing_book_dir, book_draw.survey_dir.join("도면"), "Drawing book must be <survey_dir>/도면 per §14(1)");
+
+    // 5c. Standalone drawing file directly under survey directory (not inside 도면) without .gpkg -> Disconnected
+    let standalone_vec = survey_no_gpkg.join("단독도면.vectorcraft");
+    let _ = std::fs::write(&standalone_vec, b"{}");
+    let book_standalone = ResolvedDrawingBook::resolve(&standalone_vec);
+    assert_eq!(book_standalone.strata_status, StrataGpkgStatus::Disconnected, "Standalone drawing without GPKG must return Disconnected");
+    assert_eq!(book_standalone.survey_dir, survey_no_gpkg);
+    assert_eq!(book_standalone.drawing_book_dir, survey_no_gpkg.join("도면"));
+    assert_eq!(book_standalone.drawing_book_dir, book_standalone.survey_dir.join("도면"), "Drawing book must be <survey_dir>/도면 per §14(1)");
+
+    // 6. Case sensitivity: Uppercase .GPKG missing file -> StrataGpkgStatus::Missing
+    let uppercase_missing = Path::new("D:\\발굴\\하가리\\하가리.GPKG");
+    let book_upper_missing = ResolvedDrawingBook::resolve(uppercase_missing);
+    assert!(book_upper_missing.strata_status.is_missing(), "Uppercase .GPKG path must return Missing status");
+    if let StrataGpkgStatus::Missing { filename, expected_path } = &book_upper_missing.strata_status {
+        assert_eq!(filename, "하가리.GPKG");
+        assert_eq!(expected_path, uppercase_missing);
+    }
+    assert_eq!(book_upper_missing.drawing_book_dir, book_upper_missing.survey_dir.join("도면"), "Drawing book must be <survey_dir>/도면 per §14(1)");
 
     // Clean up
     let _ = std::fs::remove_dir_all(&base_dir);
@@ -2995,4 +3138,91 @@ fn test_adversarial_template_creation_all_variants() {
             );
         }
     }
+}
+
+#[test]
+fn test_canvas_penbar_adversarial_suite() {
+    let mut h = Harness::sized(1600.0, 988.0);
+
+    // 1. Tool visibility check for active drawing tools
+    let active_drawing_tools = ["pen", "pencil", "paintbrush", "curvature", "lineSegment"];
+    for t in active_drawing_tools {
+        h.app.select_tool(t);
+        assert!(canvas_penbar::is_visible(&h.app), "Tool '{t}' must show CanvasPenBar");
+    }
+
+    let non_drawing_tools = ["selection", "directSelection", "rectangle", "type", "zoom", "hand"];
+    for t in non_drawing_tools {
+        h.app.select_tool(t);
+        assert!(!canvas_penbar::is_visible(&h.app), "Tool '{t}' must NOT show CanvasPenBar");
+    }
+
+    // 2. Render frame with CanvasPenBar and check 0.5s double-click configuration
+    h.app.select_tool("pen");
+    let tokens = Tokens::get(&h.ctx);
+    let canvas_rect = Rect::from_min_size(pos2(100.0, 100.0), vec2(1000.0, 700.0));
+
+    let mut out = h.ctx.run_ui(egui::RawInput::default(), |ui| {
+        canvas_penbar::show(&mut h.app, ui, canvas_rect, &tokens);
+    });
+    out.textures_delta.clear();
+
+    let delay = h.ctx.options(|o| o.input_options.max_double_click_delay);
+    assert_eq!(delay, 0.5, "CanvasPenBar must configure egui max_double_click_delay to 0.5s");
+
+    // 3. Action button commands dispatch via menus::invoke without crash
+    let cmds = [
+        ("edit.undo", json!({})),
+        ("edit.redo", json!({})),
+        ("view.zoomIn", json!({})),
+        ("view.zoomOut", json!({})),
+        ("view.fitArtboard", json!({})),
+    ];
+    for (cmd, params) in cmds {
+        crate::menus::invoke(&mut h.app, cmd, params);
+    }
+}
+
+#[test]
+fn test_style_dialog_dynamic_diff_and_toggle() {
+    let mut h = Harness::new();
+    // 1. Open style dialog
+    style_dialog::toggle_dialog(&h.ctx);
+    h.settle();
+
+    // 2. Verify window title and content appear
+    let win_text = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(win_text.contains("도면 양식 템플릿 차이 분석 및 병합"), "Style dialog must open: {win_text}");
+
+    // 3. Verify genuine diff counts appear
+    assert!(win_text.contains("템플릿 차이 분석 결과 (Diff)"), "Diff summary header must appear");
+    assert!(win_text.contains("추가:"), "Added chip must appear");
+
+    // 4. Close dialog and verify it is dismissed
+    style_dialog::toggle_dialog(&h.ctx);
+    h.settle();
+
+    let win_closed = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(!win_closed.contains("도면 양식 템플릿 차이 분석 및 병합"), "Style dialog must close");
+}
+
+#[test]
+fn test_gpkg_browser_checkbox_and_toggle() {
+    let mut h = Harness::new();
+    // 1. Open GPKG browser dialog
+    gpkg_browser::toggle_dialog(&h.ctx);
+    h.settle();
+
+    // 2. Verify dialog content appears
+    let win_text = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(win_text.contains("Strata OGC GeoPackage 현장 측량 데이터 연동"), "GPKG browser must open: {win_text}");
+    assert!(win_text.contains("광령리 1호 유적 표준 레이어"), "Layers header must appear");
+    assert!(win_text.contains("선택)"), "Selection counter must appear");
+
+    // 3. Close dialog and verify dismissal
+    gpkg_browser::toggle_dialog(&h.ctx);
+    h.settle();
+
+    let win_closed = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(!win_closed.contains("Strata OGC GeoPackage 현장 측량 데이터 연동"), "GPKG browser must close");
 }

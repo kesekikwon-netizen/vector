@@ -172,6 +172,16 @@ fn apply_template(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(arr) = p.get("resolutions").and_then(Value::as_array) {
         for item in arr {
             let key = item.get("key").and_then(Value::as_str).unwrap_or("").to_string();
+            let cat_str = item.get("category").and_then(Value::as_str).unwrap_or("legend_row");
+            let category = match cat_str {
+                "stroke_weight" => StyleCategory::StrokeWeight,
+                "hatch_preset" => StyleCategory::HatchPreset,
+                "soil_palette" => StyleCategory::SoilPalette,
+                "typography" => StyleCategory::Typography,
+                "elevation_rules" => StyleCategory::ElevationRules,
+                "title_block" => StyleCategory::TitleBlock,
+                _ => StyleCategory::LegendRow,
+            };
             let action_str = item.get("action").and_then(Value::as_str).unwrap_or("overwrite");
             let action = match action_str {
                 "keep_existing" => MergeAction::KeepExisting,
@@ -179,7 +189,7 @@ fn apply_template(s: &mut Session, p: &Value) -> Result<Value> {
                 _ => MergeAction::Overwrite,
             };
             resolutions.push(StyleMergeResolution {
-                category: StyleCategory::LegendRow,
+                category,
                 key,
                 action,
             });

@@ -22,12 +22,24 @@ pub const DEFAULT_CUT_BORDER_PT: f64 = 0.8;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum HatchDirection {
-    /// 45° hatching lines (╱).
+    /// 0° horizontal hatching lines (─) for 구 (furrow).
+    #[serde(rename = "0", alias = "deg0")]
+    Deg0,
+    /// 45° hatching lines (╱) for 수혈 (pit).
     #[serde(rename = "45", alias = "deg45")]
     Deg45,
-    /// 135° hatching lines (╲).
+    /// 90° vertical hatching lines (│) for 도랑 (ditch).
+    #[serde(rename = "90", alias = "deg90")]
+    Deg90,
+    /// 135° hatching lines (╲) for 분묘 (tomb).
     #[serde(rename = "135", alias = "deg135")]
     Deg135,
+    /// Orthogonal cross-hatching (┼: 0° + 90°) for 가마 (kiln).
+    #[serde(rename = "cross", alias = "cross_ortho")]
+    Cross,
+    /// Diagonal cross-hatching (╳: 45° + 135°) for 유물 (artifacts).
+    #[serde(rename = "diagonal_cross", alias = "cross_diag")]
+    DiagonalCross,
     /// Automatically alternating hatching across adjacent planar faces (45° vs 135°).
     #[serde(rename = "alternate", alias = "alt")]
     Alternate,
@@ -38,20 +50,24 @@ pub enum HatchDirection {
 }
 
 impl HatchDirection {
-    /// Returns the angle in radians for fixed directions, or None for None / Alternate.
+    /// Returns the angle in radians for single-angle directions, or None for composite / None / Alternate.
     pub fn angle_rad(self) -> Option<f64> {
         match self {
+            HatchDirection::Deg0 => Some(0.0),
             HatchDirection::Deg45 => Some(std::f64::consts::FRAC_PI_4),
+            HatchDirection::Deg90 => Some(std::f64::consts::FRAC_PI_2),
             HatchDirection::Deg135 => Some(3.0 * std::f64::consts::FRAC_PI_4),
-            HatchDirection::Alternate | HatchDirection::None => None,
+            HatchDirection::Cross | HatchDirection::DiagonalCross | HatchDirection::Alternate | HatchDirection::None => None,
         }
     }
 
-    /// Inverts direction between 45° and 135°.
+    /// Inverts direction (45° ↔ 135°, 0° ↔ 90°).
     pub fn inverted(self) -> Self {
         match self {
             HatchDirection::Deg45 => HatchDirection::Deg135,
             HatchDirection::Deg135 => HatchDirection::Deg45,
+            HatchDirection::Deg0 => HatchDirection::Deg90,
+            HatchDirection::Deg90 => HatchDirection::Deg0,
             other => other,
         }
     }
@@ -59,8 +75,12 @@ impl HatchDirection {
     /// User-facing label in Korean.
     pub fn label_ko(self) -> &'static str {
         match self {
+            HatchDirection::Deg0 => "0°",
             HatchDirection::Deg45 => "45°",
+            HatchDirection::Deg90 => "90°",
             HatchDirection::Deg135 => "135°",
+            HatchDirection::Cross => "십자 (┼)",
+            HatchDirection::DiagonalCross => "사선 십자 (╳)",
             HatchDirection::Alternate => "번갈아",
             HatchDirection::None => "없음",
         }
@@ -89,10 +109,7 @@ pub struct HatchStyle {
 
 impl PartialEq for HatchStyle {
     fn eq(&self, other: &Self) -> bool {
-        self.direction == other.direction
-            && self.spacing_mm == other.spacing_mm
-            && self.weight_pt == other.weight_pt
-            && self.flipped == other.flipped
+        self.direction == other.direction && self.spacing_mm == other.spacing_mm && self.weight_pt == other.weight_pt && self.flipped == other.flipped
     }
 }
 
@@ -119,13 +136,7 @@ impl Default for HatchStyle {
 impl HatchStyle {
     /// Creates a new HatchStyle with given direction and defaults.
     pub fn new(direction: HatchDirection) -> Self {
-        Self {
-            direction,
-            spacing_mm: DEFAULT_HATCH_SPACING_MM,
-            weight_pt: DEFAULT_HATCH_WEIGHT_PT,
-            flipped: false,
-            resolved_direction: None,
-        }
+        Self { direction, spacing_mm: DEFAULT_HATCH_SPACING_MM, weight_pt: DEFAULT_HATCH_WEIGHT_PT, flipped: false, resolved_direction: None }
     }
 
     /// Returns true if this style actually generates visible hatch lines.
@@ -141,11 +152,25 @@ impl HatchStyle {
     /// Returns the effective direction for single faces (defaulting Alternate to Deg45 unless flipped).
     pub fn effective_direction(&self) -> HatchDirection {
         match self.direction {
+            HatchDirection::Deg0 => {
+                if self.flipped {
+                    HatchDirection::Deg90
+                } else {
+                    HatchDirection::Deg0
+                }
+            }
             HatchDirection::Deg45 => {
                 if self.flipped {
                     HatchDirection::Deg135
                 } else {
                     HatchDirection::Deg45
+                }
+            }
+            HatchDirection::Deg90 => {
+                if self.flipped {
+                    HatchDirection::Deg0
+                } else {
+                    HatchDirection::Deg90
                 }
             }
             HatchDirection::Deg135 => {
@@ -155,13 +180,11 @@ impl HatchStyle {
                     HatchDirection::Deg135
                 }
             }
+            HatchDirection::Cross => HatchDirection::Cross,
+            HatchDirection::DiagonalCross => HatchDirection::DiagonalCross,
             HatchDirection::Alternate => {
                 let base = self.resolved_direction.unwrap_or(HatchDirection::Deg45);
-                if self.flipped {
-                    base.inverted()
-                } else {
-                    base
-                }
+                if self.flipped { base.inverted() } else { base }
             }
             HatchDirection::None => HatchDirection::None,
         }

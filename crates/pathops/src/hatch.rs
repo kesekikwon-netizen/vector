@@ -245,11 +245,7 @@ pub fn bipartite_2color(adj: &[Vec<usize>]) -> (Vec<bool>, bool) {
 }
 
 /// Resolves effective hatch directions across faces and emits vector hatch lines.
-pub fn solve_face_hatching(
-    faces: &[BezPath],
-    styles: &[HatchStyle],
-    adjacencies: Option<&[Vec<usize>]>,
-) -> Vec<HatchFaceResult> {
+pub fn solve_face_hatching(faces: &[BezPath], styles: &[HatchStyle], adjacencies: Option<&[Vec<usize>]>) -> Vec<HatchFaceResult> {
     let n = faces.len();
     let computed_adj;
     let adj = match adjacencies {
@@ -271,9 +267,19 @@ pub fn solve_face_hatching(
         let style = styles.get(i).cloned().unwrap_or_default();
 
         let (effective_dir, base_dir) = match style.direction {
+            HatchDirection::Deg0 => {
+                let base = HatchDirection::Deg0;
+                let eff = if style.flipped { HatchDirection::Deg90 } else { HatchDirection::Deg0 };
+                (eff, base)
+            }
             HatchDirection::Deg45 => {
                 let base = HatchDirection::Deg45;
                 let eff = if style.flipped { HatchDirection::Deg135 } else { HatchDirection::Deg45 };
+                (eff, base)
+            }
+            HatchDirection::Deg90 => {
+                let base = HatchDirection::Deg90;
+                let eff = if style.flipped { HatchDirection::Deg0 } else { HatchDirection::Deg90 };
                 (eff, base)
             }
             HatchDirection::Deg135 => {
@@ -281,6 +287,8 @@ pub fn solve_face_hatching(
                 let eff = if style.flipped { HatchDirection::Deg45 } else { HatchDirection::Deg135 };
                 (eff, base)
             }
+            HatchDirection::Cross => (HatchDirection::Cross, HatchDirection::Cross),
+            HatchDirection::DiagonalCross => (HatchDirection::DiagonalCross, HatchDirection::DiagonalCross),
             HatchDirection::Alternate => {
                 let is_135 = coloring.get(i).copied().unwrap_or(false);
                 let base = if is_135 { HatchDirection::Deg135 } else { HatchDirection::Deg45 };
@@ -370,29 +378,16 @@ pub fn resolve_document_hatching(doc: &vectorcraft_doc::Document) -> DocumentHat
         }
     }
 
-    DocumentHatchResolution {
-        effective_dirs,
-        base_dirs,
-        conflicts,
-    }
+    DocumentHatchResolution { effective_dirs, base_dirs, conflicts }
 }
 
-/// Emits vector hatch lines clipped to a closed boundary polygon at the given spacing.
-/// Rotates the boundary by -theta, slices with horizontal scanlines, pairs up even-odd
-/// intersections, and rotates back by +theta.
-pub fn emit_hatch_lines(boundary: &BezPath, direction: HatchDirection, spacing_pt: f64) -> BezPath {
+/// Helper to emit single-angle parallel scanlines clipped to polygon boundary.
+fn emit_single_angle_hatch_lines(boundary: &BezPath, angle_rad: f64, spacing_pt: f64) -> BezPath {
     let mut result = BezPath::new();
-    if direction == HatchDirection::None || spacing_pt <= 0.001 {
+    if spacing_pt <= 0.001 {
         return result;
     }
 
-    let angle_rad = match direction {
-        HatchDirection::Deg45 => std::f64::consts::FRAC_PI_4,
-        HatchDirection::Deg135 => 3.0 * std::f64::consts::FRAC_PI_4,
-        _ => return result,
-    };
-
-    // Flatten boundary to line segments
     let segments = extract_segments(boundary, 0.1);
     if segments.is_empty() {
         return result;
@@ -400,17 +395,14 @@ pub fn emit_hatch_lines(boundary: &BezPath, direction: HatchDirection, spacing_p
 
     let cos_a = (-angle_rad).cos();
     let sin_a = (-angle_rad).sin();
-
     let rot_forward_cos = angle_rad.cos();
     let rot_forward_sin = angle_rad.sin();
 
     let rotate_neg = |p: Point| Point::new(p.x * cos_a - p.y * sin_a, p.x * sin_a + p.y * cos_a);
     let rotate_pos = |p: Point| Point::new(p.x * rot_forward_cos - p.y * rot_forward_sin, p.x * rot_forward_sin + p.y * rot_forward_cos);
 
-    // Rotate all segments into the horizontal frame
     let rot_segments: Vec<(Point, Point)> = segments.iter().map(|&(p1, p2)| (rotate_neg(p1), rotate_neg(p2))).collect();
 
-    // Compute bounding box in rotated coordinates
     let mut y_min = f64::INFINITY;
     let mut y_max = f64::NEG_INFINITY;
     for &(p1, p2) in &rot_segments {
@@ -422,7 +414,6 @@ pub fn emit_hatch_lines(boundary: &BezPath, direction: HatchDirection, spacing_p
         return result;
     }
 
-    // Determine scanline range
     let start_idx = (y_min / spacing_pt).floor() as i64 - 1;
     let end_idx = (y_max / spacing_pt).ceil() as i64 + 1;
 
@@ -433,15 +424,11 @@ pub fn emit_hatch_lines(boundary: &BezPath, direction: HatchDirection, spacing_p
         }
 
         let mut x_intersections = Vec::new();
-
         for &(p1, p2) in &rot_segments {
             let (min_y, max_y) = if p1.y <= p2.y { (p1.y, p2.y) } else { (p2.y, p1.y) };
             if (max_y - min_y).abs() < 1e-9 {
-                // Horizontal segment: skip to avoid duplicate parity transitions
                 continue;
             }
-
-            // Half-open interval [min_y, max_y) to avoid counting vertices twice
             if scan_y >= min_y && scan_y < max_y {
                 let t = (scan_y - p1.y) / (p2.y - p1.y);
                 let x = p1.x + t * (p2.x - p1.x);
@@ -451,7 +438,6 @@ pub fn emit_hatch_lines(boundary: &BezPath, direction: HatchDirection, spacing_p
 
         x_intersections.sort_by(|a, b| a.total_cmp(b));
 
-        // Group into segments by even-odd parity
         let mut idx = 0;
         while idx + 1 < x_intersections.len() {
             let x1 = match x_intersections.get(idx) {
@@ -465,11 +451,8 @@ pub fn emit_hatch_lines(boundary: &BezPath, direction: HatchDirection, spacing_p
             idx += 2;
 
             if x2 - x1 > 1e-6 {
-                let rot_p1 = Point::new(x1, scan_y);
-                let rot_p2 = Point::new(x2, scan_y);
-                let doc_p1 = rotate_pos(rot_p1);
-                let doc_p2 = rotate_pos(rot_p2);
-
+                let doc_p1 = rotate_pos(Point::new(x1, scan_y));
+                let doc_p2 = rotate_pos(Point::new(x2, scan_y));
                 result.move_to(doc_p1);
                 result.line_to(doc_p2);
             }
@@ -477,6 +460,29 @@ pub fn emit_hatch_lines(boundary: &BezPath, direction: HatchDirection, spacing_p
     }
 
     result
+}
+
+/// Emits vector hatch lines clipped to a closed boundary polygon at the given spacing.
+/// Rotates the boundary by -theta, slices with horizontal scanlines, pairs up even-odd
+/// intersections, and rotates back by +theta.
+pub fn emit_hatch_lines(boundary: &BezPath, direction: HatchDirection, spacing_pt: f64) -> BezPath {
+    match direction {
+        HatchDirection::Deg0 => emit_single_angle_hatch_lines(boundary, 0.0, spacing_pt),
+        HatchDirection::Deg45 => emit_single_angle_hatch_lines(boundary, std::f64::consts::FRAC_PI_4, spacing_pt),
+        HatchDirection::Deg90 => emit_single_angle_hatch_lines(boundary, std::f64::consts::FRAC_PI_2, spacing_pt),
+        HatchDirection::Deg135 => emit_single_angle_hatch_lines(boundary, 3.0 * std::f64::consts::FRAC_PI_4, spacing_pt),
+        HatchDirection::Cross => {
+            let mut lines = emit_single_angle_hatch_lines(boundary, 0.0, spacing_pt);
+            lines.extend(emit_single_angle_hatch_lines(boundary, std::f64::consts::FRAC_PI_2, spacing_pt));
+            lines
+        }
+        HatchDirection::DiagonalCross => {
+            let mut lines = emit_single_angle_hatch_lines(boundary, std::f64::consts::FRAC_PI_4, spacing_pt);
+            lines.extend(emit_single_angle_hatch_lines(boundary, 3.0 * std::f64::consts::FRAC_PI_4, spacing_pt));
+            lines
+        }
+        HatchDirection::Alternate | HatchDirection::None => BezPath::new(),
+    }
 }
 
 #[cfg(test)]
@@ -622,5 +628,34 @@ mod tests {
         // Legacy wrapper must report global conflict
         let (_legacy_assign, legacy_conflict) = bipartite_2color(&adj);
         assert!(legacy_conflict);
+    }
+
+    #[test]
+    fn test_emit_hatch_lines_extended_directions() {
+        let mut r = BezPath::new();
+        r.move_to((0.0, 0.0));
+        r.line_to((100.0, 0.0));
+        r.line_to((100.0, 100.0));
+        r.line_to((0.0, 100.0));
+        r.close_path();
+
+        let spacing_pt = 10.0;
+
+        let lines_0 = emit_hatch_lines(&r, HatchDirection::Deg0, spacing_pt);
+        assert!(!lines_0.elements().is_empty());
+        let count_0 = lines_0.elements().iter().filter(|el| matches!(el, PathEl::MoveTo(_))).count();
+        assert!(count_0 >= 8 && count_0 <= 12, "Deg0 lines count: {count_0}");
+
+        let lines_90 = emit_hatch_lines(&r, HatchDirection::Deg90, spacing_pt);
+        assert!(!lines_90.elements().is_empty());
+        let count_90 = lines_90.elements().iter().filter(|el| matches!(el, PathEl::MoveTo(_))).count();
+        assert!(count_90 >= 8 && count_90 <= 12, "Deg90 lines count: {count_90}");
+
+        let lines_cross = emit_hatch_lines(&r, HatchDirection::Cross, spacing_pt);
+        let count_cross = lines_cross.elements().iter().filter(|el| matches!(el, PathEl::MoveTo(_))).count();
+        assert_eq!(count_cross, count_0 + count_90, "Cross must equal Deg0 + Deg90 lines");
+
+        let lines_diag = emit_hatch_lines(&r, HatchDirection::DiagonalCross, spacing_pt);
+        assert!(!lines_diag.elements().is_empty());
     }
 }

@@ -320,7 +320,12 @@ impl StrataLayerKind {
 /// Feature hatch preset resolver for archaeological feature types (§7, §14(e)).
 pub fn resolve_feature_hatch(feature_type: &str) -> Option<HatchStyle> {
     let lower = feature_type.trim().to_ascii_lowercase();
-    if lower.contains("수혈") || lower.contains("pit") {
+
+    // 주거지 (dwelling/house): 없음 (open interior)
+    if lower.contains("주거지") || lower.contains("house") || lower.contains("dwelling") {
+        None
+    } else if lower.contains("수혈") || lower.contains("pit") {
+        // 수혈: ╱ 45°
         Some(HatchStyle {
             direction: HatchDirection::Deg45,
             spacing_mm: 1.0,
@@ -328,7 +333,8 @@ pub fn resolve_feature_hatch(feature_type: &str) -> Option<HatchStyle> {
             flipped: false,
             resolved_direction: None,
         })
-    } else if lower.contains("분묘") || lower.contains("석관묘") || lower.contains("tomb") {
+    } else if lower.contains("분묘") || lower.contains("석관묘") || lower.contains("목관묘") || lower.contains("고분") || lower.contains("tomb") || lower.contains("grave") {
+        // 분묘: ╲ 135°
         Some(HatchStyle {
             direction: HatchDirection::Deg135,
             spacing_mm: 1.0,
@@ -336,25 +342,33 @@ pub fn resolve_feature_hatch(feature_type: &str) -> Option<HatchStyle> {
             flipped: false,
             resolved_direction: None,
         })
-    } else if lower.contains("구") || lower.contains("furrow") {
-        // 0° hatch: represented as fixed angle 0°
+    } else if (lower.contains("구") && !lower.contains("유구")) || lower.contains("furrow") {
+        // 구: ─ 0° (guard against generic '유구')
         Some(HatchStyle {
-            direction: HatchDirection::Deg45, // default fallback
+            direction: HatchDirection::Deg0,
             spacing_mm: 1.0,
             weight_pt: 0.1,
             flipped: false,
             resolved_direction: None,
         })
     } else if lower.contains("도랑") || lower.contains("ditch") || lower.contains("channel") {
+        // 도랑: │ 90°
         Some(HatchStyle {
-            direction: HatchDirection::Deg135,
+            direction: HatchDirection::Deg90,
             spacing_mm: 1.0,
             weight_pt: 0.1,
             flipped: false,
             resolved_direction: None,
         })
-    } else if lower.contains("주거지") || lower.contains("house") || lower.contains("dwelling") {
-        None // 주거지: 없음 (open interior)
+    } else if lower.contains("가마") || lower.contains("kiln") || lower.contains("furnace") {
+        // 가마: ┼
+        Some(HatchStyle {
+            direction: HatchDirection::Cross,
+            spacing_mm: 1.0,
+            weight_pt: 0.1,
+            flipped: false,
+            resolved_direction: None,
+        })
     } else {
         None
     }
@@ -542,9 +556,10 @@ fn parse_wkb_element(bytes: &[u8], cursor: &mut usize) -> Option<GpkgGeometry> {
             *cursor += 4;
             let mut points = Vec::with_capacity(num_geoms.min(50_000));
             for _ in 0..num_geoms {
-                if let Some(GpkgGeometry::Point { x, y, z }) = parse_wkb_element(bytes, cursor) {
-                    points.push((x, y, z));
-                }
+                let Some(GpkgGeometry::Point { x, y, z }) = parse_wkb_element(bytes, cursor) else {
+                    return None;
+                };
+                points.push((x, y, z));
             }
             Some(GpkgGeometry::MultiPoint { points })
         }
@@ -554,9 +569,10 @@ fn parse_wkb_element(bytes: &[u8], cursor: &mut usize) -> Option<GpkgGeometry> {
             *cursor += 4;
             let mut lines = Vec::with_capacity(num_geoms.min(10_000));
             for _ in 0..num_geoms {
-                if let Some(GpkgGeometry::LineString { points }) = parse_wkb_element(bytes, cursor) {
-                    lines.push(points);
-                }
+                let Some(GpkgGeometry::LineString { points }) = parse_wkb_element(bytes, cursor) else {
+                    return None;
+                };
+                lines.push(points);
             }
             Some(GpkgGeometry::MultiLineString { lines })
         }
@@ -566,9 +582,10 @@ fn parse_wkb_element(bytes: &[u8], cursor: &mut usize) -> Option<GpkgGeometry> {
             *cursor += 4;
             let mut polygons = Vec::with_capacity(num_geoms.min(1_000));
             for _ in 0..num_geoms {
-                if let Some(GpkgGeometry::Polygon { rings }) = parse_wkb_element(bytes, cursor) {
-                    polygons.push(rings);
-                }
+                let Some(GpkgGeometry::Polygon { rings }) = parse_wkb_element(bytes, cursor) else {
+                    return None;
+                };
+                polygons.push(rings);
             }
             Some(GpkgGeometry::MultiPolygon { polygons })
         }
@@ -866,6 +883,116 @@ pub fn create_sample_gpkg(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Helper function to create a 7-layer Strata survey GeoPackage test database on disk.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn create_7layers_sample_gpkg(path: &Path) -> Result<(), String> {
+    let conn = rusqlite::Connection::open(path).map_err(|e| e.to_string())?;
+
+    conn.execute_batch(
+        "
+        CREATE TABLE gpkg_spatial_ref_sys (
+            srs_name TEXT NOT NULL,
+            srs_id INTEGER NOT NULL PRIMARY KEY,
+            organization TEXT NOT NULL,
+            organization_coordsys_id INTEGER NOT NULL,
+            definition TEXT NOT NULL,
+            description TEXT
+        );
+        INSERT INTO gpkg_spatial_ref_sys VALUES ('Korea 2000 / Central Belt 2010', 5186, 'EPSG', 5186, '', 'Korean archaeological grid');
+
+        CREATE TABLE gpkg_contents (
+            table_name TEXT NOT NULL PRIMARY KEY,
+            data_type TEXT NOT NULL,
+            identifier TEXT,
+            description TEXT,
+            last_change TEXT NOT NULL DEFAULT '',
+            min_x REAL, min_y REAL, max_x REAL, max_y REAL,
+            srs_id INTEGER
+        );
+
+        CREATE TABLE gpkg_geometry_columns (
+            table_name TEXT NOT NULL,
+            column_name TEXT NOT NULL,
+            geometry_type_name TEXT NOT NULL,
+            srs_id INTEGER NOT NULL,
+            z TINYINT NOT NULL,
+            m TINYINT NOT NULL,
+            PRIMARY KEY (table_name, column_name)
+        );
+
+        -- 1. Investigation Boundary
+        INSERT INTO gpkg_contents VALUES ('tr_investigation_boundary', 'features', '조사구역', '', '', 0.0, 0.0, 100.0, 100.0, 5186);
+        INSERT INTO gpkg_geometry_columns VALUES ('tr_investigation_boundary', 'geom', 'POLYGON', 5186, 0, 0);
+        CREATE TABLE tr_investigation_boundary (id INTEGER PRIMARY KEY, geom BLOB, name TEXT);
+
+        -- 2. Grid
+        INSERT INTO gpkg_contents VALUES ('tr_grid', 'features', '그리드', '', '', 0.0, 0.0, 100.0, 100.0, 5186);
+        INSERT INTO gpkg_geometry_columns VALUES ('tr_grid', 'geom', 'LINESTRING', 5186, 0, 0);
+        CREATE TABLE tr_grid (id INTEGER PRIMARY KEY, geom BLOB, grid_id TEXT);
+
+        -- 3. Remains Polygon
+        INSERT INTO gpkg_contents VALUES ('tr_remains_polygon', 'features', '유구면', '', '', 10.0, 10.0, 50.0, 50.0, 5186);
+        INSERT INTO gpkg_geometry_columns VALUES ('tr_remains_polygon', 'geom', 'POLYGON', 5186, 0, 0);
+        CREATE TABLE tr_remains_polygon (id INTEGER PRIMARY KEY, geom BLOB, feature_name TEXT, feature_type TEXT);
+
+        -- 4. Remains Center
+        INSERT INTO gpkg_contents VALUES ('tr_remains_center', 'features', '유구중심점', '', '', 20.0, 20.0, 20.0, 20.0, 5186);
+        INSERT INTO gpkg_geometry_columns VALUES ('tr_remains_center', 'geom', 'POINT', 5186, 0, 0);
+        CREATE TABLE tr_remains_center (id INTEGER PRIMARY KEY, geom BLOB, feature_name TEXT);
+
+        -- 5. Elevation Point
+        INSERT INTO gpkg_contents VALUES ('tr_elevation_point', 'features', '표고점', '', '', 25.0, 25.0, 25.0, 25.0, 5186);
+        INSERT INTO gpkg_geometry_columns VALUES ('tr_elevation_point', 'geom', 'POINT', 5186, 0, 0);
+        CREATE TABLE tr_elevation_point (id INTEGER PRIMARY KEY, geom BLOB, elevation REAL);
+
+        -- 6. Strata Section
+        INSERT INTO gpkg_contents VALUES ('tr_strata_section', 'features', '단면선', '', '', 10.0, 30.0, 40.0, 30.0, 5186);
+        INSERT INTO gpkg_geometry_columns VALUES ('tr_strata_section', 'geom', 'LINESTRING', 5186, 0, 0);
+        CREATE TABLE tr_strata_section (id INTEGER PRIMARY KEY, geom BLOB, section_name TEXT);
+
+        -- 7. Artifact Point
+        INSERT INTO gpkg_contents VALUES ('tr_artifact_point', 'features', '유물점', '', '', 22.0, 22.0, 22.0, 22.0, 5186);
+        INSERT INTO gpkg_geometry_columns VALUES ('tr_artifact_point', 'geom', 'POINT', 5186, 0, 0);
+        CREATE TABLE tr_artifact_point (id INTEGER PRIMARY KEY, geom BLOB, find_number TEXT);
+        ",
+    ).map_err(|e| e.to_string())?;
+
+    // Insert a pit polygon ("1호 수혈") into tr_remains_polygon
+    let mut pit_blob = vec![0x47, 0x50, 0x00, 0x01];
+    pit_blob.extend_from_slice(&5186i32.to_le_bytes());
+    pit_blob.push(0x01); // LE WKB
+    pit_blob.extend_from_slice(&3u32.to_le_bytes()); // Polygon
+    pit_blob.extend_from_slice(&1u32.to_le_bytes()); // 1 ring
+    pit_blob.extend_from_slice(&5u32.to_le_bytes()); // 5 points
+    for (x, y) in [(10.0_f64, 10.0_f64), (15.0, 10.0), (15.0, 15.0), (10.0, 15.0), (10.0, 10.0)] {
+        pit_blob.extend_from_slice(&x.to_le_bytes());
+        pit_blob.extend_from_slice(&y.to_le_bytes());
+    }
+    conn.execute(
+        "INSERT INTO tr_remains_polygon (geom, feature_name, feature_type) VALUES (?1, ?2, ?3)",
+        rusqlite::params![pit_blob, "1호 수혈", "수혈"],
+    ).map_err(|e| e.to_string())?;
+
+    // Insert a dwelling polygon ("1호 주거지") into tr_remains_polygon
+    let mut house_blob = vec![0x47, 0x50, 0x00, 0x01];
+    house_blob.extend_from_slice(&5186i32.to_le_bytes());
+    house_blob.push(0x01);
+    house_blob.extend_from_slice(&3u32.to_le_bytes());
+    house_blob.extend_from_slice(&1u32.to_le_bytes());
+    house_blob.extend_from_slice(&5u32.to_le_bytes());
+    for (x, y) in [(20.0_f64, 20.0_f64), (30.0, 20.0), (30.0, 30.0), (20.0, 30.0), (20.0, 20.0)] {
+        house_blob.extend_from_slice(&x.to_le_bytes());
+        house_blob.extend_from_slice(&y.to_le_bytes());
+    }
+    conn.execute(
+        "INSERT INTO tr_remains_polygon (geom, feature_name, feature_type) VALUES (?1, ?2, ?3)",
+        rusqlite::params![house_blob, "1호 주거지", "주거지"],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+
 #[cfg(target_arch = "wasm32")]
 impl GpkgReader {
     pub fn open<P: AsRef<Path>>(_path: P) -> Result<Self, String> {
@@ -985,5 +1112,340 @@ mod tests {
             StrataLayerKind::classify("elevation_points"),
             StrataLayerKind::ElevationPoint
         );
+    }
+
+    #[test]
+    fn test_stress_ogc_header_parser() {
+        // Valid Little-Endian header with no envelope (env_indicator 0)
+        let mut buf_le = vec![0x47, 0x50, 0x00, 0x01]; // GP, ver 0, flags (LE, no env)
+        buf_le.extend_from_slice(&5186i32.to_le_bytes());
+        buf_le.extend_from_slice(&[0x01, 0x01, 0x00, 0x00, 0x00]); // Point LE type
+        let (srs, empty, wkb) = parse_gpkg_header(&buf_le).expect("Valid LE header must parse");
+        assert_eq!(srs, 5186);
+        assert!(!empty);
+        assert_eq!(wkb.len(), 5);
+
+        // Valid Big-Endian header (flags bit 0 = 0)
+        let mut buf_be = vec![0x47, 0x50, 0x00, 0x00]; // GP, ver 0, flags (BE, no env)
+        buf_be.extend_from_slice(&5186i32.to_be_bytes());
+        buf_be.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x01]); // Point BE type
+        let (srs_be, empty_be, wkb_be) = parse_gpkg_header(&buf_be).expect("Valid BE header must parse");
+        assert_eq!(srs_be, 5186);
+        assert!(!empty_be);
+        assert_eq!(wkb_be.len(), 5);
+
+        // Envelope variants: 1 (32 bytes), 2 (48 bytes), 3 (48 bytes), 4 (64 bytes)
+        for (indicator, env_len) in [(1, 32), (2, 48), (3, 48), (4, 64)] {
+            let mut buf_env = vec![0x47, 0x50, 0x00, 0x01 | (indicator << 1)];
+            buf_env.extend_from_slice(&5186i32.to_le_bytes());
+            buf_env.extend_from_slice(&vec![0u8; env_len]);
+            buf_env.push(0xAA); // 1 byte wkb payload
+            let (srs_e, _, wkb_e) = parse_gpkg_header(&buf_env).expect("Valid envelope must parse");
+            assert_eq!(srs_e, 5186);
+            assert_eq!(wkb_e, &[0xAA]);
+
+            // Truncated envelope: buffer shorter than 8 + env_len
+            let truncated_env = &buf_env[..8 + env_len - 1];
+            assert!(parse_gpkg_header(truncated_env).is_none(), "Truncated envelope must return None");
+        }
+
+        // Malformed headers: truncated < 8 bytes
+        for len in 0..8 {
+            let slice = &buf_le[..len.min(buf_le.len())];
+            assert!(parse_gpkg_header(slice).is_none(), "Truncated header < 8 bytes must return None");
+        }
+
+        // Malformed magic
+        let bad_magics = [
+            [0x00, 0x00],
+            [0x47, 0x00],
+            [0x00, 0x50],
+            [0xFF, 0xFF],
+        ];
+        for magic in bad_magics {
+            let mut bad_buf = buf_le.clone();
+            bad_buf[0] = magic[0];
+            bad_buf[1] = magic[1];
+            assert!(parse_gpkg_header(&bad_buf).is_none(), "Invalid magic must return None");
+        }
+
+        // Malformed version != 0
+        let mut bad_ver = buf_le.clone();
+        bad_ver[2] = 1;
+        assert!(parse_gpkg_header(&bad_ver).is_none(), "Non-zero version must return None");
+
+        // Unsupported flags: envelope indicator 5, 6, 7
+        for ind in 5..=7 {
+            let mut bad_flag = buf_le.clone();
+            bad_flag[3] = (ind << 1) | 0x01;
+            assert!(parse_gpkg_header(&bad_flag).is_none(), "Unsupported envelope indicator must return None");
+        }
+    }
+
+    #[test]
+    fn test_stress_wkb_parser_types_and_endianness() {
+        // 1. Point Big-Endian and Little-Endian
+        let mut pt_le = vec![0x01];
+        pt_le.extend_from_slice(&1u32.to_le_bytes());
+        pt_le.extend_from_slice(&123.456_f64.to_le_bytes());
+        pt_le.extend_from_slice(&789.012_f64.to_le_bytes());
+        assert_eq!(
+            parse_wkb(&pt_le),
+            Some(GpkgGeometry::Point { x: 123.456, y: 789.012, z: None })
+        );
+
+        let mut pt_be = vec![0x00];
+        pt_be.extend_from_slice(&1u32.to_be_bytes());
+        pt_be.extend_from_slice(&123.456_f64.to_be_bytes());
+        pt_be.extend_from_slice(&789.012_f64.to_be_bytes());
+        assert_eq!(
+            parse_wkb(&pt_be),
+            Some(GpkgGeometry::Point { x: 123.456, y: 789.012, z: None })
+        );
+
+        // 2. LineString Big-Endian and Little-Endian
+        let mut line_be = vec![0x00];
+        line_be.extend_from_slice(&2u32.to_be_bytes()); // LineString
+        line_be.extend_from_slice(&2u32.to_be_bytes()); // 2 points
+        line_be.extend_from_slice(&10.0_f64.to_be_bytes());
+        line_be.extend_from_slice(&20.0_f64.to_be_bytes());
+        line_be.extend_from_slice(&30.0_f64.to_be_bytes());
+        line_be.extend_from_slice(&40.0_f64.to_be_bytes());
+        assert_eq!(
+            parse_wkb(&line_be),
+            Some(GpkgGeometry::LineString {
+                points: vec![(10.0, 20.0, None), (30.0, 40.0, None)]
+            })
+        );
+
+        // 3. Polygon with Outer and Inner Rings (Big-Endian & Little-Endian)
+        let mut poly_le = vec![0x01];
+        poly_le.extend_from_slice(&3u32.to_le_bytes()); // Polygon
+        poly_le.extend_from_slice(&2u32.to_le_bytes()); // 2 rings (exterior + 1 interior hole)
+
+        // Exterior ring: (0,0), (10,0), (10,10), (0,10), (0,0)
+        poly_le.extend_from_slice(&5u32.to_le_bytes());
+        for (x, y) in [(0.0_f64, 0.0_f64), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0)] {
+            poly_le.extend_from_slice(&x.to_le_bytes());
+            poly_le.extend_from_slice(&y.to_le_bytes());
+        }
+        // Interior ring: (2,2), (8,2), (8,8), (2,8), (2,2)
+        poly_le.extend_from_slice(&5u32.to_le_bytes());
+        for (x, y) in [(2.0_f64, 2.0_f64), (8.0, 2.0), (8.0, 8.0), (2.0, 8.0), (2.0, 2.0)] {
+            poly_le.extend_from_slice(&x.to_le_bytes());
+            poly_le.extend_from_slice(&y.to_le_bytes());
+        }
+
+        let parsed_poly = parse_wkb(&poly_le).expect("Polygon with hole must parse");
+        match parsed_poly {
+            GpkgGeometry::Polygon { rings } => {
+                assert_eq!(rings.len(), 2);
+                assert_eq!(rings[0].len(), 5);
+                assert_eq!(rings[1].len(), 5);
+                assert_eq!(rings[0][2], (10.0, 10.0, None));
+                assert_eq!(rings[1][2], (8.0, 8.0, None));
+            }
+            _ => panic!("Expected polygon"),
+        }
+
+        // 4. MultiPoint
+        let mut mp_le = vec![0x01];
+        mp_le.extend_from_slice(&4u32.to_le_bytes()); // MultiPoint
+        mp_le.extend_from_slice(&2u32.to_le_bytes()); // 2 points
+        mp_le.extend_from_slice(&pt_le);
+        mp_le.extend_from_slice(&pt_le);
+        let parsed_mp = parse_wkb(&mp_le).expect("MultiPoint must parse");
+        match parsed_mp {
+            GpkgGeometry::MultiPoint { points } => assert_eq!(points.len(), 2),
+            _ => panic!("Expected MultiPoint"),
+        }
+
+        // 5. MultiLineString
+        let mut mls_le = vec![0x01];
+        mls_le.extend_from_slice(&5u32.to_le_bytes()); // MultiLineString
+        mls_le.extend_from_slice(&1u32.to_le_bytes()); // 1 line
+        let mut line_le = vec![0x01];
+        line_le.extend_from_slice(&2u32.to_le_bytes());
+        line_le.extend_from_slice(&2u32.to_le_bytes());
+        line_le.extend_from_slice(&1.0_f64.to_le_bytes());
+        line_le.extend_from_slice(&2.0_f64.to_le_bytes());
+        line_le.extend_from_slice(&3.0_f64.to_le_bytes());
+        line_le.extend_from_slice(&4.0_f64.to_le_bytes());
+        mls_le.extend_from_slice(&line_le);
+        let parsed_mls = parse_wkb(&mls_le).expect("MultiLineString must parse");
+        match parsed_mls {
+            GpkgGeometry::MultiLineString { lines } => assert_eq!(lines.len(), 1),
+            _ => panic!("Expected MultiLineString"),
+        }
+
+        // 6. MultiPolygon
+        let mut mpoly_le = vec![0x01];
+        mpoly_le.extend_from_slice(&6u32.to_le_bytes()); // MultiPolygon
+        mpoly_le.extend_from_slice(&1u32.to_le_bytes()); // 1 polygon
+        mpoly_le.extend_from_slice(&poly_le);
+        let parsed_mpoly = parse_wkb(&mpoly_le).expect("MultiPolygon must parse");
+        match parsed_mpoly {
+            GpkgGeometry::MultiPolygon { polygons } => assert_eq!(polygons.len(), 1),
+            _ => panic!("Expected MultiPolygon"),
+        }
+    }
+
+    #[test]
+    fn test_stress_wkb_parser_nan_inf_and_truncation() {
+        // NaN in Point
+        let mut nan_pt = vec![0x01];
+        nan_pt.extend_from_slice(&1u32.to_le_bytes());
+        nan_pt.extend_from_slice(&f64::NAN.to_le_bytes());
+        nan_pt.extend_from_slice(&100.0_f64.to_le_bytes());
+        assert!(parse_wkb(&nan_pt).is_none(), "Point with NaN must return None");
+
+        // Inf in Point
+        let mut inf_pt = vec![0x01];
+        inf_pt.extend_from_slice(&1u32.to_le_bytes());
+        inf_pt.extend_from_slice(&100.0_f64.to_le_bytes());
+        inf_pt.extend_from_slice(&f64::INFINITY.to_le_bytes());
+        assert!(parse_wkb(&inf_pt).is_none(), "Point with Inf must return None");
+
+        // Neg Inf in Point
+        let mut neg_inf_pt = vec![0x01];
+        neg_inf_pt.extend_from_slice(&1u32.to_le_bytes());
+        neg_inf_pt.extend_from_slice(&f64::NEG_INFINITY.to_le_bytes());
+        neg_inf_pt.extend_from_slice(&100.0_f64.to_le_bytes());
+        assert!(parse_wkb(&neg_inf_pt).is_none(), "Point with -Inf must return None");
+
+        // Truncated coordinate buffers across all byte offsets: verify zero panic
+        let mut valid_poly = vec![0x01];
+        valid_poly.extend_from_slice(&3u32.to_le_bytes());
+        valid_poly.extend_from_slice(&1u32.to_le_bytes());
+        valid_poly.extend_from_slice(&4u32.to_le_bytes());
+        for (x, y) in [(0.0_f64, 0.0_f64), (10.0, 0.0), (10.0, 10.0), (0.0, 0.0)] {
+            valid_poly.extend_from_slice(&x.to_le_bytes());
+            valid_poly.extend_from_slice(&y.to_le_bytes());
+        }
+
+        for i in 0..valid_poly.len() {
+            let truncated = &valid_poly[..i];
+            let res = parse_wkb(truncated);
+            assert!(res.is_none(), "Truncated slice at {i} must return None without panic");
+        }
+
+        // MultiPoint with claimed count > 0 but truncated payload
+        let mut mp_truncated = vec![0x01];
+        mp_truncated.extend_from_slice(&4u32.to_le_bytes()); // MultiPoint
+        mp_truncated.extend_from_slice(&10u32.to_le_bytes()); // num_geoms = 10
+        let res_mp = parse_wkb(&mp_truncated);
+        assert!(res_mp.is_none(), "Truncated MultiPoint must fail-fast and return None");
+
+        let mut mls_truncated = vec![0x01];
+        mls_truncated.extend_from_slice(&5u32.to_le_bytes()); // MultiLineString
+        mls_truncated.extend_from_slice(&10u32.to_le_bytes());
+        assert!(parse_wkb(&mls_truncated).is_none(), "Truncated MultiLineString must return None");
+
+        let mut mpoly_truncated = vec![0x01];
+        mpoly_truncated.extend_from_slice(&6u32.to_le_bytes()); // MultiPolygon
+        mpoly_truncated.extend_from_slice(&10u32.to_le_bytes());
+        assert!(parse_wkb(&mpoly_truncated).is_none(), "Truncated MultiPolygon must return None");
+    }
+
+    #[test]
+    fn test_stress_house1_polygon_area_benchmark() {
+        // Gwangnyeong-ri 1 House 1 benchmark (32.91 ㎡ ± 0.01 ㎡)
+        let pts = vectorcraft_pathops::plan::HOUSE_1_POLYGON_METERS;
+        let mut poly_blob = vec![0x01]; // LE
+        poly_blob.extend_from_slice(&3u32.to_le_bytes()); // Polygon
+        poly_blob.extend_from_slice(&1u32.to_le_bytes()); // 1 ring
+        poly_blob.extend_from_slice(&((pts.len() + 1) as u32).to_le_bytes()); // +1 for closing point
+        for (x, y) in pts {
+            poly_blob.extend_from_slice(&x.to_le_bytes());
+            poly_blob.extend_from_slice(&y.to_le_bytes());
+        }
+        // Closing vertex matching first vertex
+        poly_blob.extend_from_slice(&pts[0].0.to_le_bytes());
+        poly_blob.extend_from_slice(&pts[0].1.to_le_bytes());
+
+        let geom = parse_wkb(&poly_blob).expect("House 1 WKB polygon must parse");
+        let area = match geom {
+            GpkgGeometry::Polygon { rings } => {
+                let ring = &rings[0];
+                let mut sum = 0.0;
+                for i in 0..ring.len() - 1 {
+                    sum += ring[i].0 * ring[i + 1].1 - ring[i + 1].0 * ring[i].1;
+                }
+                (sum / 2.0).abs()
+            }
+            _ => panic!("Expected Polygon"),
+        };
+
+        assert!(
+            (area - 32.91).abs() < 0.01,
+            "House 1 12-vertex area must equal 32.91 ㎡ ± 0.01 ㎡, got {area:.4} ㎡"
+        );
+    }
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn test_stress_readonly_sqlite_guarantees() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let db_path = std::env::temp_dir().join(format!("test_readonly_gpkg_{}.gpkg", now));
+        create_sample_gpkg(&db_path).unwrap();
+
+        let reader = GpkgReader::open(&db_path).unwrap();
+        // 1. Verify inspect and feature reading work
+        let info = reader.inspect().unwrap();
+        assert!(info.read_only);
+        assert_eq!(info.srs_id, 5186);
+
+        // 2. Attempt mutation: open separate connection or try to mutate
+        // With SQLITE_OPEN_READ_ONLY, trying to execute write statements fails
+        let write_res = reader.conn.execute(
+            "INSERT INTO dwelling_perimeter (feature_name) VALUES ('mutation_attempt')",
+            [],
+        );
+        assert!(write_res.is_err(), "Write on read-only connection must fail");
+        let err_msg = write_res.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("readonly") || err_msg.contains("read-only"),
+            "Error must specify readonly database, got: {err_msg}"
+        );
+
+        // 3. Opening non-existent file in read-only mode must fail and NOT create a new file
+        let bogus_path = std::env::temp_dir().join(format!("non_existent_{}.gpkg", now));
+        assert!(!bogus_path.exists());
+        let bogus_res = GpkgReader::open(&bogus_path);
+        assert!(bogus_res.is_err(), "Opening non-existent file must fail");
+        assert!(!bogus_path.exists(), "Read-only open must never create a file");
+
+        // Clean up
+        std::fs::remove_file(&db_path).ok();
+    }
+
+    #[test]
+    fn test_stress_hatch_mapping_benchmarks() {
+        // Benchmark feature types: 수혈 45°, 분묘 135°, 구 0°, 도랑 90°, 가마 ┼, 주거지 없음
+        let h_pit = resolve_feature_hatch("수혈");
+        assert!(h_pit.is_some(), "수혈 must have hatch");
+        assert_eq!(h_pit.unwrap().direction, HatchDirection::Deg45, "수혈 must be 45°");
+
+        let h_tomb = resolve_feature_hatch("분묘");
+        assert!(h_tomb.is_some(), "분묘 must have hatch");
+        assert_eq!(h_tomb.unwrap().direction, HatchDirection::Deg135, "분묘 must be 135°");
+
+        let h_house = resolve_feature_hatch("주거지");
+        assert!(h_house.is_none(), "주거지 must have no hatch (open interior)");
+
+        let h_furrow = resolve_feature_hatch("구");
+        assert!(h_furrow.is_some(), "구 must have hatch");
+        assert_eq!(h_furrow.unwrap().direction, HatchDirection::Deg0, "구 must be 0°");
+
+        let h_ditch = resolve_feature_hatch("도랑");
+        assert!(h_ditch.is_some(), "도랑 must have hatch");
+        assert_eq!(h_ditch.unwrap().direction, HatchDirection::Deg90, "도랑 must be 90°");
+
+        let h_kiln = resolve_feature_hatch("가마");
+        assert!(h_kiln.is_some(), "가마 must have hatch");
+        assert_eq!(h_kiln.unwrap().direction, HatchDirection::Cross, "가마 must be Cross (┼)");
     }
 }

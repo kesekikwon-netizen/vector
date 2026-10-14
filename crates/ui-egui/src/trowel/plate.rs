@@ -143,7 +143,7 @@ pub fn show_dock_panel(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let svg_resp = ui.interact(svg_rect, wid("plate-export-svg", ()), Sense::click());
     field_box(ui, svg_rect, if svg_resp.hovered() { t.hover } else { t.panel }, t.border);
     text(ui, svg_rect.center(), Align2::CENTER_CENTER, "SVG 내보내기", font(11.0), t.text);
-    if svg_resp.on_hover_text("웹·일러스트레이터 호환 벡터 SVG (선 굵기 pt 불변 보존)").clicked() {
+    if svg_resp.on_hover_text("웹·표준 CAD/벡터 그래픽 호환 SVG (선 굵기 pt 불변 보존)").clicked() {
         let _ = app.run("plate.exportSvg", json!({}));
     }
 }
