@@ -74,6 +74,10 @@ pub fn restore(app: &mut VectorcraftApp) {
     if !GPU_PREFERENCES.iter().any(|(v, _)| *v == p.gpu_preference) {
         p.gpu_preference = Prefs::default().gpu_preference;
     }
+    if app.ui.trowel && p.ui_brightness == "mediumDark" {
+        p.ui_brightness = "plate".into();
+        app.ui.brightness = Brightness::Plate;
+    }
     app.session.apply_prefs(p);
 }
 
@@ -102,6 +106,10 @@ fn canvas_color(key: &str) -> Option<egui::Color32> {
 
 /// Per frame: push UI-side preferences into egui / the renderer when they change.
 pub fn apply_runtime(app: &mut VectorcraftApp, ctx: &egui::Context) {
+    if app.ui.trowel && app.session.prefs.ui_brightness == "mediumDark" {
+        app.session.prefs.ui_brightness = "plate".into();
+        app.ui.brightness = Brightness::Plate;
+    }
     let p = &app.session.prefs;
     if let Some(b) = Brightness::parse(&p.ui_brightness)
         && b != app.ui.brightness

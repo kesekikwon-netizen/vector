@@ -28,10 +28,10 @@ const SLOTS: &[(&[&str], &str, bool)] = &[
 
 /// A tool's button as in the mockup; a shorter window tightens it.
 const BUTTON: egui::Vec2 = vec2(40.0, 27.0);
-const BUTTON_TIGHT: f32 = 23.0;
+const BUTTON_TIGHT: f32 = 22.0;
 /// The fill and stroke under the tools: the gap above them and their height (including the clear button).
-const PROXY_GAP: f32 = 8.0;
-const PROXY_H: f32 = 54.0;
+const PROXY_GAP: f32 = 6.0;
+const PROXY_H: f32 = 58.0;
 
 /// The archaeology tools (J009): their keys, icons and names.
 /// (`section-line` is in the top Ribbon only so it isn't duplicated here.)
@@ -70,7 +70,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
             }
             // The tools as in the mockup with the fill and stroke under them while they fit; then the
             // buttons tighten; then the tools scroll above the fill and stroke at the column's foot.
-            let room = r.height() - PROXY_GAP - PROXY_H - 6.0;
+            let room = r.height() - PROXY_GAP - PROXY_H - 8.0;
             let bh = if tools_height(BUTTON.y) <= room { BUTTON.y } else { BUTTON_TIGHT };
             let height = tools_height(bh);
             let (chosen, proxy_top) = if height <= room {
@@ -87,12 +87,12 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
                 (chosen, view.bottom() + PROXY_GAP)
             };
             // Fill and stroke + Clear (없애기) button directly below.
-            let proxy = Rect::from_min_size(pos2(r.left(), proxy_top), vec2(r.width(), 34.0));
+            let proxy = Rect::from_min_size(pos2(r.left(), proxy_top), vec2(r.width(), 32.0));
             let mut cell =
                 ui.new_child(egui::UiBuilder::new().id(wid("proxy", ())).max_rect(proxy).layout(egui::Layout::top_down(egui::Align::Center)));
             crate::panels::proxy(app, &mut cell, 30.0);
 
-            let none_rect = Rect::from_min_size(pos2(r.center().x - 22.0, proxy_top + 35.0), vec2(44.0, 18.0));
+            let none_rect = Rect::from_min_size(pos2(r.center().x - 22.0, proxy_top + 34.0), vec2(44.0, 18.0));
             let none_resp =
                 ui.interact(none_rect, wid("proxy-none", ()), Sense::click()).on_hover_text("안에 채운 색 / 선 색 없애기 (단축키: Delete 또는 /)");
             let none_fill = if none_resp.hovered() { t.hover } else { t.button };

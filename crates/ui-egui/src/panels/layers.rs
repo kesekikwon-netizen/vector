@@ -435,11 +435,29 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         && ui.ctx().memory(|m| m.focused().is_none())
         && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete) || i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace))
     {
-        out.actions.push(("layer.delete".into(), json!({})));
+        push_delete_layers(&doc, &view, &mut out.actions);
     }
     bottom_bar(app, ui, &view, &doc, &mut out.actions);
     for (c, p) in out.actions {
         app.run(&c, p).ok();
+    }
+}
+
+fn push_delete_layers(doc: &Document, view: &View, actions: &mut Vec<(String, Value)>) {
+    let targets: Vec<NodeId> = if view.rows.is_empty() { view.current.into_iter().collect() } else { view.rows.clone() };
+    let ids: Vec<u64> = targets.iter().map(|i| i.0).collect();
+    let locked: Vec<u64> = targets.iter().filter_map(|id| doc.node(*id)).filter(|n| n.locked).map(|n| n.id.0).collect();
+    if !locked.is_empty() {
+        actions.push(("layer.setProps".into(), json!({ "ids": locked, "locked": false })));
+    }
+    let deletes_all = !doc.layers.is_empty() && doc.layers.iter().all(|l| targets.contains(&l.id));
+    if deletes_all {
+        if doc.layers.len() > 1 || doc.layers.first().is_some_and(|l| l.legend().is_some() || l.children().is_some_and(|c| !c.is_empty())) {
+            actions.push(("layer.new".into(), json!({})));
+            actions.push(("layer.delete".into(), json!({ "ids": ids })));
+        }
+    } else {
+        actions.push(("layer.delete".into(), json!({ "ids": ids })));
     }
 }
 
@@ -470,7 +488,7 @@ fn bottom_bar(app: &mut VectorcraftApp, ui: &mut Ui, view: &View, doc: &Document
         if view.rows.is_empty() && app.session.active().is_some_and(|d| !d.selection.is_empty()) {
             actions.push(("edit.clear".into(), json!({})));
         } else {
-            actions.push(("layer.delete".into(), json!({})));
+            push_delete_layers(doc, view, actions);
         }
     }
     // Create New Layer: Alt asks for its options first, Ctrl/Cmd puts it on top of every layer.

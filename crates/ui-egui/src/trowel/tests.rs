@@ -2685,9 +2685,9 @@ fn test_template_card_click_creates_standard_drawing() {
     let scale = doc.doc.scale.as_ref().expect("Scale must be configured");
     assert_eq!(scale.scale.denom, 1.0, "Finds scale must be 1:1");
 
-    // Verifies finds legend group rows exist
+    // Verifies initial finds working layer exists
     let layers: Vec<String> = doc.doc.layers.iter().map(|l| l.display_name().to_string()).collect();
-    assert!(layers.iter().any(|n| n.contains("중심선")), "Must have '중심선' layer from finds legend group");
+    assert!(layers.iter().any(|n| n.contains("외형선")), "Must have '외형선' initial layer for finds template");
 }
 
 #[test]
@@ -3098,10 +3098,10 @@ fn test_adversarial_template_creation_all_variants() {
     let mut h = Harness::sized(1600.0, 988.0);
 
     let cases = [
-        ("trowel.newPlan", "개별유구 평·단면도", 20.0, 420.0, 297.0, vec!["조사구역 경계", "굴광선 (유구 면)", "돌", "기준점"]),
-        ("trowel.newSection", "토층 단면도", 20.0, 420.0, 297.0, vec!["단면선 (잘린 땅)", "해발선 50 cm", "토층선"]),
-        ("trowel.newFinds", "유물 실측도", 1.0, 210.0, 297.0, vec!["외형선", "중심선", "복원선"]),
-        ("trowel.newSitePlan", "유구배치도", 100.0, 420.0, 297.0, vec!["조사구역 경계", "시굴격자", "굴광선 (유구 면)"]),
+        ("trowel.newPlan", "개별유구 평·단면도", 20.0, 420.0, 297.0, vec!["굴광선 (유구 면)"]),
+        ("trowel.newSection", "토층 단면도", 20.0, 420.0, 297.0, vec!["단면선 (잘린 땅)"]),
+        ("trowel.newFinds", "유물 실측도", 1.0, 210.0, 297.0, vec!["외형선"]),
+        ("trowel.newSitePlan", "유구배치도", 100.0, 420.0, 297.0, vec!["굴광선 (유구 면)"]),
         ("trowel.newPlate", "보고서 도판", 1.0, 210.0, 297.0, vec![]),
     ];
 

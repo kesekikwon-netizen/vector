@@ -519,28 +519,46 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context) {
 
 /// When Delete or Backspace is pressed with no canvas objects selected:
 /// - If the Color or Swatches panel is open, clear the active fill/stroke to None (`paint.none`).
-/// - Otherwise, delete the active layer (unlocking it first if needed so template layers can also be deleted).
-fn delete_layer_or_clear_paint(app: &mut VectorcraftApp, _ctx: &egui::Context) {
+/// - Otherwise, delete the highlighted layer rows (or last clicked legend row / active layer),
+///   unlocking locked layers first and leaving 1 clean empty layer if all layers are deleted.
+fn delete_layer_or_clear_paint(app: &mut VectorcraftApp, ctx: &egui::Context) {
     if matches!(app.ui.open_panel.as_deref(), Some("color" | "swatches")) {
         let _ = app.run("paint.none", json!({}));
         return;
     }
-    let Some((id, is_locked, total_layers, has_legend)) = app.session.active().and_then(|st| {
-        let id = st.current_layer().and_then(|l| st.doc.layer_of(l))?;
-        let node = st.doc.node(id)?;
-        Some((id, node.locked, st.doc.layers.len(), node.legend().is_some()))
+    let last_clicked = ctx.data_mut(|d| d.remove_temp::<vectorcraft_doc::NodeId>(egui::Id::new("trowel-last-clicked-layer")));
+    let Some((target_ids, locked_ids, deletes_all_top, has_any_work)) = app.session.active().and_then(|st| {
+        let highlighted = st.highlighted_rows();
+        let targets: Vec<vectorcraft_doc::NodeId> = if let Some(id) = last_clicked.filter(|id| st.doc.node(*id).is_some()) {
+            if highlighted.len() > 1 && highlighted.contains(&id) { highlighted } else { vec![id] }
+        } else if !highlighted.is_empty() {
+            highlighted
+        } else {
+            st.current_layer().and_then(|l| st.doc.layer_of(l)).into_iter().collect()
+        };
+        if targets.is_empty() {
+            return None;
+        }
+        let locked: Vec<u64> = targets.iter().filter_map(|id| st.doc.node(*id)).filter(|n| n.locked).map(|n| n.id.0).collect();
+        let deletes_all = st.doc.layers.iter().all(|l| targets.contains(&l.id));
+        let has_work =
+            st.doc.layers.len() > 1 || st.doc.layers.first().is_some_and(|l| l.legend().is_some() || l.children().is_some_and(|c| !c.is_empty()));
+        Some((targets.into_iter().map(|i| i.0).collect::<Vec<u64>>(), locked, deletes_all, has_work))
     }) else {
         return;
     };
-    if is_locked {
-        let _ = app.run("layer.setProps", json!({ "ids": [id.0], "locked": false }));
+    if !locked_ids.is_empty() {
+        let _ = app.run("layer.setProps", json!({ "ids": locked_ids, "locked": false }));
     }
-    if total_layers > 1 {
-        if let Err(e) = app.run("layer.delete", json!({ "ids": [id.0] })) {
-            app.status(e);
+    if deletes_all_top {
+        if has_any_work {
+            let _ = app.run("layer.new", json!({}));
+            if let Err(e) = app.run("layer.delete", json!({ "ids": target_ids })) {
+                app.status(e);
+            }
         }
-    } else if has_legend {
-        let _ = app.run("legend.set", json!({ "id": id.0, "clear": true }));
+    } else if let Err(e) = app.run("layer.delete", json!({ "ids": target_ids })) {
+        app.status(e);
     }
 }
 

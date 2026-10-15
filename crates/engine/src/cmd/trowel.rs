@@ -68,40 +68,31 @@ fn u32_or(p: &Value, key: &str, default: u32) -> u32 {
     p.get(key).and_then(Value::as_u64).map(|n| n as u32).unwrap_or(default)
 }
 
-/// Remove the leftover empty `"Layer 1"` from `file.new`, set default fill to `None`,
-/// and pick the first favourite legend row so the user can draw immediately.
-fn finish_template_setup(s: &mut Session) -> Result<()> {
+/// Configure the single initial layer of `file.new` as the primary working layer for the template,
+/// set default fill to `None`, and pick it so the user starts with 1 clean layer and can add
+/// further rules as needed.
+fn setup_initial_layer(s: &mut Session, layer_name: &str, weight: f64, sample: &str, group: &str) -> Result<()> {
     let _ = s.execute("paint.setFill", &json!({ "none": true }));
-    if let Ok(st) = s.doc() {
-        let layer1_id = st
-            .doc
-            .layers
-            .iter()
-            .find(|l| l.legend().is_none() && l.display_name() == "Layer 1" && l.children().is_none_or(|c| c.is_empty()))
-            .map(|l| l.id);
-        if let Some(id) = layer1_id
-            && st.doc.layers.len() > 1
-        {
-            let _ = s.execute("layer.delete", &json!({ "ids": [id.0] }));
-        }
-    }
-    if let Ok(st) = s.doc() {
-        let fav_id = st
-            .doc
-            .layers
-            .iter()
-            .rev()
-            .find(|l| !l.locked && l.visible && l.legend().is_some_and(|leg| leg.favourite))
-            .or_else(|| st.doc.layers.iter().rev().find(|l| !l.locked && l.visible))
-            .map(|l| l.id);
-        if let Some(id) = fav_id {
-            let _ = s.execute("legend.pick", &json!({ "id": id.0 }));
-        }
+    let first_id = s.doc().ok().and_then(|st| st.doc.layers.first().map(|l| l.id));
+    if let Some(id) = first_id {
+        let _ = s.execute("layer.setProps", &json!({ "ids": [id.0], "name": layer_name, "locked": false, "visible": true }));
+        let _ = s.execute(
+            "legend.set",
+            &json!({
+                "id": id.0,
+                "weight": weight,
+                "line": "solid",
+                "favourite": true,
+                "sample": sample,
+                "group": group,
+            }),
+        );
+        let _ = s.execute("legend.pick", &json!({ "id": id.0 }));
     }
     Ok(())
 }
 
-/// 1:20 A3 Landscape archaeological plan drawing with plan legend group.
+/// 1:20 A3 Landscape archaeological plan drawing starting with 1 working layer.
 fn new_plan(s: &mut Session, p: &Value) -> Result<Value> {
     let name = str_param(p, "name").unwrap_or("개별유구 평·단면도");
     let epsg = u32_or(p, "epsg", 5186);
@@ -125,18 +116,12 @@ fn new_plan(s: &mut Session, p: &Value) -> Result<Value> {
         }),
     )?;
 
-    s.execute(
-        "legend.addGroup",
-        &json!({
-            "group": "plan",
-        }),
-    )?;
-    finish_template_setup(s)?;
+    setup_initial_layer(s, "굴광선 (유구 면)", 0.8, "area", "plan")?;
 
     Ok(json!({ "template": "plan", "name": name, "scale": 20.0, "epsg": epsg }))
 }
 
-/// 1:20 A3 Landscape archaeological section drawing with section legend group.
+/// 1:20 A3 Landscape archaeological section drawing starting with 1 working layer.
 fn new_section(s: &mut Session, p: &Value) -> Result<Value> {
     let name = str_param(p, "name").unwrap_or("토층 단면도");
     let epsg = u32_or(p, "epsg", 5186);
@@ -160,18 +145,12 @@ fn new_section(s: &mut Session, p: &Value) -> Result<Value> {
         }),
     )?;
 
-    s.execute(
-        "legend.addGroup",
-        &json!({
-            "group": "section",
-        }),
-    )?;
-    finish_template_setup(s)?;
+    setup_initial_layer(s, "단면선 (잘린 땅)", 0.8, "line", "section")?;
 
     Ok(json!({ "template": "section", "name": name, "scale": 20.0, "epsg": epsg }))
 }
 
-/// 1:1 A4 Portrait artifact drawing with finds legend group.
+/// 1:1 A4 Portrait artifact drawing starting with 1 working layer.
 fn new_finds(s: &mut Session, p: &Value) -> Result<Value> {
     let name = str_param(p, "name").unwrap_or("유물 실측도");
     let epsg = u32_or(p, "epsg", 5186);
@@ -195,18 +174,12 @@ fn new_finds(s: &mut Session, p: &Value) -> Result<Value> {
         }),
     )?;
 
-    s.execute(
-        "legend.addGroup",
-        &json!({
-            "group": "finds",
-        }),
-    )?;
-    finish_template_setup(s)?;
+    setup_initial_layer(s, "외형선", 0.8, "line", "finds")?;
 
     Ok(json!({ "template": "finds", "name": name, "scale": 1.0, "epsg": epsg }))
 }
 
-/// 1:100 A3 Landscape archaeological site layout drawing with plan legend group.
+/// 1:100 A3 Landscape archaeological site layout drawing starting with 1 working layer.
 fn new_site_plan(s: &mut Session, p: &Value) -> Result<Value> {
     let name = str_param(p, "name").unwrap_or("유구배치도");
     let epsg = u32_or(p, "epsg", 5186);
@@ -230,13 +203,7 @@ fn new_site_plan(s: &mut Session, p: &Value) -> Result<Value> {
         }),
     )?;
 
-    s.execute(
-        "legend.addGroup",
-        &json!({
-            "group": "plan",
-        }),
-    )?;
-    finish_template_setup(s)?;
+    setup_initial_layer(s, "굴광선 (유구 면)", 0.8, "area", "plan")?;
 
     Ok(json!({ "template": "siteplan", "name": name, "scale": 100.0, "epsg": epsg }))
 }

@@ -584,6 +584,7 @@ fn main() -> std::process::ExitCode {
                 vectorcraft_ui_egui::workspaces::start_trowel(&mut app.ui, lang);
                 if app.ui.trowel {
                     app.ui.brightness = vectorcraft_ui_egui::theme::Brightness::Plate;
+                    app.session.prefs.ui_brightness = "plate".to_string();
                 }
                 // Fit the window to its monitor, or put it back where it was (still hidden).
                 if let Some(w) = cc.winit_window() {

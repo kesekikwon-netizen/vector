@@ -254,6 +254,7 @@ fn moved_id() -> egui::Id {
 /// stays where it was drawn when the next row is picked.
 fn pick(app: &mut VectorcraftApp, ctx: &egui::Context, id: NodeId) -> Result<(), String> {
     ctx.data_mut(|d| d.remove::<(NodeId, u64, u64)>(moved_id()));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("trowel-last-clicked-layer"), id));
     if let Some(why) = app.session.active().and_then(|st| refused(st, id)) {
         return Err(why);
     }
@@ -314,21 +315,22 @@ fn add_group(app: &mut VectorcraftApp, g: LegendGroup) -> Result<(), String> {
 
 /// Delete a layer row (unlocking it first if locked so template layers can also be deleted).
 pub(super) fn delete_layer_row(app: &mut VectorcraftApp, id: NodeId) -> Result<(), String> {
-    let (is_locked, total, has_legend) = app
+    let (is_locked, total, has_legend, has_children) = app
         .session
         .active()
         .and_then(|st| {
             let n = st.doc.node(id)?;
-            Some((n.locked, st.doc.layers.len(), n.legend().is_some()))
+            Some((n.locked, st.doc.layers.len(), n.legend().is_some(), n.children().is_some_and(|c| !c.is_empty())))
         })
-        .unwrap_or((false, 0, false));
+        .unwrap_or((false, 0, false, false));
     if is_locked {
         let _ = app.run("layer.setProps", json!({ "ids": [id.0], "locked": false }));
     }
     if total > 1 {
         app.run("layer.delete", json!({ "ids": [id.0] })).map(drop)
-    } else if has_legend {
-        app.run("legend.set", json!({ "id": id.0, "clear": true })).map(drop)
+    } else if has_legend || has_children {
+        let _ = app.run("layer.new", json!({}));
+        app.run("layer.delete", json!({ "ids": [id.0] })).map(drop)
     } else {
         Ok(())
     }
