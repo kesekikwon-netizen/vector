@@ -44,6 +44,38 @@ impl NumberingStyle {
     }
 }
 
+/// Converts an Arabic layer number (1..=100) into standard ASCII Roman numerals
+/// (`1` -> `"I"`, `2` -> `"II"`, ..., `11` -> `"XI"`, ..., `20` -> `"XX"`, `40` -> `"XL"`, `50` -> `"L"`),
+/// matching Korean excavation report stratigraphy conventions (e.g. `I: 흑갈색 사질점토`).
+pub fn to_ascii_roman(mut n: u32) -> String {
+    if n == 0 || n > 3999 {
+        return n.to_string();
+    }
+    let table = [
+        (1000, "M"),
+        (900, "CM"),
+        (500, "D"),
+        (400, "CD"),
+        (100, "C"),
+        (90, "XC"),
+        (50, "L"),
+        (40, "XL"),
+        (10, "X"),
+        (9, "IX"),
+        (5, "V"),
+        (4, "IV"),
+        (1, "I"),
+    ];
+    let mut out = String::new();
+    for (val, sym) in table {
+        while n >= val {
+            out.push_str(sym);
+            n -= val;
+        }
+    }
+    out
+}
+
 /// Detailed soil description record (§4-2).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct SoilDescription {

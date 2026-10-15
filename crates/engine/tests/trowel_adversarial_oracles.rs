@@ -360,6 +360,8 @@ fn test_stress_elevation_inverted_range_and_zero_intervals() {
             max_elevation_m: 150.0, // Inverted!
         },
         auto_update: true,
+        fill_below_profile: false,
+        red_datum_tick: false,
     };
 
     let out_inv = generate_elevation(&ground, &[], &spec_inverted, None);

@@ -247,7 +247,8 @@ pub fn generate_elevation(ground_profile: &BezPath, obstacles: &[BezPath], spec:
 
     let minor_step = spec.minor_interval_m.max(0.01);
     let min_scanline_y = canvas_origin_y - (max_elev - world_origin_y) * ppm;
-    let ceiling_y = min_scanline_y.min(profile_bounds.y0) - 50.0;
+    let max_scanline_y = canvas_origin_y - (min_elev - world_origin_y) * ppm;
+    let bound_y = if spec.fill_below_profile { max_scanline_y.max(profile_bounds.y1) + 50.0 } else { min_scanline_y.min(profile_bounds.y0) - 50.0 };
 
     let count = ((max_elev - min_elev) / minor_step).round() as i64;
     let mut segments = Vec::new();
@@ -260,7 +261,7 @@ pub fn generate_elevation(ground_profile: &BezPath, obstacles: &[BezPath], spec:
         let major_mult = (elev / spec.major_interval_m).round();
         let is_major = (elev - major_mult * spec.major_interval_m).abs() < 1e-4;
 
-        let intervals = clip_elevation_scanline(y, ground_profile, obstacles, x_min, x_max, ceiling_y);
+        let intervals = clip_elevation_scanline(y, ground_profile, obstacles, x_min, x_max, bound_y);
         if intervals.is_empty() {
             continue;
         }
@@ -274,6 +275,9 @@ pub fn generate_elevation(ground_profile: &BezPath, obstacles: &[BezPath], spec:
             match spec.label_placement {
                 ElevationLabelPlacement::LeftEnd => {
                     labels.push(ElevationLabel { text, at: Point::new(intervals[0].0, y), anchor_left: true });
+                }
+                ElevationLabelPlacement::RightEnd => {
+                    labels.push(ElevationLabel { text, at: Point::new(intervals.last().unwrap_or(&intervals[0]).1, y), anchor_left: false });
                 }
                 ElevationLabelPlacement::BothEnds => {
                     labels.push(ElevationLabel { text: text.clone(), at: Point::new(intervals[0].0, y), anchor_left: true });

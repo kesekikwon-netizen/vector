@@ -106,6 +106,7 @@ enum Act {
     Revert(NodeId),
     Delete(NodeId),
     AddSingleRule(LegendGroup, &'static str),
+    AddFieldPreset(Option<&'static str>),
     PruneEmpty,
 }
 
@@ -216,6 +217,13 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         Some(Act::Revert(id)) => revert(app, json!({ "ids": [id.0] })),
         Some(Act::Delete(id)) => delete_layer_row(app, id),
         Some(Act::AddSingleRule(g, name)) => add_single_rule(app, g, name),
+        Some(Act::AddFieldPreset(name_opt)) => {
+            let params = match name_opt {
+                Some(n) => json!({ "name": n }),
+                None => json!({}),
+            };
+            app.run("legend.addFieldPresets", params).map(drop)
+        }
         Some(Act::PruneEmpty) => prune_empty_layers(app),
         None if revert_all => revert(app, json!({ "all": true })),
         None if new_layer => app.run("layer.new", json!({})).map(drop),
@@ -403,6 +411,26 @@ fn prune_empty_layers(app: &mut VectorcraftApp) -> Result<(), String> {
 }
 
 fn rule_picker_menu(ui: &mut Ui, act: &mut Option<Act>) {
+    ui.menu_button("현장 실무 표준 규격 (윤고딕 6p·7p 기준)", |ui| {
+        if ui.button("★ 현장 실무 표준 12종 일괄 추가").clicked() {
+            *act = Some(Act::AddFieldPreset(None));
+            ui.close();
+        }
+        ui.separator();
+        for (name, leg) in vectorcraft_engine::cmd::legend::field_preset_rows() {
+            let line_tag = if matches!(leg.line, vectorcraft_doc::LineType::Dashed) { ", 파선" } else { "" };
+            let label = match leg.weight {
+                Some(w) if (w * 100.0 - (w * 10.0).round() * 10.0).abs() > 0.1 => format!("{name} ({w:.2} pt{line_tag})"),
+                Some(w) => format!("{name} ({w:.1} pt{line_tag})"),
+                None => name.to_string(),
+            };
+            if ui.button(label).clicked() {
+                *act = Some(Act::AddFieldPreset(Some(name)));
+                ui.close();
+            }
+        }
+    });
+    ui.separator();
     for (g, title) in [
         (LegendGroup::Plan, "평면 규칙 골라 추가"),
         (LegendGroup::Section, "단면·토층 규칙 골라 추가"),

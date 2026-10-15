@@ -54,6 +54,8 @@ pub enum ElevationLabelPlacement {
     /// Left end of major lines only (Trowel default §14(c)).
     #[default]
     LeftEnd,
+    /// Right end of major lines only (Korean field report standard e.g. ┣ 93.0m).
+    RightEnd,
     /// Both left and right ends.
     BothEnds,
 }
@@ -110,6 +112,12 @@ pub struct ElevationSpec {
     /// Recompute automatically when profile or obstacles change.
     #[serde(default = "default_auto_update")]
     pub auto_update: bool,
+    /// When true, elevation lines are placed below the section profile (underneath ground) rather than in the open void above.
+    #[serde(default)]
+    pub fill_below_profile: bool,
+    /// When true, draws a red datum tick (┣) next to each major elevation label.
+    #[serde(default)]
+    pub red_datum_tick: bool,
 }
 
 fn default_minor_interval() -> f64 {

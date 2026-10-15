@@ -84,6 +84,15 @@ pub fn specs() -> Vec<CommandSpec> {
             has_doc,
             add
         ),
+        cmd!(
+            "legend.addFieldPresets",
+            "Add Field Standard Legend Presets",
+            [],
+            None,
+            "{name?: string} add Korean excavation report field standard legend rows (0.6pt 평면외곽선, 0.3pt 내선(바닥), 0.4pt 이중굴광시-가운데선, 0.5pt 석곽-평면외곽선, 0.2pt 석곽-내선, 0.3pt 석곽-유물 토기외곽·금속, 0.2pt 석곽-유물 내선, 0.15pt 석곽-유물 깨진면, 0.8pt 단면선, 0.2pt 단면빗금, 0.3pt 해발선, 0.5pt 해발선 0.5단위)",
+            has_doc,
+            add_field_presets
+        ),
     ]
 }
 
@@ -721,4 +730,67 @@ fn add(s: &mut Session, p: &Value) -> Result<Value> {
     st.active_layer = Some(id);
     st.layer_rows = vec![id];
     Ok(json!({ "id": id.0, "moved": roots.len() }))
+}
+
+/// Real-world Korean archaeological report field standard stroke rules (6p/7p standard):
+/// 평면외곽선 0.6pt, 내선(바닥) 0.3pt, 이중굴광시-가운데선 0.4pt 파선,
+/// 석곽-평면외곽선 0.5pt, 석곽-내선 0.2pt, 석곽-유물 토기외곽·금속 0.3pt,
+/// 석곽-유물 내선 0.2pt, 석곽-유물 깨진면 0.15pt, 단면선 0.8pt, 단면빗금 0.2pt,
+/// 해발선 0.3pt, 해발선 0.5단위 0.5pt.
+const FIELD_PRESETS: [(&str, LegendGroup, f64, LineType, Show, bool); 12] = [
+    ("평면외곽선", LegendGroup::Plan, 0.6, LineType::Solid, Show::Area, true),
+    ("내선(바닥)", LegendGroup::Plan, 0.3, LineType::Solid, Show::Area, true),
+    ("이중굴광시-가운데선", LegendGroup::Plan, 0.4, LineType::Dashed, Show::Line, false),
+    ("석곽-평면외곽선", LegendGroup::Plan, 0.5, LineType::Solid, Show::Area, true),
+    ("석곽-내선", LegendGroup::Plan, 0.2, LineType::Solid, Show::Line, false),
+    ("석곽-유물 토기외곽·금속", LegendGroup::Finds, 0.3, LineType::Solid, Show::Line, true),
+    ("석곽-유물 내선", LegendGroup::Finds, 0.2, LineType::Solid, Show::Line, false),
+    ("석곽-유물 깨진면", LegendGroup::Finds, 0.15, LineType::Solid, Show::Line, false),
+    ("단면선", LegendGroup::Section, 0.8, LineType::Solid, Show::Line, true),
+    ("단면빗금", LegendGroup::Section, 0.2, LineType::Solid, Show::Area, false),
+    ("해발선", LegendGroup::Section, 0.3, LineType::Solid, Show::Line, false),
+    ("해발선 0.5단위", LegendGroup::Section, 0.5, LineType::Solid, Show::Line, true),
+];
+
+/// Returns the 12 real-world Korean excavation report field standard rules.
+pub fn field_preset_rows() -> Vec<(&'static str, Legend)> {
+    FIELD_PRESETS
+        .iter()
+        .map(|(name, g, weight, line, show, favourite)| {
+            let sample = match show {
+                Show::Line => LegendSample::Line,
+                Show::Area => LegendSample::Area,
+                Show::Mark(m) => LegendSample::Mark((*m).to_string()),
+            };
+            let legend = Legend { weight: Some(*weight), line: line.clone(), favourite: *favourite, sample, strata: None, group: Some(*g) };
+            (*name, legend)
+        })
+        .collect()
+}
+
+fn add_field_presets(s: &mut Session, p: &Value) -> Result<Value> {
+    let filter_name = p.get("name").and_then(Value::as_str);
+    let d = &s.doc()?.doc;
+    let there = |name: &str| d.layers.iter().any(|l| l.display_name().trim() == name);
+    let rows: Vec<(&'static str, Legend)> =
+        field_preset_rows().into_iter().filter(|(name, _)| filter_name.is_none_or(|fnm| *name == fnm)).filter(|(name, _)| !there(name)).collect();
+    if rows.is_empty() {
+        return Ok(json!({ "added": [], "skipped": 0 }));
+    }
+    let added = s.edit("Add Field Standard Legend Presets", |d, _| {
+        let at = d.layers.len();
+        let mut ids = vec![];
+        for (name, row) in &rows {
+            let mut n = make_layer(d, Some(name));
+            if let NodeKind::Layer { legend, .. } = &mut n.kind {
+                *legend = Some(Box::new(row.clone()));
+            }
+            ids.push(d.insert(None, at, n)?);
+        }
+        Ok(ids)
+    })?;
+    if let Some(&first_id) = added.first() {
+        let _ = pick(s, &json!({ "id": first_id.0 }));
+    }
+    Ok(json!({ "added": added.iter().map(|i| i.0).collect::<Vec<_>>() }))
 }

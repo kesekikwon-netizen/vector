@@ -165,6 +165,10 @@ fn grid_popup_id() -> egui::Id {
     wid("grid-color-popup-open", ())
 }
 
+fn trowel_popup_id() -> egui::Id {
+    wid("trowel-tile-popup-open", ())
+}
+
 pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     egui::Panel::top(RIBBON).exact_size(RIBBON_H).show_separator_line(false).frame(egui::Frame::NONE.fill(t.panel)).show(ui, |ui| {
@@ -210,6 +214,17 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
                 ui.ctx().data_mut(|d| d.insert_temp(grid_popup_id(), !open || app.ui.view.grid));
             }
             Some(Act::Trowel(key)) => {
+                if matches!(key, "section-line" | "spot-height" | "north" | "scale-bar" | "legend") {
+                    let cur = ui.ctx().data(|d| d.get_temp::<&'static str>(trowel_popup_id()));
+                    let next = if cur == Some(key) { None } else { Some(key) };
+                    ui.ctx().data_mut(|d| {
+                        if let Some(k) = next {
+                            d.insert_temp(trowel_popup_id(), k);
+                        } else {
+                            d.remove::<&'static str>(trowel_popup_id());
+                        }
+                    });
+                }
                 let res = match key {
                     "section-line" => app.run("trowel.sectionLine", json!({ "start": [50.0, 150.0], "end": [250.0, 150.0], "label": "A" })),
                     "spot-height" => app.run("trowel.spotElevation", json!({ "x": 100.0, "y": 100.0, "elevation_m": 152.34 })),
@@ -233,6 +248,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
             Some(Act::Soon(_)) | None => {}
         }
         show_grid_color_popup(app, ui.ctx(), r.bottom(), &t);
+        show_trowel_tile_popup(app, ui.ctx(), r.bottom(), &t);
     });
 }
 
@@ -434,5 +450,211 @@ fn show_grid_color_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_b
     }
     if !keep_open {
         ctx.data_mut(|d| d.insert_temp(grid_popup_id(), false));
+    }
+}
+
+fn show_trowel_tile_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_bottom: f32, t: &Tokens) {
+    let Some(key) = ctx.data(|d| d.get_temp::<&'static str>(trowel_popup_id())) else {
+        return;
+    };
+    let tile_x = ctx.viewport(|vp| vp.prev_pass.widgets.get(wid("tile", key)).map(|w| w.rect.left())).unwrap_or(520.0);
+    let mut keep_open = true;
+    let title = match key {
+        "scale-bar" => "축척 막대 원클릭 삽입 (1/10 ~ 1/200)",
+        "section-line" => "단면 기호 (A–A′ · B–B′ · 붉은 기준점)",
+        "spot-height" => "자동 해발선 · 단면 기준 눈금 (┣ 93.0m)",
+        "north" => "방위표 삽입 및 각도 회전",
+        "legend" => "현장 주기 · 토층설명(7p) · 스탬프",
+        _ => "도면 요소",
+    };
+
+    let resp = egui::Window::new(title)
+        .id(wid("trowel-tile-window", key))
+        .collapsible(false)
+        .resizable(false)
+        .title_bar(false)
+        .fixed_pos(pos2(tile_x.max(16.0), ribbon_bottom + 4.0))
+        .frame(egui::Frame::NONE.fill(t.panel).stroke(Stroke::new(1.0, t.border)).corner_radius(CornerRadius::same(8)).inner_margin(10.0))
+        .show(ctx, |ui| {
+            ui.set_width(290.0);
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(title).font(bold(12.0)).color(t.text));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("✕").clicked() {
+                        keep_open = false;
+                    }
+                });
+            });
+            ui.add_space(6.0);
+
+            match key {
+                "scale-bar" => {
+                    let style_id = wid("scale-bar-style-mode", ());
+                    let mut is_parallel = ui.data(|d| d.get_temp::<bool>(style_id).unwrap_or(false));
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("형태:").font(font(11.0)).color(t.text_dim));
+                        if ui.selectable_label(!is_parallel, "보고서 막대형 (0—0.5—1m)").clicked() {
+                            is_parallel = false;
+                        }
+                        if ui.selectable_label(is_parallel, "평행 눈금선형").clicked() {
+                            is_parallel = true;
+                        }
+                    });
+                    ui.data_mut(|d| d.insert_temp(style_id, is_parallel));
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new("축척 선택 (클릭 시 캔버스에 즉시 삽입):").font(font(11.0)).color(t.text_dim));
+                    let style_str = if is_parallel { "parallel" } else { "report" };
+                    ui.horizontal_wrapped(|ui| {
+                        for sc in [10u32, 20, 30, 40, 50, 60, 80, 100, 200] {
+                            if ui.button(format!("1/{sc}")).clicked() {
+                                let _ = app.run("trowel.insertScaleBar", json!({ "scale": sc, "style": style_str }));
+                            }
+                        }
+                    });
+                }
+                "section-line" => {
+                    ui.label(egui::RichText::new("붉은 기준점(■) + 시선 화살표(∠) 단면 기호:").font(font(11.0)).color(t.text_dim));
+                    ui.horizontal_wrapped(|ui| {
+                        for (lbl, orient, desc) in [
+                            ("A", "horizontal", "A–A′ (가로)"),
+                            ("B", "vertical", "B–B′ (세로)"),
+                            ("C", "horizontal", "C–C′ (가로)"),
+                            ("a", "horizontal", "a–a′ (가로)"),
+                            ("b", "vertical", "b–b′ (세로)"),
+                        ] {
+                            if ui.button(desc).clicked() {
+                                let _ = app.run("trowel.insertSectionMarker", json!({ "label": lbl, "orientation": orient, "kind": "cut" }));
+                            }
+                        }
+                    });
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new("단면 양끝 해발 기준 붉은 눈금:").font(font(11.0)).color(t.text_dim));
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("┣ 93.0m (가로단면)").clicked() {
+                            let _ =
+                                app.run("trowel.insertSectionMarker", json!({ "kind": "datum", "orientation": "horizontal", "elevationM": 93.0 }));
+                        }
+                        if ui.button("┳ 93.0m (세로단면)").clicked() {
+                            let _ = app.run("trowel.insertSectionMarker", json!({ "kind": "datum", "orientation": "vertical", "elevationM": 93.0 }));
+                        }
+                    });
+                }
+                "spot-height" => {
+                    let elev_id = wid("spot-datum-elev-val", ());
+                    let mut elev_m = ui.data(|d| d.get_temp::<f64>(elev_id).unwrap_or(93.0));
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("기준 해발(m):").font(font(11.0)).color(t.text_dim));
+                        ui.add(egui::DragValue::new(&mut elev_m).speed(0.1).range(-100.0..=2000.0).suffix(" m"));
+                    });
+                    ui.data_mut(|d| d.insert_temp(elev_id, elev_m));
+                    ui.add_space(4.0);
+                    if ui.button("자동 해발선: 단면선 아래쪽 + 우측 붉은 눈금 (┣)").clicked() {
+                        let _ = app.run(
+                            "elevation.create",
+                            json!({
+                                "datumM": elev_m,
+                                "minorWeightPt": 0.3,
+                                "majorWeightPt": 0.5,
+                                "labelFontSizePt": 6.0,
+                                "labelPlacement": "right",
+                                "fillBelowProfile": true,
+                                "redDatumTick": true,
+                            }),
+                        );
+                    }
+                    if ui.button("자동 해발선: 빈 곳(위쪽) + 좌측 숫자 (기본)").clicked() {
+                        let _ = app.run(
+                            "elevation.create",
+                            json!({
+                                "datumM": elev_m,
+                                "minorWeightPt": 0.2,
+                                "majorWeightPt": 0.5,
+                                "labelPlacement": "left",
+                                "fillBelowProfile": false,
+                            }),
+                        );
+                    }
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button(format!("붉은 눈금 ┣ {elev_m:.1}m 찍기")).clicked() {
+                            let _ =
+                                app.run("trowel.insertSectionMarker", json!({ "kind": "datum", "orientation": "horizontal", "elevationM": elev_m }));
+                        }
+                        if ui.button(format!("세로 눈금 ┳ {elev_m:.1}m 찍기")).clicked() {
+                            let _ =
+                                app.run("trowel.insertSectionMarker", json!({ "kind": "datum", "orientation": "vertical", "elevationM": elev_m }));
+                        }
+                    });
+                }
+                "north" => {
+                    let deg_id = wid("north-arrow-deg", ());
+                    let mut deg = ui.data(|d| d.get_temp::<f64>(deg_id).unwrap_or(0.0));
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("회전 각도:").font(font(11.0)).color(t.text_dim));
+                        ui.add(egui::DragValue::new(&mut deg).speed(1.0).range(-180.0..=180.0).suffix("°"));
+                        if ui.button("방위표 넣기").clicked() {
+                            let _ = app.run("trowel.insertNorthArrow", json!({ "rotationDeg": deg }));
+                        }
+                    });
+                    ui.data_mut(|d| d.insert_temp(deg_id, deg));
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| {
+                        for a in [-45.0, -30.0, -15.0, 0.0, 15.0, 30.0, 45.0, 90.0] {
+                            if ui.small_button(format!("{a:+.0}°")).clicked() {
+                                ui.data_mut(|d| d.insert_temp(deg_id, a));
+                                let _ = app.run("trowel.insertNorthArrow", json!({ "rotationDeg": a }));
+                            }
+                        }
+                    });
+                }
+                "legend" => {
+                    ui.label(egui::RichText::new("현장 도면 자주 쓰는 스탬프 · 토층설명:").font(font(11.0)).color(t.text_dim));
+                    if ui.button("토층설명 7p 텍스트 넣기 (I : 흑갈색 사질점토…)").clicked() {
+                        let _ = app.run("stratigraphy.generateTable", json!({ "at": [120, 440], "format": "inline", "fontSizePt": 7.0 }));
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("교란 (6p)").clicked() {
+                            let _ = app.run("trowel.insertFieldStamp", json!({ "kind": "disturbance" }));
+                        }
+                        if ui.button("조사경계 (6p+파선)").clicked() {
+                            let _ = app.run("trowel.insertFieldStamp", json!({ "kind": "excavation_limit" }));
+                        }
+                        if ui.button("격자 기호 (A1~C3)").clicked() {
+                            let _ = app.run("trowel.insertFieldStamp", json!({ "kind": "grid_labels" }));
+                        }
+                        if ui.button("현장 선굵기 규격 주기").clicked() {
+                            let _ = app.run("trowel.insertFieldStamp", json!({ "kind": "spec_note" }));
+                        }
+                    });
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new("토층 번호 로마숫자(I~XX) 찍기:").font(font(11.0)).color(t.text_dim));
+                    ui.horizontal_wrapped(|ui| {
+                        for n in 1..=10u32 {
+                            let rom = vectorcraft_doc::stratigraphy::to_ascii_roman(n);
+                            if ui.small_button(&rom).clicked() {
+                                let _ = app.run(
+                                    "stratigraphy.circledNumber",
+                                    json!({ "at": [180.0 + (n as f64) * 18.0, 200.0], "number": n, "style": "roman_ascii", "fontSizePt": 6.0 }),
+                                );
+                            }
+                        }
+                    });
+                }
+                _ => {}
+            }
+        });
+
+    if let Some(inner) = resp {
+        let tile_rect = ctx.viewport(|vp| vp.prev_pass.widgets.get(wid("tile", key)).map(|w| w.rect));
+        let clicked_outside = ctx.input(|i| {
+            i.pointer.any_pressed()
+                && i.pointer.interact_pos().is_some_and(|p| !inner.response.rect.contains(p) && !tile_rect.is_some_and(|tr| tr.contains(p)))
+        });
+        if clicked_outside && !ctx.any_popup_open() {
+            keep_open = false;
+        }
+    }
+    if !keep_open {
+        ctx.data_mut(|d| d.remove::<&'static str>(trowel_popup_id()));
     }
 }

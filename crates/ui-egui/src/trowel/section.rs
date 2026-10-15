@@ -84,7 +84,13 @@ pub fn show_dock_panel(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
                 }
 
                 // 1. Badge circle symbol
-                let badge_text = layer.badge_text(numbering_style);
+                let badge_text = if let Some(ref c) = layer.custom_badge {
+                    c.clone()
+                } else if numbering_style == NumberingStyle::Roman {
+                    vectorcraft_doc::stratigraphy::to_ascii_roman(layer.index)
+                } else {
+                    layer.badge_text(numbering_style)
+                };
                 let badge_center = pos2(row_rect.left() + 20.0, row_rect.center().y);
                 ui.painter().circle_filled(badge_center, 9.0, t.input);
                 ui.painter().circle_stroke(badge_center, 9.0, Stroke::new(1.0, t.input_border));
@@ -129,15 +135,23 @@ pub fn show_dock_panel(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     cy += list_h + 10.0;
 
     // Action buttons
-    let btn_w = (r.width() - 28.0 - 8.0) / 2.0;
+    let btn_w = (r.width() - 28.0 - 12.0) / 3.0;
     let b1 = Rect::from_min_size(pos2(r.left() + 14.0, cy), vec2(btn_w, 28.0));
-    let b2 = Rect::from_min_size(pos2(r.left() + 14.0 + btn_w + 8.0, cy), vec2(btn_w, 28.0));
+    let b2 = Rect::from_min_size(pos2(r.left() + 14.0 + btn_w + 6.0, cy), vec2(btn_w, 28.0));
+    let b3 = Rect::from_min_size(pos2(r.left() + 14.0 + (btn_w + 6.0) * 2.0, cy), vec2(btn_w, 28.0));
 
-    if small_button(ui, wid("section-gen-tbl", ()), b1.left_center(), 28.0, "도면에 표 넣기", true, &t).clicked() {
-        let _ = app.run("stratigraphy.generateTable", json!({ "at": [100, 500] }));
+    if small_button(ui, wid("section-gen-tbl", ()), b1.left_center(), 28.0, "표 넣기", true, &t).clicked() {
+        let _ = app.run("stratigraphy.generateTable", json!({ "at": [100, 500], "format": "grid" }));
     }
 
-    if small_button(ui, wid("section-copy-tsv", ()), b2.left_center(), 28.0, "TSV 복사", true, &t).clicked()
+    if small_button(ui, wid("section-gen-inline", ()), b2.left_center(), 28.0, "토층설명(7p)", true, &t)
+        .on_hover_text("현장 보고서 양식(I : 흑갈색 사질점토, 7pt)으로 도면에 바로 넣기")
+        .clicked()
+    {
+        let _ = app.run("stratigraphy.generateTable", json!({ "at": [100, 500], "format": "inline", "fontSizePt": 7.0 }));
+    }
+
+    if small_button(ui, wid("section-copy-tsv", ()), b3.left_center(), 28.0, "TSV 복사", true, &t).clicked()
         && let Ok(res) = app.run("stratigraphy.exportTsv", json!({}))
         && let Some(tsv) = res.get("tsv").and_then(|v| v.as_str())
     {
@@ -156,10 +170,13 @@ pub fn show_dock_panel(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
 }
 
 /// Renders the section and stratigraphy control bar when section tools are active.
-pub fn show_control_bar(_app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
+pub fn show_control_bar(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let t = Tokens::get(ui.ctx());
     let cy = r.center().y;
     let mut x = r.left() + 16.0;
+
+    let current_style =
+        app.session.active().and_then(|st| st.doc.stratigraphy_tables.first().map(|tbl| tbl.numbering_style)).unwrap_or(NumberingStyle::Circled);
 
     x = text(ui, pos2(x, cy), Align2::LEFT_CENTER, "토층 번호 ›", bold(12.0), t.text).right() + 12.0;
 
@@ -167,13 +184,21 @@ pub fn show_control_bar(_app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let look = SegLook { h: 24.0, pad: 8.0, font: font(11.0) };
 
     let style_parts = [
-        Seg { key: "circled", label: "① 원문자", on: true, soon: None },
-        Seg { key: "roman", label: "Ⅰ 로마 숫자", on: false, soon: None },
-        Seg { key: "arabic", label: "1 숫자", on: false, soon: None },
+        Seg { key: "circled", label: "① 원문자", on: current_style == NumberingStyle::Circled, soon: None },
+        Seg { key: "roman", label: "Ⅰ 로마 숫자(I~XX)", on: current_style == NumberingStyle::Roman, soon: None },
+        Seg { key: "arabic", label: "1 숫자", on: current_style == NumberingStyle::Arabic, soon: None },
     ];
 
-    let (_, next_x) = segments(ui, "section-style", pos2(x, cy), &look, &style_parts, &t);
-    x = next_x + 16.0;
+    let (picked_style, next_x) = segments(ui, "section-style", pos2(x, cy), &look, &style_parts, &t);
+    if let Some(style_key) = picked_style {
+        let _ = app.run("stratigraphy.setStyle", json!({ "style": style_key }));
+    }
+    x = next_x + 12.0;
+
+    if small_button(ui, wid("section-bar-inline", ()), pos2(x, cy), 24.0, "토층설명(7p) 넣기", true, &t).clicked() {
+        let _ = app.run("stratigraphy.generateTable", json!({ "at": [100, 460], "format": "inline", "fontSizePt": 7.0 }));
+    }
+    x += 114.0;
 
     // Table sync toggle
     let tog_r = Rect::from_min_size(pos2(x, cy - 12.0), vec2(120.0, 24.0));

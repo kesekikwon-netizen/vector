@@ -58,7 +58,38 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let add_resp = ui.interact(add, wid("weight-add", ()), Sense::click());
     chip(ui, add, false, add_resp.hovered(), &t);
     crate::icons::paint(ui, "plus", Rect::from_center_size(add.center(), vec2(12.0, 12.0)), t.text);
-    if add_resp.on_hover_text("도면 양식 템플릿 관리 (J018)").clicked() {
+    let add_resp = add_resp.on_hover_text("클릭: 양식 템플릿 관리 · 우클릭: 현장 세부 굵기(0.15 / 0.4 / 0.6 pt) 선택");
+    let mut picked_preset: Option<(f64, Option<LineType>)> = None;
+    egui::Popup::context_menu(&add_resp).show(|ui| {
+        ui.label("현장 실무 세부 선 굵기 (6p·7p 규격)");
+        ui.separator();
+        for (w, desc, dash_opt) in [
+            (0.15, "0.15 pt · 석곽-유물 깨진면", Some(LineType::Solid)),
+            (0.2, "0.2 pt · 석곽·유물 내선 / 단면빗금", Some(LineType::Solid)),
+            (0.3, "0.3 pt · 내선(바닥) / 유물외곽 / 해발선", Some(LineType::Solid)),
+            (0.4, "0.4 pt · 이중굴광시-가운데선 (파선)", Some(LineType::Dashed)),
+            (0.5, "0.5 pt · 석곽-평면외곽선 / 해발 0.5단위", Some(LineType::Solid)),
+            (0.6, "0.6 pt · 평면외곽선", Some(LineType::Solid)),
+            (0.8, "0.8 pt · 단면선", Some(LineType::Solid)),
+            (1.0, "1.0 pt · 조사구역 경계", None),
+        ] {
+            if ui.button(desc).clicked() {
+                picked_preset = Some((w, dash_opt));
+                ui.close();
+            }
+        }
+        ui.separator();
+        if ui.button("도면 양식 템플릿 관리 (J018)…").clicked() {
+            super::style_dialog::toggle_dialog(ui.ctx());
+            ui.close();
+        }
+    });
+    if let Some((w, dash_opt)) = picked_preset {
+        set = Some(match dash_opt {
+            Some(kind) => json!({ "weight": w, "dash": kind.dash_pt() }),
+            None => json!({ "weight": w }),
+        });
+    } else if add_resp.clicked() {
         super::style_dialog::toggle_dialog(ui.ctx());
     }
     // Hatch: 45°, 135°, Alternate, None.

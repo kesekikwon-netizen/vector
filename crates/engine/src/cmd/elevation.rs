@@ -1,6 +1,6 @@
 //! Automatic horizontal elevation lines commands (Trowel design 2.1 §4, §4-1, §14(b, c, d)).
 
-use kurbo::{BezPath, Point};
+use kurbo::{BezPath, Point, Shape as _};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use vectorcraft_color::{Color, Paint};
@@ -121,8 +121,16 @@ fn spec_from_params(cmd: &str, p: &Value, default_profile: Option<NodeId>) -> Re
 
     let label_placement = match p.get("labelPlacement").and_then(|v| v.as_str()).map(str::to_ascii_lowercase).as_deref() {
         Some("bothends") | Some("both") => ElevationLabelPlacement::BothEnds,
+        Some("rightend") | Some("right") => ElevationLabelPlacement::RightEnd,
         _ => ElevationLabelPlacement::LeftEnd,
     };
+
+    let fill_below_profile = p
+        .get("fillBelowProfile")
+        .and_then(|v| v.as_bool())
+        .or_else(|| p.get("placement").and_then(|v| v.as_str()).map(|s| s.eq_ignore_ascii_case("below")))
+        .unwrap_or(false);
+    let red_datum_tick = p.get("redDatumTick").and_then(|v| v.as_bool()).unwrap_or(false);
 
     let range_mode = match (p.get("minElevationM").and_then(|v| v.as_f64()), p.get("maxElevationM").and_then(|v| v.as_f64())) {
         (Some(min_elevation_m), Some(max_elevation_m)) => ElevationRangeMode::Explicit { min_elevation_m, max_elevation_m },
@@ -142,6 +150,8 @@ fn spec_from_params(cmd: &str, p: &Value, default_profile: Option<NodeId>) -> Re
         label_font_size_pt,
         range_mode,
         auto_update,
+        fill_below_profile,
+        red_datum_tick,
     })
 }
 
@@ -160,7 +170,7 @@ fn generate_children(doc: &mut Document, spec: &ElevationSpec) -> Result<(Vec<Ar
     }
 
     let out = vectorcraft_pathops::generate_elevation(&profile_bp, &obstacle_bps, spec, doc.scale.as_ref());
-    let mut children = Vec::with_capacity(out.segments.len() + out.labels.len());
+    let mut children = Vec::with_capacity(out.segments.len() + out.labels.len() * 2);
 
     for seg in &out.segments {
         let cid = doc.alloc_id();
@@ -172,12 +182,38 @@ fn generate_children(doc: &mut Document, spec: &ElevationSpec) -> Result<(Vec<Ar
         children.push(Arc::new(child));
     }
 
+    let red_ref = Color::rgb8(210, 35, 90);
     for label in &out.labels {
+        if spec.red_datum_tick {
+            let tid = doc.alloc_id();
+            let dir = if label.anchor_left { -1.0 } else { 1.0 };
+            let mut tick_bez = BezPath::new();
+            tick_bez.move_to(Point::new(label.at.x, label.at.y - 3.5));
+            tick_bez.line_to(Point::new(label.at.x, label.at.y + 3.5));
+            tick_bez.move_to(label.at);
+            tick_bez.line_to(Point::new(label.at.x + dir * 5.0, label.at.y));
+            let mut tnode = Node::path(tid, PathData::from_bezpath(&tick_bez), Appearance::basic(Paint::None, Paint::solid(red_ref), 0.5));
+            tnode.name = Some("해발 붉은 눈금".to_string());
+            children.push(Arc::new(tnode));
+        }
+
         let cid = doc.alloc_id();
         let style = CharStyle { size: spec.label_font_size_pt, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
-        let origin = Point::new(label.at.x + if label.anchor_left { 2.0 } else { -2.0 }, label.at.y - 2.0);
+        let origin = if spec.red_datum_tick {
+            if label.anchor_left {
+                Point::new(label.at.x - 7.0, label.at.y + spec.label_font_size_pt * 0.35)
+            } else {
+                Point::new(label.at.x + 7.0, label.at.y + spec.label_font_size_pt * 0.35)
+            }
+        } else {
+            Point::new(label.at.x + if label.anchor_left { 2.0 } else { -2.0 }, label.at.y - 2.0)
+        };
         let mut t_obj = TextObject::point(origin, &label.text, style);
-        if !label.anchor_left {
+        if spec.red_datum_tick {
+            if label.anchor_left {
+                t_obj.para.justify = Justify::Right;
+            }
+        } else if !label.anchor_left {
             t_obj.para.justify = Justify::Right;
         }
         let mut child = Node::new(cid, NodeKind::Text(Box::new(t_obj)));
@@ -205,7 +241,20 @@ pub(crate) fn recompute_elevation_children(doc: &mut Document, group_id: NodeId)
 }
 
 fn create(s: &mut Session, p: &Value) -> Result<Value> {
-    let default_profile = s.doc()?.selection.objects.first().copied();
+    let default_profile = s.doc()?.selection.objects.first().copied().or_else(|| {
+        let doc = &s.doc().ok()?.doc;
+        let mut best: Option<(NodeId, f64)> = None;
+        doc.walk(|n| {
+            if let NodeKind::Path { path, .. } = &n.kind {
+                let bb = path.to_bezpath().bounding_box();
+                let w = bb.width();
+                if w > 10.0 && best.is_none_or(|(_, bw)| w > bw) {
+                    best = Some((n.id, w));
+                }
+            }
+        });
+        best.map(|(id, _)| id)
+    });
     let spec = spec_from_params("elevation.create", p, default_profile)?;
     let target_parent = s.doc()?.target_parent()?;
 

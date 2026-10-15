@@ -89,6 +89,15 @@ pub fn specs() -> Vec<CommandSpec> {
             has_doc,
             validate_stratigraphy
         ),
+        cmd!(
+            "stratigraphy.setStyle",
+            "Set Stratigraphy Numbering Style",
+            ["Trowel", "토층"],
+            None,
+            "{tableId?: string, style: 'circled'|'roman'|'arabic'} set the layer numbering style (① 원문자, Ⅰ/I 로마 숫자, 1 아라비아 숫자)",
+            has_doc,
+            set_style
+        ),
     ]
 }
 
@@ -253,7 +262,13 @@ fn circled_number(s: &mut Session, p: &Value) -> Result<Value> {
 
         let number = p.get("number").and_then(Value::as_u64).map(|u| u as u32).unwrap_or(next_num);
 
-        let badge_text = if let Some(ref ct) = custom_text { ct.clone() } else { style.format(number) };
+        let badge_text = if let Some(ref ct) = custom_text {
+            ct.clone()
+        } else if style_str == "roman_ascii" || (style == NumberingStyle::Roman && number > 10) {
+            vectorcraft_doc::stratigraphy::to_ascii_roman(number)
+        } else {
+            style.format(number)
+        };
 
         let mut children = Vec::with_capacity(3);
 
@@ -297,7 +312,7 @@ fn circled_number(s: &mut Session, p: &Value) -> Result<Value> {
         };
         let mut text_obj = TextObject::point(Point::new(center.x, center.y + font_size_pt * 0.35), &badge_text, char_style);
         text_obj.para.justify = Justify::Center;
-        let mut text_node = Node::new(text_id, NodeKind::Text(Box::new(text_obj)));
+        let mut text_node = Node::new(text_id, NodeKind::Text(Box::new(txt_or_clone(text_obj))));
         text_node.name = Some(format!("층위 번호 {badge_text}"));
         children.push(Arc::new(text_node));
 
@@ -335,26 +350,72 @@ fn circled_number(s: &mut Session, p: &Value) -> Result<Value> {
     })
 }
 
+fn txt_or_clone(t: TextObject) -> TextObject {
+    t
+}
+
 fn generate_table(s: &mut Session, p: &Value) -> Result<Value> {
     let table_id = p.get("tableId").and_then(Value::as_str);
     let origin = p.get("at").and_then(parse_point).unwrap_or(Point::new(100.0, 400.0));
     let width_pt = p.get("width").and_then(Value::as_f64).unwrap_or(420.0);
-    let font_size_pt = p.get("fontSizePt").and_then(Value::as_f64).unwrap_or(8.0);
     let format_str = p.get("format").and_then(Value::as_str).unwrap_or("grid");
     let render_format = if format_str == "inline" { TableRenderFormat::Inline } else { TableRenderFormat::Grid };
+    let default_font_pt = if render_format == TableRenderFormat::Inline { 7.0 } else { 8.0 };
+    let font_size_pt = p.get("fontSizePt").and_then(Value::as_f64).unwrap_or(default_font_pt);
 
     let target_parent = s.doc()?.target_parent()?;
 
     s.edit("Generate Stratigraphy Table", |doc, sel| {
-        let (n_layers, table_title, rows_data) = {
+        if render_format == TableRenderFormat::Inline {
+            let table = get_or_create_table(&mut doc.stratigraphy_tables, table_id)?;
+            if table.layers.is_empty() {
+                table.layers.push(StratigraphyLayer {
+                    index: 1,
+                    custom_badge: None,
+                    description: SoilDescription {
+                        color_name: "흑갈색".into(),
+                        munsell: "10YR 2/2".into(),
+                        texture: "사질점토".into(),
+                        inclusions: String::new(),
+                        notes: String::new(),
+                    },
+                    fill_style: StratigraphyFillStyle::None,
+                    badge_node_id: None,
+                    face_node_id: None,
+                });
+                table.layers.push(StratigraphyLayer {
+                    index: 2,
+                    custom_badge: None,
+                    description: SoilDescription {
+                        color_name: "암갈색".into(),
+                        munsell: "10YR 3/3".into(),
+                        texture: "사질점토".into(),
+                        inclusions: String::new(),
+                        notes: String::new(),
+                    },
+                    fill_style: StratigraphyFillStyle::None,
+                    badge_node_id: None,
+                    face_node_id: None,
+                });
+            }
+        }
+
+        let (n_layers, table_title, numbering_style, rows_data) = {
             let table = get_or_create_table(&mut doc.stratigraphy_tables, table_id)?;
             let numbering_style = table.numbering_style;
             let rows: Vec<_> = table
                 .layers
                 .iter()
                 .map(|l| {
+                    let badge = if let Some(ref c) = l.custom_badge {
+                        c.clone()
+                    } else if numbering_style == NumberingStyle::Roman {
+                        vectorcraft_doc::stratigraphy::to_ascii_roman(l.index)
+                    } else {
+                        l.badge_text(numbering_style)
+                    };
                     (
-                        l.badge_text(numbering_style),
+                        badge,
                         l.description.color_name.clone(),
                         l.description.munsell.clone(),
                         l.description.texture.clone(),
@@ -363,99 +424,140 @@ fn generate_table(s: &mut Session, p: &Value) -> Result<Value> {
                     )
                 })
                 .collect();
-            (table.layers.len(), table.title.clone(), rows)
+            (table.layers.len(), table.title.clone(), numbering_style, rows)
         };
-
-        let header_h = 22.0;
-        let row_h = 20.0;
-        let total_h = header_h + (n_layers as f64) * row_h;
-
-        let col_widths = [36.0, 64.0, 70.0, 60.0, 90.0, (width_pt - 320.0).max(80.0)];
-        let headers = ["층위", "토색", "먼셀", "토성", "포함유물", "비고"];
 
         let mut children = Vec::new();
 
-        // 1. Table Outer Frame & Grid Lines
-        let mut lines_bez = BezPath::new();
-        // Outer rect
-        let table_rect = Rect::from_origin_size(origin, kurbo::Size::new(width_pt, total_h));
-        lines_bez.extend(table_rect.to_path(0.1));
+        let total_h = if render_format == TableRenderFormat::Inline {
+            // Korean excavation report inline 7pt soil description block:
+            // e.g. "I : 흑갈색 사질점토 (10YR 2/2) · 목탄 소량"
+            let line_h = (font_size_pt * 1.65).max(11.0);
+            for (row_idx, (badge, col_name, munsell, texture, inc, notes)) in rows_data.iter().enumerate() {
+                let mut desc_parts = Vec::new();
+                let main_soil = format!("{} {}", col_name, texture).trim().to_string();
+                if !main_soil.is_empty() {
+                    desc_parts.push(main_soil);
+                }
+                if !munsell.is_empty() {
+                    desc_parts.push(format!("({munsell})"));
+                }
+                if !inc.is_empty() {
+                    desc_parts.push(inc.clone());
+                }
+                if !notes.is_empty() {
+                    desc_parts.push(notes.clone());
+                }
+                let body = if desc_parts.is_empty() { "사질점토".to_string() } else { desc_parts.join(" ") };
+                let line_str = if numbering_style == NumberingStyle::Roman || badge.chars().all(|c| c.is_ascii_alphabetic()) {
+                    format!("{badge} : {body}")
+                } else {
+                    format!("{} ({badge}) : {body}", vectorcraft_doc::stratigraphy::to_ascii_roman((row_idx + 1) as u32))
+                };
+                let y = origin.y + (row_idx as f64) * line_h + font_size_pt;
+                let txt_id = doc.alloc_id();
+                let char_style = CharStyle { size: font_size_pt, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
+                let txt_obj = TextObject::point(Point::new(origin.x, y), &line_str, char_style);
+                let mut txt_node = Node::new(txt_id, NodeKind::Text(Box::new(txt_obj)));
+                txt_node.name = Some(format!("토층설명 {}", row_idx + 1));
+                children.push(Arc::new(txt_node));
+            }
+            (n_layers.max(1) as f64) * line_h
+        } else {
+            let header_h = 22.0;
+            let row_h = 20.0;
+            let total_h = header_h + (n_layers as f64) * row_h;
 
-        // Header horizontal separator (0.5 pt)
-        lines_bez.move_to(Point::new(origin.x, origin.y + header_h));
-        lines_bez.line_to(Point::new(origin.x + width_pt, origin.y + header_h));
+            let col_widths = [36.0, 64.0, 70.0, 60.0, 90.0, (width_pt - 320.0).max(80.0)];
+            let headers = ["층위", "토색", "먼셀", "토성", "포함유물", "비고"];
 
-        // Row horizontal separators (0.2 pt)
-        for i in 1..n_layers {
-            let y = origin.y + header_h + (i as f64) * row_h;
-            lines_bez.move_to(Point::new(origin.x, y));
-            lines_bez.line_to(Point::new(origin.x + width_pt, y));
-        }
+            // 1. Table Outer Frame & Grid Lines
+            let mut lines_bez = BezPath::new();
+            // Outer rect
+            let table_rect = Rect::from_origin_size(origin, kurbo::Size::new(width_pt, total_h));
+            lines_bez.extend(table_rect.to_path(0.1));
 
-        // Column vertical separators
-        let mut cur_col_x = origin.x;
-        for &cw in &col_widths[..col_widths.len() - 1] {
-            cur_col_x += cw;
-            lines_bez.move_to(Point::new(cur_col_x, origin.y));
-            lines_bez.line_to(Point::new(cur_col_x, origin.y + total_h));
-        }
+            // Header horizontal separator (0.5 pt)
+            lines_bez.move_to(Point::new(origin.x, origin.y + header_h));
+            lines_bez.line_to(Point::new(origin.x + width_pt, origin.y + header_h));
 
-        let lines_id = doc.alloc_id();
-        let lines_pd = PathData::from_bezpath(&lines_bez);
-        let lines_app = Appearance::basic(Paint::solid(Color::WHITE), Paint::solid(Color::rgb8(20, 20, 19)), 0.5);
-        let mut lines_node = Node::path(lines_id, lines_pd, lines_app);
-        lines_node.name = Some("표 격자".to_string());
-        children.push(Arc::new(lines_node));
+            // Row horizontal separators (0.2 pt)
+            for i in 1..n_layers {
+                let y = origin.y + header_h + (i as f64) * row_h;
+                lines_bez.move_to(Point::new(origin.x, y));
+                lines_bez.line_to(Point::new(origin.x + width_pt, y));
+            }
 
-        // 2. Header Text
-        let mut col_left = origin.x;
-        for (col_idx, &head_title) in headers.iter().enumerate() {
-            let cw = col_widths[col_idx];
-            let cell_center = Point::new(col_left + cw * 0.5, origin.y + header_h * 0.5 + font_size_pt * 0.35);
+            // Column vertical separators
+            let mut cur_col_x = origin.x;
+            for &cw in &col_widths[..col_widths.len() - 1] {
+                cur_col_x += cw;
+                lines_bez.move_to(Point::new(cur_col_x, origin.y));
+                lines_bez.line_to(Point::new(cur_col_x, origin.y + total_h));
+            }
 
-            let txt_id = doc.alloc_id();
-            let char_style = CharStyle { size: font_size_pt, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
-            let mut txt_obj = TextObject::point(cell_center, head_title, char_style);
-            txt_obj.para.justify = Justify::Center;
-            let mut txt_node = Node::new(txt_id, NodeKind::Text(Box::new(txt_obj)));
-            txt_node.name = Some(format!("헤더 {head_title}"));
-            children.push(Arc::new(txt_node));
+            let lines_id = doc.alloc_id();
+            let lines_pd = PathData::from_bezpath(&lines_bez);
+            let lines_app = Appearance::basic(Paint::solid(Color::WHITE), Paint::solid(Color::rgb8(20, 20, 19)), 0.5);
+            let mut lines_node = Node::path(lines_id, lines_pd, lines_app);
+            lines_node.name = Some("표 격자".to_string());
+            children.push(Arc::new(lines_node));
 
-            col_left += cw;
-        }
-
-        // 3. Row Text
-        for (row_idx, row_tuple) in rows_data.iter().enumerate() {
-            let row_top = origin.y + header_h + (row_idx as f64) * row_h;
-            let cell_cy = row_top + row_h * 0.5 + font_size_pt * 0.35;
-
-            let row_values =
-                [row_tuple.0.clone(), row_tuple.1.clone(), row_tuple.2.clone(), row_tuple.3.clone(), row_tuple.4.clone(), row_tuple.5.clone()];
-
-            let mut r_col_left = origin.x;
-            for (col_idx, cell_text) in row_values.iter().enumerate() {
+            // 2. Header Text
+            let mut col_left = origin.x;
+            for (col_idx, &head_title) in headers.iter().enumerate() {
                 let cw = col_widths[col_idx];
-                let is_badge = col_idx == 0;
-                let text_pos = if is_badge { Point::new(r_col_left + cw * 0.5, cell_cy) } else { Point::new(r_col_left + 6.0, cell_cy) };
+                let cell_center = Point::new(col_left + cw * 0.5, origin.y + header_h * 0.5 + font_size_pt * 0.35);
 
                 let txt_id = doc.alloc_id();
                 let char_style = CharStyle { size: font_size_pt, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
-                let mut txt_obj = TextObject::point(text_pos, cell_text, char_style);
-                if is_badge {
-                    txt_obj.para.justify = Justify::Center;
-                }
+                let mut txt_obj = TextObject::point(cell_center, head_title, char_style);
+                txt_obj.para.justify = Justify::Center;
                 let mut txt_node = Node::new(txt_id, NodeKind::Text(Box::new(txt_obj)));
-                txt_node.name = Some(format!("줄 {} 열 {}", row_idx + 1, col_idx + 1));
+                txt_node.name = Some(format!("헤더 {head_title}"));
                 children.push(Arc::new(txt_node));
 
-                r_col_left += cw;
+                col_left += cw;
             }
-        }
+
+            // 3. Row Text
+            for (row_idx, row_tuple) in rows_data.iter().enumerate() {
+                let row_top = origin.y + header_h + (row_idx as f64) * row_h;
+                let cell_cy = row_top + row_h * 0.5 + font_size_pt * 0.35;
+
+                let row_values =
+                    [row_tuple.0.clone(), row_tuple.1.clone(), row_tuple.2.clone(), row_tuple.3.clone(), row_tuple.4.clone(), row_tuple.5.clone()];
+
+                let mut r_col_left = origin.x;
+                for (col_idx, cell_text) in row_values.iter().enumerate() {
+                    let cw = col_widths[col_idx];
+                    let is_badge = col_idx == 0;
+                    let text_pos = if is_badge { Point::new(r_col_left + cw * 0.5, cell_cy) } else { Point::new(r_col_left + 6.0, cell_cy) };
+
+                    let txt_id = doc.alloc_id();
+                    let char_style = CharStyle { size: font_size_pt, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
+                    let mut txt_obj = TextObject::point(text_pos, cell_text, char_style);
+                    if is_badge {
+                        txt_obj.para.justify = Justify::Center;
+                    }
+                    let mut txt_node = Node::new(txt_id, NodeKind::Text(Box::new(txt_obj)));
+                    txt_node.name = Some(format!("줄 {} 열 {}", row_idx + 1, col_idx + 1));
+                    children.push(Arc::new(txt_node));
+
+                    r_col_left += cw;
+                }
+            }
+            total_h
+        };
 
         // Group container
         let group_id = doc.alloc_id();
         let mut group = Node::new(group_id, NodeKind::Group { children, clip: false });
-        group.name = Some(format!("토층 설명표 ({table_title})"));
+        group.name = Some(if render_format == TableRenderFormat::Inline {
+            format!("토층설명 7p ({table_title})")
+        } else {
+            format!("토층 설명표 ({table_title})")
+        });
 
         doc.insert(target_parent, usize::MAX, group).map_err(|e| bad(C, e.to_string()))?;
         sel.objects = vec![group_id];
@@ -648,4 +750,22 @@ fn validate_stratigraphy(s: &mut Session, p: &Value) -> Result<Value> {
         "orphanBadges": orphan_badges,
         "missingTableRows": missing_table_rows,
     }))
+}
+
+fn set_style(s: &mut Session, p: &Value) -> Result<Value> {
+    let table_id = p.get("tableId").and_then(Value::as_str);
+    let style_str = p.get("style").and_then(Value::as_str).unwrap_or("circled");
+    let style = match style_str {
+        "roman" | "roman_ascii" => NumberingStyle::Roman,
+        "arabic" => NumberingStyle::Arabic,
+        _ => NumberingStyle::Circled,
+    };
+    s.edit("Set Stratigraphy Numbering Style", |doc, _| {
+        let table = get_or_create_table(&mut doc.stratigraphy_tables, table_id)?;
+        table.numbering_style = style;
+        Ok(json!({
+            "tableId": table.id,
+            "style": style_str,
+        }))
+    })
 }
