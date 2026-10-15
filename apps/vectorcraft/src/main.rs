@@ -12,7 +12,7 @@
 //! `--automation-write-root` (or `VECTORCRAFT_AUTOMATION_READ_ROOT` / `_WRITE_ROOT`) confine the
 //! files its requests read and write (`vectorcraft_engine::file_access`); the person at the
 //! keyboard isn't confined.
-#![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 #[cfg(all(feature = "windows7", any(feature = "wgpu", feature = "accessibility")))]
 compile_error!("windows7 requires --no-default-features (wgpu and accessibility must be disabled)");
@@ -582,6 +582,9 @@ fn main() -> std::process::ExitCode {
                 // The first start of a version with Trowel's window switches to it, once.
                 let lang = app.ui_language();
                 vectorcraft_ui_egui::workspaces::start_trowel(&mut app.ui, lang);
+                if app.ui.trowel {
+                    app.ui.brightness = vectorcraft_ui_egui::theme::Brightness::Plate;
+                }
                 // Fit the window to its monitor, or put it back where it was (still hidden).
                 if let Some(w) = cc.winit_window() {
                     app.ui.window = Some(window::restore(w, saved_window));

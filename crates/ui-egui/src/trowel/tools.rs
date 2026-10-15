@@ -29,14 +29,14 @@ const SLOTS: &[(&[&str], &str, bool)] = &[
 /// A tool's button as in the mockup; a shorter window tightens it.
 const BUTTON: egui::Vec2 = vec2(40.0, 27.0);
 const BUTTON_TIGHT: f32 = 23.0;
-/// The fill and stroke under the tools: the gap above them and their height.
+/// The fill and stroke under the tools: the gap above them and their height (including the clear button).
 const PROXY_GAP: f32 = 8.0;
-const PROXY_H: f32 = 34.0;
+const PROXY_H: f32 = 54.0;
 
 /// The archaeology tools (J009): their keys, icons and names.
-fn arch() -> [(&'static str, &'static str, &'static str); 5] {
+/// (`section-line` is in the top Ribbon only so it isn't duplicated here.)
+fn arch() -> [(&'static str, &'static str, &'static str); 4] {
     [
-        ("section-line", "tw-section-line", tw!("Section Line")),
         ("spot-height", "tw-spot-height", tw!("Spot Height")),
         ("find-number", "tw-find-number", tw!("Find Number")),
         ("posthole", "tw-posthole", tw!("Posthole Depth")),
@@ -53,48 +53,91 @@ fn tools_height(bh: f32) -> f32 {
 
 pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
-    egui::Panel::left(TOOLS).resizable(false).exact_size(TOOLS_W).show_separator_line(false).frame(egui::Frame::NONE.fill(t.panel)).show(ui, |ui| {
-        let r = ui.max_rect();
-        line_right(ui, r, t.border);
-        let ctx = ui.ctx().clone();
-        // The slot whose long press opened its flyout, until the next press.
-        if ui.input(|i| i.pointer.any_pressed()) {
-            ui.data_mut(|d| d.remove::<egui::Id>(held_id()));
-        }
-        // The tools as in the mockup with the fill and stroke under them while they fit; then the
-        // buttons tighten; then the tools scroll above the fill and stroke at the column's foot.
-        let room = r.height() - PROXY_GAP - PROXY_H - 6.0;
-        let bh = if tools_height(BUTTON.y) <= room { BUTTON.y } else { BUTTON_TIGHT };
-        let height = tools_height(bh);
-        let (chosen, proxy_top) = if height <= room {
-            (tools(app, ui, r, r.top(), bh, &t), r.top() + height + PROXY_GAP)
-        } else {
-            let view = Rect::from_min_max(r.min, pos2(r.right() - 1.0, r.top() + room));
-            let mut list = ui.new_child(egui::UiBuilder::new().max_rect(view).layout(egui::Layout::top_down(egui::Align::Min)));
-            list.set_clip_rect(view);
-            let mut chosen = None;
-            egui::ScrollArea::vertical().id_salt(wid("tools-scroll", ())).auto_shrink([false, false]).show(&mut list, |ui| {
-                let (_, content) = ui.allocate_space(vec2(view.width(), height));
-                chosen = tools(app, ui, r, content.top(), bh, &t);
-            });
-            (chosen, view.bottom() + PROXY_GAP)
-        };
-        // Fill and stroke.
-        let proxy = Rect::from_min_size(pos2(r.left(), proxy_top), vec2(r.width(), PROXY_H));
-        let mut cell = ui.new_child(egui::UiBuilder::new().id(wid("proxy", ())).max_rect(proxy).layout(egui::Layout::top_down(egui::Align::Center)));
-        crate::panels::proxy(app, &mut cell, 30.0);
-        match chosen {
-            Some(Pick::Tool(id)) => app.select_tool(&id),
-            Some(Pick::Options(id)) => {
-                app.select_tool(&id);
-                app.run("tool.options", json!({ "tool": id })).ok();
+    egui::Panel::left(TOOLS)
+        .resizable(true)
+        .default_size(TOOLS_W)
+        .size_range(48.0..=140.0)
+        .show_separator_line(false)
+        .frame(egui::Frame::NONE.fill(t.panel))
+        .show(ui, |ui| {
+            let r = ui.max_rect();
+            ui.set_min_width(r.width());
+            line_right(ui, r, t.border);
+            let ctx = ui.ctx().clone();
+            // The slot whose long press opened its flyout, until the next press.
+            if ui.input(|i| i.pointer.any_pressed()) {
+                ui.data_mut(|d| d.remove::<egui::Id>(held_id()));
             }
-            None => {}
-        }
-        // The classic toolbar's flyouts, open or torn off.
-        crate::toolbar::floating(app, &ctx);
-        crate::toolbar::flyout(app, &ctx);
-    });
+            // The tools as in the mockup with the fill and stroke under them while they fit; then the
+            // buttons tighten; then the tools scroll above the fill and stroke at the column's foot.
+            let room = r.height() - PROXY_GAP - PROXY_H - 6.0;
+            let bh = if tools_height(BUTTON.y) <= room { BUTTON.y } else { BUTTON_TIGHT };
+            let height = tools_height(bh);
+            let (chosen, proxy_top) = if height <= room {
+                (tools(app, ui, r, r.top(), bh, &t), r.top() + height + PROXY_GAP)
+            } else {
+                let view = Rect::from_min_max(r.min, pos2(r.right() - 1.0, r.top() + room));
+                let mut list = ui.new_child(egui::UiBuilder::new().max_rect(view).layout(egui::Layout::top_down(egui::Align::Min)));
+                list.set_clip_rect(view);
+                let mut chosen = None;
+                egui::ScrollArea::vertical().id_salt(wid("tools-scroll", ())).auto_shrink([false, false]).show(&mut list, |ui| {
+                    let (_, content) = ui.allocate_space(vec2(view.width(), height));
+                    chosen = tools(app, ui, r, content.top(), bh, &t);
+                });
+                (chosen, view.bottom() + PROXY_GAP)
+            };
+            // Fill and stroke + Clear (없애기) button directly below.
+            let proxy = Rect::from_min_size(pos2(r.left(), proxy_top), vec2(r.width(), 34.0));
+            let mut cell =
+                ui.new_child(egui::UiBuilder::new().id(wid("proxy", ())).max_rect(proxy).layout(egui::Layout::top_down(egui::Align::Center)));
+            crate::panels::proxy(app, &mut cell, 30.0);
+
+            let none_rect = Rect::from_min_size(pos2(r.center().x - 22.0, proxy_top + 35.0), vec2(44.0, 18.0));
+            let none_resp =
+                ui.interact(none_rect, wid("proxy-none", ()), Sense::click()).on_hover_text("안에 채운 색 / 선 색 없애기 (단축키: Delete 또는 /)");
+            let none_fill = if none_resp.hovered() { t.hover } else { t.button };
+            ui.painter().rect(none_rect, CornerRadius::same(4), none_fill, Stroke::new(1.0, t.border), StrokeKind::Inside);
+            let chip = Rect::from_min_size(pos2(none_rect.left() + 3.0, none_rect.center().y - 4.0), vec2(8.0, 8.0));
+            ui.painter().rect(chip, CornerRadius::same(1), t.input, Stroke::new(1.0, t.border), StrokeKind::Inside);
+            ui.painter()
+                .line_segment([pos2(chip.left() + 1.0, chip.bottom() - 1.0), pos2(chip.right() - 1.0, chip.top() + 1.0)], Stroke::new(1.4, t.clay));
+            text(ui, pos2(none_rect.left() + 13.0, none_rect.center().y), Align2::LEFT_CENTER, "없애기", font(9.0), t.text);
+            if none_resp.clicked() {
+                let (fill_paint, _) = crate::panels::current_paints(app);
+                let has_fill = !matches!(fill_paint, vectorcraft_color::Paint::None);
+                if app.session.fill_active || has_fill {
+                    let _ = app.run("paint.setFill", json!({ "none": true }));
+                } else {
+                    let _ = app.run("paint.none", json!({}));
+                }
+            } else if none_resp.secondary_clicked() {
+                let _ = app.run("paint.setStroke", json!({ "none": true }));
+            }
+
+            match chosen {
+                Some(Pick::Tool(id)) => app.select_tool(&id),
+                Some(Pick::Options(id)) => {
+                    app.select_tool(&id);
+                    app.run("tool.options", json!({ "tool": id })).ok();
+                }
+                Some(Pick::Arch(key)) => {
+                    let res = match key {
+                        "spot-height" => app.run("trowel.spotElevation", json!({ "x": 100.0, "y": 100.0, "elevation_m": 152.34 })),
+                        "find-number" => app.run("trowel.artifactBadge", json!({ "x": 120.0, "y": 120.0, "number": 1 })),
+                        "posthole" => app.run("trowel.postholeDepth", json!({ "x": 140.0, "y": 140.0, "depth_cm": -18 })),
+                        "hachure" => app.run("trowel.slopeHachures", json!({})),
+                        _ => Ok(json!({})),
+                    };
+                    if let Err(e) = res {
+                        app.status(e);
+                    }
+                }
+                None => {}
+            }
+            // The classic toolbar's flyouts, open or torn off.
+            crate::toolbar::floating(app, &ctx);
+            crate::toolbar::flyout(app, &ctx);
+        });
 }
 
 /// The slots and the archaeology tools in the column `r`, from `top`, their buttons `bh` tall.
@@ -127,14 +170,20 @@ fn tools(app: &mut VectorcraftApp, ui: &Ui, r: Rect, top: f32, bh: f32, t: &Toke
             y += 7.0;
         }
     }
-    // The archaeology tools (J009): their group title, then dimmed buttons.
+    // The archaeology tools (J009): their group title and buttons.
     y += 4.0;
     text(ui, pos2(r.center().x, y + 5.0), Align2::CENTER_CENTER, tw!("Archaeology"), font(9.0), t.text_dim);
     y += 12.0;
     for (key, icon, label) in arch() {
         let rect = Rect::from_min_size(pos2(x, y), vec2(BUTTON.x, bh));
-        crate::icons::paint(ui, icon, Rect::from_center_size(rect.center(), vec2(19.0, 19.0)), t.icon.gamma_multiply(0.4));
-        soon_widget(ui, wid("arch", key), rect, label, "J009");
+        let resp = ui.interact(rect, wid("arch", key), Sense::click()).on_hover_text(label);
+        if resp.hovered() {
+            ui.painter().rect_filled(rect, CornerRadius::same(7), t.hover);
+        }
+        crate::icons::paint(ui, icon, Rect::from_center_size(rect.center(), vec2(19.0, 19.0)), t.icon);
+        if resp.clicked() {
+            chosen = Some(Pick::Arch(key));
+        }
         y = rect.bottom() + 1.0;
     }
     chosen
@@ -150,6 +199,8 @@ enum Pick {
     Tool(String),
     /// A double click: the tool and its options.
     Options(String),
+    /// One of the archaeology tools (J009).
+    Arch(&'static str),
 }
 
 /// One slot's button at `rect`, showing tool `shown` (the slot's own `icon` when it is the first).

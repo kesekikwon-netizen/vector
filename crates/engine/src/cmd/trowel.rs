@@ -68,6 +68,39 @@ fn u32_or(p: &Value, key: &str, default: u32) -> u32 {
     p.get(key).and_then(Value::as_u64).map(|n| n as u32).unwrap_or(default)
 }
 
+/// Remove the leftover empty `"Layer 1"` from `file.new`, set default fill to `None`,
+/// and pick the first favourite legend row so the user can draw immediately.
+fn finish_template_setup(s: &mut Session) -> Result<()> {
+    let _ = s.execute("paint.setFill", &json!({ "none": true }));
+    if let Ok(st) = s.doc() {
+        let layer1_id = st
+            .doc
+            .layers
+            .iter()
+            .find(|l| l.legend().is_none() && l.display_name() == "Layer 1" && l.children().is_none_or(|c| c.is_empty()))
+            .map(|l| l.id);
+        if let Some(id) = layer1_id
+            && st.doc.layers.len() > 1
+        {
+            let _ = s.execute("layer.delete", &json!({ "ids": [id.0] }));
+        }
+    }
+    if let Ok(st) = s.doc() {
+        let fav_id = st
+            .doc
+            .layers
+            .iter()
+            .rev()
+            .find(|l| !l.locked && l.visible && l.legend().is_some_and(|leg| leg.favourite))
+            .or_else(|| st.doc.layers.iter().rev().find(|l| !l.locked && l.visible))
+            .map(|l| l.id);
+        if let Some(id) = fav_id {
+            let _ = s.execute("legend.pick", &json!({ "id": id.0 }));
+        }
+    }
+    Ok(())
+}
+
 /// 1:20 A3 Landscape archaeological plan drawing with plan legend group.
 fn new_plan(s: &mut Session, p: &Value) -> Result<Value> {
     let name = str_param(p, "name").unwrap_or("개별유구 평·단면도");
@@ -98,6 +131,7 @@ fn new_plan(s: &mut Session, p: &Value) -> Result<Value> {
             "group": "plan",
         }),
     )?;
+    finish_template_setup(s)?;
 
     Ok(json!({ "template": "plan", "name": name, "scale": 20.0, "epsg": epsg }))
 }
@@ -132,6 +166,7 @@ fn new_section(s: &mut Session, p: &Value) -> Result<Value> {
             "group": "section",
         }),
     )?;
+    finish_template_setup(s)?;
 
     Ok(json!({ "template": "section", "name": name, "scale": 20.0, "epsg": epsg }))
 }
@@ -166,6 +201,7 @@ fn new_finds(s: &mut Session, p: &Value) -> Result<Value> {
             "group": "finds",
         }),
     )?;
+    finish_template_setup(s)?;
 
     Ok(json!({ "template": "finds", "name": name, "scale": 1.0, "epsg": epsg }))
 }
@@ -200,6 +236,7 @@ fn new_site_plan(s: &mut Session, p: &Value) -> Result<Value> {
             "group": "plan",
         }),
     )?;
+    finish_template_setup(s)?;
 
     Ok(json!({ "template": "siteplan", "name": name, "scale": 100.0, "epsg": epsg }))
 }
@@ -227,6 +264,7 @@ fn new_plate(s: &mut Session, p: &Value) -> Result<Value> {
             "epsg": epsg,
         }),
     )?;
+    let _ = s.execute("paint.setFill", &json!({ "none": true }));
 
     Ok(json!({ "template": "plate", "name": name, "scale": 1.0, "epsg": epsg }))
 }

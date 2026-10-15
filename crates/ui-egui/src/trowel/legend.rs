@@ -104,6 +104,9 @@ enum Act {
     Lock(NodeId, bool),
     Select(NodeId),
     Revert(NodeId),
+    Delete(NodeId),
+    AddSingleRule(LegendGroup, &'static str),
+    PruneEmpty,
 }
 
 /// A card beside the right column: a row's editor or Weights at Once.
@@ -174,12 +177,19 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     panel_head(ui, head, tw!("Legend · Layers"), "", 2, &t);
     let open = app.session.active().is_some();
     let group = if open { group_button(app, ui, head, &t) } else { None };
-    let new_layer = open && head_button(ui, wid("legend-new", ()), head, 1, "plus", tw!("New layer"), &t).clicked();
+    let new_btn = head_button(ui, wid("legend-new", ()), head, 1, "plus", "새 레이어 추가 (우클릭: 표준 규칙 골라 넣기)", &t);
+    let new_layer = open && new_btn.clicked();
+    let mut plus_act = None;
+    if open {
+        egui::Popup::context_menu(&new_btn).show(|ui| {
+            rule_picker_menu(ui, &mut plus_act);
+        });
+    }
     let more = more_button(ui, wid("legend-more", ()), head, 0, tw!("Layers panel"), &t).clicked();
     let apart = app.session.active().map(|st| apart(ui, st)).unwrap_or_default();
     let (weights, revert_all) = footer(ui, r, apart.lines.len(), open, &t);
     let area = Rect::from_min_max(pos2(r.left() + PAD, r.top() + ABOVE), pos2(r.right() - PAD, r.bottom() - BELOW));
-    let act = list(app, ui, area, &apart, &t);
+    let act = list(app, ui, area, &apart, &t).or(plus_act);
     if more {
         crate::menus::invoke(app, "window.panel", json!({ "panel": "layers" }));
     }
@@ -204,6 +214,9 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         Some(Act::Lock(id, on)) => app.run("layer.setProps", json!({ "ids": [id.0], "locked": on })).map(drop),
         Some(Act::Select(id)) => app.run("select.set", json!({ "ids": [id.0] })).map(drop),
         Some(Act::Revert(id)) => revert(app, json!({ "ids": [id.0] })),
+        Some(Act::Delete(id)) => delete_layer_row(app, id),
+        Some(Act::AddSingleRule(g, name)) => add_single_rule(app, g, name),
+        Some(Act::PruneEmpty) => prune_empty_layers(app),
         None if revert_all => revert(app, json!({ "all": true })),
         None if new_layer => app.run("layer.new", json!({})).map(drop),
         None => match group {
@@ -297,6 +310,120 @@ fn add_group(app: &mut VectorcraftApp, g: LegendGroup) -> Result<(), String> {
         if n > 0 { crate::i18n::fmt(tw!("Legend rows added: {n}"), &[("n", &n.to_string())]) } else { tw!("No legend rows to add").to_string() };
     app.status(note);
     Ok(())
+}
+
+/// Delete a layer row (unlocking it first if locked so template layers can also be deleted).
+pub(super) fn delete_layer_row(app: &mut VectorcraftApp, id: NodeId) -> Result<(), String> {
+    let (is_locked, total, has_legend) = app
+        .session
+        .active()
+        .and_then(|st| {
+            let n = st.doc.node(id)?;
+            Some((n.locked, st.doc.layers.len(), n.legend().is_some()))
+        })
+        .unwrap_or((false, 0, false));
+    if is_locked {
+        let _ = app.run("layer.setProps", json!({ "ids": [id.0], "locked": false }));
+    }
+    if total > 1 {
+        app.run("layer.delete", json!({ "ids": [id.0] })).map(drop)
+    } else if has_legend {
+        app.run("legend.set", json!({ "id": id.0, "clear": true })).map(drop)
+    } else {
+        Ok(())
+    }
+}
+
+/// Add a single predefined rule layer from `group` with `name` and pick it.
+pub(super) fn add_single_rule(app: &mut VectorcraftApp, group: LegendGroup, name: &'static str) -> Result<(), String> {
+    let rows = vectorcraft_engine::cmd::legend::group_rows(group);
+    let Some((_, legend)) = rows.into_iter().find(|(n, _)| *n == name) else {
+        return Ok(());
+    };
+    let created = app.run("layer.new", json!({ "name": name }))?;
+    let Some(id_u64) = created["id"].as_u64() else { return Ok(()) };
+    let sample_val = match &legend.sample {
+        LegendSample::Line => json!("line"),
+        LegendSample::Area => json!("area"),
+        LegendSample::Mark(m) => json!({ "mark": m }),
+    };
+    let line_val = match &legend.line {
+        vectorcraft_doc::LineType::Solid => json!("solid"),
+        vectorcraft_doc::LineType::Dashed => json!("dashed"),
+        vectorcraft_doc::LineType::Dotted => json!("dotted"),
+        vectorcraft_doc::LineType::DashDot => json!("dashdot"),
+        vectorcraft_doc::LineType::Custom(d) => json!(d),
+    };
+    app.run(
+        "legend.set",
+        json!({
+            "id": id_u64,
+            "weight": legend.weight,
+            "line": line_val,
+            "favourite": legend.favourite,
+            "sample": sample_val,
+            "strata": legend.strata,
+            "group": group.key(),
+        }),
+    )?;
+    let _ = app.run("legend.pick", json!({ "id": id_u64 }));
+    app.status(format!("규칙 레이어 추가됨: {name}"));
+    Ok(())
+}
+
+/// Remove all empty layers except the currently active layer so the user can start clean.
+fn prune_empty_layers(app: &mut VectorcraftApp) -> Result<(), String> {
+    let Some((current, empty_ids)) = app.session.active().map(|st| {
+        let cur = st.current_layer().and_then(|l| st.doc.layer_of(l));
+        let ids: Vec<(u64, bool)> =
+            st.doc.layers.iter().filter(|l| Some(l.id) != cur && l.children().is_none_or(|c| c.is_empty())).map(|l| (l.id.0, l.locked)).collect();
+        (cur, ids)
+    }) else {
+        return Ok(());
+    };
+    let mut removed = 0usize;
+    for (id, locked) in empty_ids {
+        if app.session.active().is_some_and(|st| st.doc.layers.len() <= 1) {
+            break;
+        }
+        if locked {
+            let _ = app.run("layer.setProps", json!({ "ids": [id], "locked": false }));
+        }
+        if app.run("layer.delete", json!({ "ids": [id] })).is_ok() {
+            removed += 1;
+        }
+    }
+    if let Some(cur) = current {
+        let _ = app.run("layer.setCurrent", json!({ "id": cur.0 }));
+    }
+    app.status(format!("비어 있는 미사용 레이어 {removed}개를 정리했습니다."));
+    Ok(())
+}
+
+fn rule_picker_menu(ui: &mut Ui, act: &mut Option<Act>) {
+    for (g, title) in [
+        (LegendGroup::Plan, "평면 규칙 골라 추가"),
+        (LegendGroup::Section, "단면·토층 규칙 골라 추가"),
+        (LegendGroup::Finds, "유물 실측 규칙 골라 추가"),
+    ] {
+        ui.menu_button(title, |ui| {
+            for (name, leg) in vectorcraft_engine::cmd::legend::group_rows(g) {
+                let label = match leg.weight {
+                    Some(w) => format!("{name} ({w:.1} pt)"),
+                    None => name.to_string(),
+                };
+                if ui.button(label).clicked() {
+                    *act = Some(Act::AddSingleRule(g, name));
+                    ui.close();
+                }
+            }
+        });
+    }
+    ui.separator();
+    if ui.button("미사용 빈 레이어 모두 정리 (현재 레이어만 남기기)").clicked() {
+        *act = Some(Act::PruneEmpty);
+        ui.close();
+    }
 }
 
 /// The lines set apart from their row's look, counted again when the drawing changes.
@@ -627,7 +754,22 @@ fn layer_row(ui: &Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
         if width_of(ui, &row.name, f) > right - name_x { format!("{}\n{tip}", row.name) } else { tip.to_string() }
     };
     let resp = resp.on_hover_text(tip);
-    if open.clicked() {
+    let mut ctx_act = None;
+    egui::Popup::context_menu(&resp).show(|ui| {
+        if ui.button("규칙(범례) 편집…").clicked() {
+            ctx_act = Some(Act::Edit(row.id, rr.top()));
+            ui.close();
+        }
+        if ui.button("이 레이어 삭제 (Delete)").clicked() {
+            ctx_act = Some(Act::Delete(row.id));
+            ui.close();
+        }
+        ui.separator();
+        rule_picker_menu(ui, &mut ctx_act);
+    });
+    if let Some(a) = ctx_act {
+        Some(a)
+    } else if open.clicked() {
         Some(Act::Open(row.id, !row.open))
     } else if eye.clicked() {
         Some(Act::Show(row.id, !row.visible))

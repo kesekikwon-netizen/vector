@@ -233,6 +233,16 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context) {
         if crate::shortcut_editor::is_recording(app) {
             return;
         }
+        if !ctx.egui_wants_keyboard_input()
+            && ctx.input(|i| i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace))
+            && let Some(d) = app.ui.dialog.as_ref()
+            && d.kind == "colorPicker"
+        {
+            let cmd = if d.str("target") == "stroke" { "paint.setStroke" } else { "paint.setFill" };
+            let _ = app.run(cmd, json!({ "none": true }));
+            app.ui.dialog = None;
+            return;
+        }
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
             crate::dialogs::cancel(app);
             app.ui.palette_open = false;
@@ -415,7 +425,11 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context) {
         }
     }
     if let Some((id, p)) = fire {
-        crate::menus::invoke(app, id, p);
+        if id == "edit.clear" && !app.session.active().is_some_and(|d| d.selection.has_objects_or_guides()) {
+            delete_layer_or_clear_paint(app, ctx);
+        } else {
+            crate::menus::invoke(app, id, p);
+        }
         return;
     }
     // Arrow nudges (Shift = ×10, Alt = copy).
@@ -426,10 +440,13 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context) {
             let _ = app.run("object.nudge", json!({"dx": dx, "dy": dy, "big": m.shift, "copy": m.alt}));
         }
     }
-    // Delete / Backspace clear the selection.
-    if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Backspace)) && app.session.active().is_some_and(|d| d.selection.has_objects_or_guides())
-    {
-        let _ = app.run("edit.clear", json!({}));
+    // Delete / Backspace clear the selection, or delete the active layer / clear paint.
+    if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Backspace) || i.consume_key(Modifiers::NONE, Key::Delete)) {
+        if app.session.active().is_some_and(|d| d.selection.has_objects_or_guides()) {
+            let _ = app.run("edit.clear", json!({}));
+        } else {
+            delete_layer_or_clear_paint(app, ctx);
+        }
     }
 
     // Spring-loaded Z zoom (J002b):
@@ -497,6 +514,33 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context) {
             }
             app.select_tool(t);
         }
+    }
+}
+
+/// When Delete or Backspace is pressed with no canvas objects selected:
+/// - If the Color or Swatches panel is open, clear the active fill/stroke to None (`paint.none`).
+/// - Otherwise, delete the active layer (unlocking it first if needed so template layers can also be deleted).
+fn delete_layer_or_clear_paint(app: &mut VectorcraftApp, _ctx: &egui::Context) {
+    if matches!(app.ui.open_panel.as_deref(), Some("color" | "swatches")) {
+        let _ = app.run("paint.none", json!({}));
+        return;
+    }
+    let Some((id, is_locked, total_layers, has_legend)) = app.session.active().and_then(|st| {
+        let id = st.current_layer().and_then(|l| st.doc.layer_of(l))?;
+        let node = st.doc.node(id)?;
+        Some((id, node.locked, st.doc.layers.len(), node.legend().is_some()))
+    }) else {
+        return;
+    };
+    if is_locked {
+        let _ = app.run("layer.setProps", json!({ "ids": [id.0], "locked": false }));
+    }
+    if total_layers > 1 {
+        if let Err(e) = app.run("layer.delete", json!({ "ids": [id.0] })) {
+            app.status(e);
+        }
+    } else if has_legend {
+        let _ = app.run("legend.set", json!({ "id": id.0, "clear": true }));
     }
 }
 

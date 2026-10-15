@@ -57,7 +57,7 @@ const SLOTS: [&str; 14] = [
 ];
 
 /// The archaeology tools under them.
-const ARCH: [&str; 5] = ["section-line", "spot-height", "find-number", "posthole", "hachure"];
+const ARCH: [&str; 4] = ["spot-height", "find-number", "posthole", "hachure"];
 
 /// Text painted in the last frame: what it says, where and in what colour, and the part of it
 /// that shows (inside its clip).
@@ -718,7 +718,7 @@ fn tool_column_has_the_mockup_groups() {
         assert!(column.contains_rect(rect) && rect.top() > rects[13].bottom(), "{a} under the tools");
     }
     h.app.ui.flyout = None;
-    h.click(wid("arch", "section-line"));
+    h.click(wid("arch", "spot-height"));
     assert_eq!(h.app.session.tool_id(), "curvature");
 }
 

@@ -38,6 +38,8 @@ enum Ask {
     Select,
     Revert,
     Options,
+    Delete,
+    ApplyPreset(vectorcraft_doc::LegendGroup, &'static str),
     /// Points typed that aren't a weight.
     NotAWeight,
 }
@@ -101,6 +103,43 @@ pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context, place: card::P
                 open = false;
                 Ok(())
             }
+            Ask::Delete => {
+                open = false;
+                super::legend::delete_layer_row(app, id)
+            }
+            Ask::ApplyPreset(g, name) => {
+                let rows = vectorcraft_engine::cmd::legend::group_rows(g);
+                if let Some((_, leg)) = rows.into_iter().find(|(n, _)| *n == name) {
+                    let _ = app.run("layer.setProps", json!({ "ids": [id.0], "name": name }));
+                    let sample_val = match &leg.sample {
+                        vectorcraft_doc::LegendSample::Line => json!("line"),
+                        vectorcraft_doc::LegendSample::Area => json!("area"),
+                        vectorcraft_doc::LegendSample::Mark(m) => json!({ "mark": m }),
+                    };
+                    let line_val = match &leg.line {
+                        LineType::Solid => json!("solid"),
+                        LineType::Dashed => json!("dashed"),
+                        LineType::Dotted => json!("dotted"),
+                        LineType::DashDot => json!("dashdot"),
+                        LineType::Custom(d) => json!(d),
+                    };
+                    app.run(
+                        "legend.set",
+                        json!({
+                            "id": id.0,
+                            "weight": leg.weight,
+                            "line": line_val,
+                            "favourite": leg.favourite,
+                            "sample": sample_val,
+                            "strata": leg.strata,
+                            "group": g.key(),
+                        }),
+                    )
+                    .map(drop)
+                } else {
+                    Ok(())
+                }
+            }
             Ask::NotAWeight => Err(tw!("Type a weight in points, such as 0.5").to_string()),
         };
         if let Err(e) = done {
@@ -132,11 +171,40 @@ fn body(ui: &mut Ui, row: &Row, t: &Tokens) -> Vec<Ask> {
         lines_of(ui, row, t, &mut asks);
         saved_in(ui, t);
     });
-    let places = card::flow(ui, 28.0, &[card::button_w(ui, tw!("Layer Options…"))]);
+    let places =
+        card::flow(ui, 28.0, &[card::button_w(ui, tw!("Layer Options…")), card::button_w(ui, "표준 규칙 ▾"), card::button_w(ui, "삭제 (Del)")]);
     if let Some(r) = places.first()
         && card::button(ui, wid("card-options", ()), *r, tw!("Layer Options…"), true, t).clicked()
     {
         asks.push(Ask::Options);
+    }
+    if let Some(r) = places.get(1) {
+        let resp = card::button(ui, wid("card-preset", ()), *r, "표준 규칙 ▾", !row.locked, t);
+        egui::Popup::menu(&resp).show(|ui| {
+            for (g, title) in [
+                (vectorcraft_doc::LegendGroup::Plan, "평면 규칙"),
+                (vectorcraft_doc::LegendGroup::Section, "단면·토층 규칙"),
+                (vectorcraft_doc::LegendGroup::Finds, "유물 실측 규칙"),
+            ] {
+                ui.menu_button(title, |ui| {
+                    for (name, leg) in vectorcraft_engine::cmd::legend::group_rows(g) {
+                        let label = match leg.weight {
+                            Some(w) => format!("{name} ({w:.1} pt)"),
+                            None => name.to_string(),
+                        };
+                        if ui.button(label).clicked() {
+                            asks.push(Ask::ApplyPreset(g, name));
+                            ui.close();
+                        }
+                    }
+                });
+            }
+        });
+    }
+    if let Some(r) = places.get(2)
+        && card::button(ui, wid("card-delete", ()), *r, "삭제 (Del)", true, t).on_hover_text("이 레이어(범례 줄) 삭제 (Delete)").clicked()
+    {
+        asks.push(Ask::Delete);
     }
     asks
 }

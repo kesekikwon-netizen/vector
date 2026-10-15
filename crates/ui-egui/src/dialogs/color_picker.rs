@@ -232,8 +232,22 @@ fn body(app: &mut VectorcraftApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         });
     });
     ui.add_space(8.0);
-    if widgets::check(ui, tl!("Only Web Colors"), web, true) {
-        d.fields.insert("webOnly".into(), json!(!web));
+    let mut clear_none = false;
+    ui.horizontal(|ui| {
+        if widgets::check(ui, tl!("Only Web Colors"), web, true) {
+            d.fields.insert("webOnly".into(), json!(!web));
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if widgets::flat_button(ui, tl!("None (Delete)"), 110.0).clicked() {
+                clear_none = true;
+            }
+        });
+    });
+    if clear_none {
+        let cmd = if d.str("target") == "stroke" { "paint.setStroke" } else { "paint.setFill" };
+        let _ = app.run(cmd, json!({ "none": true }));
+        app.ui.dialog = None;
+        return false;
     }
     if let Some(ch) = new_channel {
         d.fields.insert("channel".into(), json!(ch.id()));

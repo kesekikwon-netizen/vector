@@ -23,6 +23,10 @@ enum Act {
     Tool(&'static str),
     /// The underlay: show or hide the template layers, or place a scan as one.
     Underlay,
+    /// Toggle grid and open the Grid Color adjustment popup immediately.
+    Grid,
+    /// Run an engine command with parameters, or open a Trowel dialog.
+    Trowel(&'static str),
     /// Comes with a later job.
     Soon(&'static str),
 }
@@ -75,30 +79,27 @@ fn groups() -> [(&'static str, Vec<Tile>); 7] {
             vec![
                 tile("pen", "tw-pen", tw!("Pen"), Tool("pen")),
                 tile("pencil", "tw-pencil", tw!("Pencil"), Tool("pencil")),
-                tile("section-line", "tw-section-line", tw!("Section Line"), Soon("J009")),
-                tile("spot-height", "tw-spot-height", tw!("Spot Height"), Soon("J009")),
+                tile("section-line", "tw-section-line", tw!("Section Line"), Trowel("section-line")),
+                tile("spot-height", "tw-spot-height", tw!("Spot Height"), Trowel("spot-height")),
                 tile("bucket", "tw-bucket", tw!("Bucket"), Tool("livePaintBucket")),
             ],
         ),
         (
             tw!("Drawing Elements"),
             vec![
-                tile("north", "tw-north", tw!("North Arrow"), Soon("J012")),
-                tile("scale-bar", "tw-scale-bar", tw!("Scale Bar"), Soon("J012")),
-                tile("legend", "tw-legend", tw!("Legend Table"), Soon("J012")),
-                tile("title-block", "tw-title-block", tw!("Title Block"), Soon("J012")),
+                tile("north", "tw-north", tw!("North Arrow"), Trowel("north")),
+                tile("scale-bar", "tw-scale-bar", tw!("Scale Bar"), Trowel("scale-bar")),
+                tile("legend", "tw-legend", tw!("Legend Table"), Trowel("legend")),
+                tile("title-block", "tw-title-block", tw!("Title Block"), Trowel("title-block")),
             ],
         ),
-        (
-            tw!("View"),
-            vec![tile("grid", "tw-grid", tw!("Grid"), Cmd("view.grid")), tile("magnet", "tw-magnet", tw!("Snap"), Cmd("view.snapToPoint"))],
-        ),
+        (tw!("View"), vec![tile("grid", "tw-grid", tw!("Grid"), Grid), tile("magnet", "tw-magnet", tw!("Snap"), Cmd("view.snapToPoint"))]),
         (
             tw!("Export"),
             vec![
                 tile("pdf", "tw-pdf", tw!("PDF"), Cmd("file.export.pdf")),
                 tile("dxf", "tw-dxf", tw!("DXF"), Cmd("ui.dxfOptionsDialog")),
-                tile("strata", "tw-strata", tw!("To Strata"), Soon("J019")),
+                tile("strata", "tw-strata", tw!("To Strata"), Trowel("strata")),
             ],
         ),
     ]
@@ -112,6 +113,20 @@ fn look(app: &VectorcraftApp, act: Act) -> Look {
             (ids, _) if !ids.is_empty() => Look::Rest,
             _ => look(app, Act::Cmd("file.place")),
         },
+        Act::Grid => {
+            if app.ui.view.grid {
+                Look::Shown
+            } else {
+                Look::Rest
+            }
+        }
+        Act::Trowel(_) => {
+            if app.session.active().is_some() {
+                Look::Rest
+            } else {
+                Look::Off
+            }
+        }
         Act::Tool(id) if app.session.tool_id() == id => Look::On,
         Act::Tool(_) => Look::Rest,
         Act::Cmd(id) if !crate::menus::enabled(app, id) => Look::Off,
@@ -144,6 +159,10 @@ fn tiles_width(groups: &[(&str, Vec<Tile>)], fit: Fit) -> f32 {
             GROUP_PAD * 2.0 + n * fit.tile_w + (n - 1.0).max(0.0) * fit.gap + 1.0
         })
         .sum::<f32>()
+}
+
+fn grid_popup_id() -> egui::Id {
+    wid("grid-color-popup-open", ())
 }
 
 pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
@@ -185,8 +204,35 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
             Some(Act::Cmd(id)) => crate::menus::invoke(app, id, json!({})),
             Some(Act::Tool(id)) => app.select_tool(id),
             Some(Act::Underlay) => underlay(app),
+            Some(Act::Grid) => {
+                crate::menus::invoke(app, "view.grid", json!({}));
+                let open = ui.ctx().data(|d| d.get_temp::<bool>(grid_popup_id()).unwrap_or(false));
+                ui.ctx().data_mut(|d| d.insert_temp(grid_popup_id(), !open || app.ui.view.grid));
+            }
+            Some(Act::Trowel(key)) => {
+                let res = match key {
+                    "section-line" => app.run("trowel.sectionLine", json!({ "start": [50.0, 150.0], "end": [250.0, 150.0], "label": "A" })),
+                    "spot-height" => app.run("trowel.spotElevation", json!({ "x": 100.0, "y": 100.0, "elevation_m": 152.34 })),
+                    "north" => app.run("plate.updateNorthArrow", json!({})),
+                    "scale-bar" => app.run("plate.updateScaleBar", json!({ "total_m": 1.0, "divisions": 5 })),
+                    "legend" => app.run("style.generateLegend", json!({})),
+                    "title-block" => {
+                        super::plate::toggle_dialog(ui.ctx());
+                        Ok(json!({}))
+                    }
+                    "strata" => {
+                        super::gpkg_browser::toggle_dialog(ui.ctx());
+                        Ok(json!({}))
+                    }
+                    _ => Ok(json!({})),
+                };
+                if let Err(e) = res {
+                    app.status(e);
+                }
+            }
             Some(Act::Soon(_)) | None => {}
         }
+        show_grid_color_popup(app, ui.ctx(), r.bottom(), &t);
     });
 }
 
@@ -291,6 +337,8 @@ fn tile_ui(app: &VectorcraftApp, ui: &Ui, tile: &Tile, rect: Rect, t: &Tokens) -
         Act::Soon(job) => soon(tile.label, job),
         Act::Underlay if templates(app).0.is_empty() => tw!("Place a scan under the drawing").to_string(),
         Act::Underlay => tw!("Show or hide the underlay").to_string(),
+        Act::Grid => format!("{} — 클릭하면 격자 켜기 및 격자 색 조정 창을 엽니다", tile.label),
+        Act::Trowel(_) => tile.label.to_string(),
         Act::Tool(id) => vectorcraft_tools::tool_info(id).map(crate::toolbar::tip).unwrap_or_default(),
         Act::Cmd(id) => match crate::menus::shortcut_of(id) {
             Some(sc) => format!("{} ({})", tile.label, crate::menus::pretty_shortcut(sc)),
@@ -305,5 +353,86 @@ fn tile_ui(app: &VectorcraftApp, ui: &Ui, tile: &Tile, rect: Rect, t: &Tokens) -
             None
         }
         _ => (look != Look::Off && resp.clicked()).then_some(tile.act),
+    }
+}
+
+fn show_grid_color_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_bottom: f32, t: &Tokens) {
+    let open = ctx.data(|d| d.get_temp::<bool>(grid_popup_id()).unwrap_or(false));
+    if !open {
+        return;
+    }
+    let tile_x = ctx.viewport(|vp| vp.prev_pass.widgets.get(wid("tile", "grid")).map(|w| w.rect.left())).unwrap_or(960.0);
+    let mut keep_open = true;
+    let resp = egui::Window::new("격자 색 · 간격 조정")
+        .id(wid("grid-color-window", ()))
+        .collapsible(false)
+        .resizable(false)
+        .title_bar(false)
+        .fixed_pos(pos2(tile_x.max(16.0), ribbon_bottom + 4.0))
+        .frame(egui::Frame::NONE.fill(t.panel).stroke(Stroke::new(1.0, t.border)).corner_radius(CornerRadius::same(8)).inner_margin(10.0))
+        .show(ctx, |ui| {
+            ui.set_width(250.0);
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("격자 색 · 간격 조정").font(bold(12.0)).color(t.text));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("✕").clicked() {
+                        keep_open = false;
+                    }
+                    let mut grid_on = app.ui.view.grid;
+                    if ui.checkbox(&mut grid_on, "격자 표시").changed() {
+                        crate::menus::invoke(app, "view.grid", json!({}));
+                    }
+                });
+            });
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("격자 색상:").font(font(11.0)).color(t.text_dim));
+                let hex_str = app.session.prefs.grid_color.trim_start_matches('#');
+                let r = hex_str.get(0..2).and_then(|s| u8::from_str_radix(s, 16).ok()).unwrap_or(0xC8);
+                let g = hex_str.get(2..4).and_then(|s| u8::from_str_radix(s, 16).ok()).unwrap_or(0xC8);
+                let b = hex_str.get(4..6).and_then(|s| u8::from_str_radix(s, 16).ok()).unwrap_or(0xC8);
+                let mut rgb = [r, g, b];
+                if ui.color_edit_button_srgb(&mut rgb).changed() {
+                    let hex = format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]);
+                    let _ = app.run("prefs.set", json!({ "key": "gridColor", "value": hex }));
+                    app.ui.view.grid = true;
+                }
+                ui.label(egui::RichText::new(app.session.prefs.grid_color.to_uppercase()).font(mono(11.0)).color(t.text));
+            });
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                for (label, hex) in [("연회색", "#CCCCCC"), ("황토", "#C8BFA8"), ("하늘", "#6BAED6"), ("방안녹색", "#74C476"), ("진회색", "#777777")]
+                {
+                    if ui.small_button(label).clicked() {
+                        let _ = app.run("prefs.set", json!({ "key": "gridColor", "value": hex }));
+                        app.ui.view.grid = true;
+                    }
+                }
+            });
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("간격:").font(font(11.0)).color(t.text_dim));
+                for (label, pt_val) in [("10pt", 10.0), ("20pt", 20.0), ("50pt", 50.0), ("72pt", 72.0)] {
+                    let selected = (app.session.prefs.gridline_every - pt_val).abs() < 0.5;
+                    if ui.selectable_label(selected, label).clicked() {
+                        let _ = app.run("prefs.set", json!({ "key": "gridlineEvery", "value": pt_val }));
+                        app.ui.view.grid = true;
+                    }
+                }
+            });
+        });
+    if let Some(inner) = resp {
+        let grid_tile_rect = ctx.viewport(|vp| vp.prev_pass.widgets.get(wid("tile", "grid")).map(|w| w.rect));
+        let clicked_outside = ctx.input(|i| {
+            i.pointer.any_pressed()
+                && i.pointer.interact_pos().is_some_and(|p| !inner.response.rect.contains(p) && !grid_tile_rect.is_some_and(|gr| gr.contains(p)))
+        });
+        // Keep open while color picker sub-popup isn't active if clicked outside
+        if clicked_outside && !ctx.any_popup_open() {
+            keep_open = false;
+        }
+    }
+    if !keep_open {
+        ctx.data_mut(|d| d.insert_temp(grid_popup_id(), false));
     }
 }

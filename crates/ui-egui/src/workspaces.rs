@@ -187,6 +187,9 @@ pub fn apply(ui: &mut UiState, w: &Workspace) {
     ui.floating_panels = w.floating_panels.clone();
     ui.toolbar_pos = w.toolbar_pos;
     ui.trowel = w.trowel;
+    if w.trowel {
+        ui.brightness = crate::theme::Brightness::Plate;
+    }
     FloatingPanels::sanitize(&mut ui.floating_panels, &mut ui.toolbar_pos);
     ui.flyout = None;
     ui.workspace = w.name.clone();

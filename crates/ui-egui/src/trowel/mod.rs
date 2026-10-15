@@ -110,35 +110,75 @@ pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {
 /// layers. The dock's own panels pop out to its left.
 fn right_column(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
-    egui::Panel::right(RIGHT).resizable(false).exact_size(RIGHT_W).show_separator_line(false).frame(egui::Frame::NONE.fill(t.panel)).show(ui, |ui| {
-        let r = ui.max_rect();
-        line_left(ui, r, t.border);
-        ui.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id()));
-        let props_h = props::height(ui.ctx());
-        let tall = palette::HEIGHT + legend::MIN_HEIGHT + props_h;
-        if r.height() >= tall {
-            right_parts(app, ui, r, props_h);
-        } else {
-            let mut column = ui.new_child(egui::UiBuilder::new().max_rect(r).layout(egui::Layout::top_down(egui::Align::Min)));
-            egui::ScrollArea::vertical().id_salt(wid("right-scroll", ())).auto_shrink([false, false]).show(&mut column, |ui| {
-                let (_, content) = ui.allocate_space(vec2(ui.available_width(), tall));
-                right_parts(app, ui, content, props_h);
-            });
-        }
-        // Its panels pop out to its left, level with its top.
-        let keep = ui.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id())).unwrap_or_default();
-        crate::dock::set_flyout(ui.ctx(), crate::dock::Flyout { left: r.left(), top: r.top() + 6.0, keep });
-    });
+    egui::Panel::right(RIGHT)
+        .resizable(true)
+        .default_size(RIGHT_W)
+        .size_range(220.0..=560.0)
+        .show_separator_line(false)
+        .frame(egui::Frame::NONE.fill(t.panel))
+        .show(ui, |ui| {
+            let r = ui.max_rect();
+            ui.set_min_width(r.width());
+            line_left(ui, r, t.border);
+            ui.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id()));
+            let props_h = props::height(ui.ctx());
+            let tall = palette::HEIGHT + legend::MIN_HEIGHT + props_h;
+            if r.height() >= tall {
+                right_parts(app, ui, r, props_h);
+            } else {
+                let mut column = ui.new_child(egui::UiBuilder::new().max_rect(r).layout(egui::Layout::top_down(egui::Align::Min)));
+                egui::ScrollArea::vertical().id_salt(wid("right-scroll", ())).auto_shrink([false, false]).show(&mut column, |ui| {
+                    let (_, content) = ui.allocate_space(vec2(ui.available_width(), tall));
+                    right_parts(app, ui, content, props_h);
+                });
+            }
+            // Its panels pop out to its left, level with its top.
+            let keep = ui.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id())).unwrap_or_default();
+            crate::dock::set_flyout(ui.ctx(), crate::dock::Flyout { left: r.left(), top: r.top() + 6.0, keep });
+        });
 }
 
 /// The right column's parts in `r`: the palette at the top, the properties `props_h` tall at the
-/// bottom, the legend between them.
+/// bottom, the legend between them, with mouse-draggable horizontal splitters between sections.
 fn right_parts(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect, props_h: f32) {
-    let top = Rect::from_min_size(r.min, vec2(r.width(), palette::HEIGHT));
-    let bottom = Rect::from_min_max(pos2(r.left(), r.bottom() - props_h), r.max);
+    let top_delta_id = wid("right-split-top-delta", ());
+    let bot_delta_id = wid("right-split-bot-delta", ());
+    let mut top_delta = ui.data(|d| d.get_temp::<f32>(top_delta_id).unwrap_or(0.0));
+    let mut bot_delta = ui.data(|d| d.get_temp::<f32>(bot_delta_id).unwrap_or(0.0));
+
+    let max_extra = (r.height() - palette::HEIGHT - props_h - legend::MIN_HEIGHT).max(0.0);
+    top_delta = top_delta.clamp(-80.0, max_extra);
+    bot_delta = bot_delta.clamp(-80.0, (max_extra - top_delta.max(0.0)).max(0.0));
+
+    let top_h = (palette::HEIGHT + top_delta).clamp(140.0, (r.height() - legend::MIN_HEIGHT - 80.0).max(palette::HEIGHT));
+    let bot_h = (props_h + bot_delta).clamp(90.0, (r.height() - top_h - legend::MIN_HEIGHT).max(props_h));
+
+    let top = Rect::from_min_size(r.min, vec2(r.width(), top_h));
+    let bottom = Rect::from_min_max(pos2(r.left(), r.bottom() - bot_h), r.max);
     palette::show(app, ui, top);
     legend::show(app, ui, Rect::from_min_max(top.left_bottom(), bottom.right_top()));
     props::show(app, ui, bottom);
+
+    // Draggable vertical splitters between Palette/Legend and Legend/Props.
+    let split_top_rect = Rect::from_min_max(pos2(r.left(), top.bottom() - 3.0), pos2(r.right(), top.bottom() + 3.0));
+    let resp_top = ui.interact(split_top_rect, wid("right-split-top", ()), Sense::drag());
+    if resp_top.hovered() || resp_top.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+    }
+    if resp_top.dragged() {
+        top_delta += resp_top.drag_delta().y;
+        ui.data_mut(|d| d.insert_temp(top_delta_id, top_delta));
+    }
+
+    let split_bot_rect = Rect::from_min_max(pos2(r.left(), bottom.top() - 3.0), pos2(r.right(), bottom.top() + 3.0));
+    let resp_bot = ui.interact(split_bot_rect, wid("right-split-bot", ()), Sense::drag());
+    if resp_bot.hovered() || resp_bot.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+    }
+    if resp_bot.dragged() {
+        bot_delta -= resp_bot.drag_delta().y;
+        ui.data_mut(|d| d.insert_temp(bot_delta_id, bot_delta));
+    }
 }
 
 fn font(size: f32) -> FontId {
