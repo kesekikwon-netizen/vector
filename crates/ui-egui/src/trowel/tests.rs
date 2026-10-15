@@ -2,14 +2,14 @@
 //! (`win-plan`, design 2.1 §3) unless a test says otherwise, with the app's own title bar and one
 //! document open.
 
-use egui::{Event, PointerButton, Pos2, Rect, pos2, vec2};
+use egui::{pos2, vec2, Event, PointerButton, Pos2, Rect};
 use serde_json::json;
 use vectorcraft_doc::NodeId;
 use vectorcraft_engine::Session;
 
 use super::*;
-use crate::VectorcraftApp;
 use crate::theme::Tokens;
+use crate::VectorcraftApp;
 
 /// The ribbon's tiles, left to right.
 const TILES: [&str; 23] = [
@@ -3393,4 +3393,47 @@ fn test_gpkg_browser_checkbox_and_toggle() {
 
     let win_closed = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join(" ");
     assert!(!win_closed.contains("Strata OGC GeoPackage 현장 측량 데이터 연동"), "GPKG browser must close after clicking 닫기");
+}
+
+#[test]
+fn test_always_visible_palettes_work_without_popups() {
+    let mut h = Harness::new();
+    let (set, right) = (h.panel(SET), h.panel(RIGHT));
+
+    // 1. Right Drawing Palette: field weights (0.15, 0.4 dashed, 0.6), presets, and color swatches are immediately visible.
+    for w in ["0.15", "0.4", "0.6"] {
+        let r = h.rect(wid("weight", w)).unwrap_or_else(|| panic!("field weight {w} must be visible from start"));
+        assert!(right.contains_rect(r), "{w} inside RIGHT panel");
+    }
+    h.click(wid("weight", "0.15"));
+    assert!((h.app.session.paint.stroke_width - 0.15).abs() < 1e-6);
+    h.click(wid("weight", "0.4"));
+    assert!((h.app.session.paint.stroke_width - 0.4).abs() < 1e-6);
+    assert!(h.app.session.new_art_stroke().dash.is_some(), "0.4 pt sets dashed line");
+
+    // Color swatches are immediately visible in the right palette.
+    assert!(right.contains_rect(h.rect(wid("pal-color-target", ())).unwrap()));
+    assert!(right.contains_rect(h.rect(wid("pal-color-none", ())).unwrap()));
+    assert!(right.contains_rect(h.rect(wid("pal-swatch", "red")).unwrap()));
+    h.click(wid("pal-swatch", "red"));
+    let stroke_col = h.app.session.new_art_stroke().paint;
+    assert!(matches!(stroke_col, vectorcraft_color::Paint::Solid { .. }));
+
+    // 2. Left Scrapboard Palette: 12 field rules, scale bars, section markers, north arrow, stratigraphy, and stamps are immediately visible.
+    assert!(set.contains_rect(h.rect(wid("scrap-preset", "all12")).unwrap()));
+    assert!(set.contains_rect(h.rect(wid("scrap-preset", "p1")).unwrap()));
+    assert!(set.contains_rect(h.rect(wid("scrap-scale", 20_u32)).unwrap()));
+    assert!(set.contains_rect(h.rect(wid("scrap-sec", "ah")).unwrap()));
+    assert!(set.contains_rect(h.rect(wid("scrap-north", "n0")).unwrap()));
+    assert!(set.contains_rect(h.rect(wid("scrap-strat", "roman")).unwrap()));
+    assert!(set.contains_rect(h.rect(wid("scrap-stamp", "disturb")).unwrap()));
+
+    // Clicking a field rule preset in the Scrapboard Palette adds and selects that rule immediately.
+    h.click(wid("scrap-preset", "p1"));
+    let cur_name = h.current_layer().and_then(|id| h.app.session.active().unwrap().doc.node(id).map(|n| n.display_name()));
+    assert_eq!(cur_name.as_deref(), Some("평면외곽선"));
+
+    // Clicking a scale bar button places the scale bar and updates document scale.
+    h.click(wid("scrap-scale", 20_u32));
+    assert_eq!(h.app.session.active().unwrap().doc.scale.as_ref().unwrap().scale.denom, 20.0);
 }

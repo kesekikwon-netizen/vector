@@ -12,3 +12,8 @@
    - 새 도면(`trowel.newPlan`, `newSection`, `newFinds`, `newSitePlan`) 생성 시 `legend.addGroup`으로 13~15개 레이어를 강제 추가하지 않고, 기본 작업 레이어 1개로만 시작하여 사용자가 필요한 규칙을 직접 추가하게 한다.
    - `Delete` / `Backspace` 키는 잠긴 레이어나 전체 선택된 레이어를 삭제할 때도 동작해야 하며(전체 레이어 삭제 시 빈 레이어 1개를 먼저 생성 후 삭제), 색상 선택기/스와치 창이 열려 있을 때는 색 없음(`paint.none`)으로 동작해야 한다.
    - Windows 데스크톱 바이너리(`apps/vectorcraft/src/main.rs`)는 실행 시 검은 터미널 창이 뜨지 않도록 `#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]`를 유지한다.
+5. **`TrowelTheme` 색상 토큰 강제 (`trowel_code_takes_colours_from_tokens`)**:
+   - `crates/ui-egui/src/trowel/` 하위 모든 UI 파일(`theme.rs` 및 `#[cfg(test)]` 블록 제외)에서는 `Color32::from_rgb`, `Color32::from_rgba_unmultiplied`, `Color32::BLACK`, `Color32::WHITE` 등 리터럴 색상을 직접 호출하지 않고 반드시 `TrowelTheme` 토큰(`t.ink`, `t.paper`, `t.accent` 등)만 사용한다.
+6. **발굴 조사 보고서 실무 표준(소스판 1클릭 도구) 보존**:
+   - 사용자가 외부 소스판 파일에서 복사·붙여넣기하지 않도록 실무 7단계 선 굵기(`0.15 / 0.2 / 0.3 / 0.4(파선) / 0.5 / 0.6 / 0.8 pt`)와 현장 실무 표준 12종 프리셋(`legend.addFieldPresets`, 윤고딕 `6p`·`7p` 기준)을 유지한다.
+   - 상단 리본 팝오버(`축척` `1/10~1/200`, `단면선` `A–A′`/`B–B′` 적색 기준점 `■` + 시선 화살표 `∠` + `┣ 93.0m` 기준점, `방위` 회전 각도, `표고` 단면 아래 채움 `fillBelowProfile`·우측 주기 `RightEnd`·적색 틱 `redDatumTick`, `범례표` `교란`·`조사경계` 스탬프) 및 로마 숫자(`I~XX`) 토층 기호·`7p` 일렬 토층 설명 블록이 항상 1클릭으로 동작해야 한다.

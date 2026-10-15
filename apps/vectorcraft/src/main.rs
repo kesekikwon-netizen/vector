@@ -659,6 +659,10 @@ fn main() -> std::process::ExitCode {
                 #[cfg(not(target_os = "macos"))]
                 let _ = in_window_menus;
                 file_access::unconfined(|| open_files(&mut app, files));
+                if app.ui.trowel && app.session.documents().is_empty() {
+                    let _ = app.run("trowel.newPlan", serde_json::json!({}));
+                    app.ui.home = None;
+                }
                 // The first frame is due from now (`gpu::watch_first_frame`).
                 #[cfg(feature = "wgpu")]
                 created.ready();

@@ -150,7 +150,7 @@ fn right_parts(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect, props_h: f32) {
     top_delta = top_delta.clamp(-80.0, max_extra);
     bot_delta = bot_delta.clamp(-80.0, (max_extra - top_delta.max(0.0)).max(0.0));
 
-    let top_h = (palette::HEIGHT + top_delta).clamp(140.0, (r.height() - legend::MIN_HEIGHT - 80.0).max(palette::HEIGHT));
+    let top_h = (palette::HEIGHT + top_delta).clamp(palette::HEIGHT, (r.height() - legend::MIN_HEIGHT - 80.0).max(palette::HEIGHT));
     let bot_h = (props_h + bot_delta).clamp(90.0, (r.height() - top_h - legend::MIN_HEIGHT).max(props_h));
 
     let top = Rect::from_min_size(r.min, vec2(r.width(), top_h));

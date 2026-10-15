@@ -5,7 +5,7 @@
 //! - `trowel.newSitePlan`: 1:100 A3 landscape site layout drawing with plan legend group.
 //! - `trowel.newPlate`: A4 portrait report plate drawing.
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use super::*;
 use crate::{Result, Session};
@@ -73,6 +73,7 @@ fn u32_or(p: &Value, key: &str, default: u32) -> u32 {
 /// further rules as needed.
 fn setup_initial_layer(s: &mut Session, layer_name: &str, weight: f64, sample: &str, group: &str) -> Result<()> {
     let _ = s.execute("paint.setFill", &json!({ "none": true }));
+    let _ = s.execute("paint.toggleActive", &json!({ "fill": false }));
     let first_id = s.doc().ok().and_then(|st| st.doc.layers.first().map(|l| l.id));
     if let Some(id) = first_id {
         let _ = s.execute("layer.setProps", &json!({ "ids": [id.0], "name": layer_name, "locked": false, "visible": true }));

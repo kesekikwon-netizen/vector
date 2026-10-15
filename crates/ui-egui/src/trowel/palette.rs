@@ -12,15 +12,28 @@ use vectorcraft_doc::{LineType, NodeId};
 use super::legend::{Card, open_card};
 use super::*;
 
-/// The palette's height: its head, three rows of chips and the buttons under them.
-pub(super) const HEIGHT: f32 = 166.0;
+/// The palette's height: its head, five rows of chips (weights, field standards, colours, hatch,
+/// line type) and the buttons under them.
+pub(super) const HEIGHT: f32 = 220.0;
 
 /// The weights in points (design 2.1 §7) and how thick their sample line is drawn.
 const WEIGHTS: [(&str, f64, f32); 6] =
     [("0.1", 0.1, 0.5), ("0.2", 0.2, 0.8), ("0.3", 0.3, 1.0), ("0.5", 0.5, 1.4), ("0.8", 0.8, 2.0), ("1.0", 1.0, 2.6)];
 
-const ROW_H: f32 = 31.0;
-const CHIP_H: f32 = 27.0;
+/// Korean archaeological field standard swatches (always visible in the palette).
+const FIELD_SWATCHES: [(&str, &str, [u8; 3]); 8] = [
+    ("black", "검정 (기본 실선·외곽선)", [20, 20, 20]),
+    ("red", "적색 (단면·해발 기준점 ■)", [210, 35, 35]),
+    ("blue", "청색 (수계·보조선)", [30, 95, 195]),
+    ("darkbrown", "흑갈색 (표토·부식토층)", [75, 52, 38]),
+    ("brown", "암갈색 (유구 내부토·점질토)", [130, 84, 48]),
+    ("ochre", "황갈색 (사질토·생토층)", [190, 142, 74]),
+    ("gray", "회색 (석재·교란·토기 단면)", [140, 140, 140]),
+    ("white", "백색 (바탕 채움)", [250, 248, 242]),
+];
+
+const ROW_H: f32 = 29.0;
+const CHIP_H: f32 = 25.0;
 /// Where the chips start, after the row's label.
 const CHIPS_X: f32 = 14.0 + 28.0 + 4.0;
 
@@ -36,9 +49,10 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let stroke = crate::panels::current_stroke(app);
     let mixed = crate::panels::stroke_mixed(app, ui.ctx());
     let weight = crate::panels::stroke::shown_weight(app, stroke.as_ref(), &mixed);
+    let shown_dash = (!mixed.dash).then(|| stroke.as_ref().map_or(LineType::Solid, LineType::of));
     let row = |i: usize| head.bottom() + 2.0 + ROW_H * (i as f32 + 0.5);
     let mut set = None;
-    // Weight.
+    // Row 0: Standard Weights (0.1 .. 1.0) + style dialog button.
     let cy = row(0);
     text(ui, pos2(r.left() + 14.0, cy), Align2::LEFT_CENTER, tw!("Weight"), font(11.0), t.text_dim);
     let mut x = r.left() + CHIPS_X;
@@ -58,42 +72,109 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let add_resp = ui.interact(add, wid("weight-add", ()), Sense::click());
     chip(ui, add, false, add_resp.hovered(), &t);
     crate::icons::paint(ui, "plus", Rect::from_center_size(add.center(), vec2(12.0, 12.0)), t.text);
-    let add_resp = add_resp.on_hover_text("클릭: 양식 템플릿 관리 · 우클릭: 현장 세부 굵기(0.15 / 0.4 / 0.6 pt) 선택");
-    let mut picked_preset: Option<(f64, Option<LineType>)> = None;
-    egui::Popup::context_menu(&add_resp).show(|ui| {
-        ui.label("현장 실무 세부 선 굵기 (6p·7p 규격)");
-        ui.separator();
-        for (w, desc, dash_opt) in [
-            (0.15, "0.15 pt · 석곽-유물 깨진면", Some(LineType::Solid)),
-            (0.2, "0.2 pt · 석곽·유물 내선 / 단면빗금", Some(LineType::Solid)),
-            (0.3, "0.3 pt · 내선(바닥) / 유물외곽 / 해발선", Some(LineType::Solid)),
-            (0.4, "0.4 pt · 이중굴광시-가운데선 (파선)", Some(LineType::Dashed)),
-            (0.5, "0.5 pt · 석곽-평면외곽선 / 해발 0.5단위", Some(LineType::Solid)),
-            (0.6, "0.6 pt · 평면외곽선", Some(LineType::Solid)),
-            (0.8, "0.8 pt · 단면선", Some(LineType::Solid)),
-            (1.0, "1.0 pt · 조사구역 경계", None),
-        ] {
-            if ui.button(desc).clicked() {
-                picked_preset = Some((w, dash_opt));
-                ui.close();
-            }
-        }
-        ui.separator();
-        if ui.button("도면 양식 템플릿 관리 (J018)…").clicked() {
-            super::style_dialog::toggle_dialog(ui.ctx());
-            ui.close();
-        }
-    });
-    if let Some((w, dash_opt)) = picked_preset {
-        set = Some(match dash_opt {
-            Some(kind) => json!({ "weight": w, "dash": kind.dash_pt() }),
-            None => json!({ "weight": w }),
-        });
-    } else if add_resp.clicked() {
+    if add_resp.on_hover_text("도면 양식 템플릿 관리 (J018)").clicked() {
         super::style_dialog::toggle_dialog(ui.ctx());
     }
-    // Hatch: 45°, 135°, Alternate, None.
+
+    // Row 1: Always-visible Korean field stroke weights (0.15, 0.4 dashed, 0.6) & 1-click field rule presets.
     let cy = row(1);
+    text(ui, pos2(r.left() + 14.0, cy), Align2::LEFT_CENTER, "실무", font(11.0), t.text_dim);
+    let mut x = r.left() + CHIPS_X;
+    for (key, label, w, sample, dashed, tip) in [
+        ("0.15", "0.15", 0.15, 0.6, false, "0.15 pt · 석곽·유물 깨진면"),
+        ("0.4", "0.4파", 0.4, 1.2, true, "0.4 pt 파선 · 이중굴광시 가운데선"),
+        ("0.6", "0.6", 0.6, 1.6, false, "0.6 pt · 평면외곽선"),
+    ] {
+        let chip_r = Rect::from_min_size(pos2(x, cy - CHIP_H / 2.0), vec2(34.0, CHIP_H));
+        let resp = ui.interact(chip_r, wid("weight", key), Sense::click());
+        let on = weight.is_some_and(|v| (v - w).abs() < 1e-6);
+        chip(ui, chip_r, on, resp.hovered(), &t);
+        if dashed {
+            for dx in [-8.0_f32, -1.0, 6.0] {
+                ui.painter().rect_filled(Rect::from_center_size(pos2(chip_r.center().x + dx, cy - 5.0), vec2(4.0, sample)), 0.0, t.text);
+            }
+        } else {
+            ui.painter().rect_filled(Rect::from_center_size(pos2(chip_r.center().x, cy - 5.0), vec2(20.0, sample)), 0.0, t.text);
+        }
+        text(ui, pos2(chip_r.center().x, cy + 5.0), Align2::CENTER_CENTER, label, mono(9.5), t.text);
+        if resp.on_hover_text(tip).clicked() {
+            set = Some(if dashed {
+                json!({ "weight": w, "dash": LineType::Dashed.dash_pt() })
+            } else {
+                json!({ "weight": w, "dash": null })
+            });
+        }
+        x = chip_r.right() + 3.0;
+    }
+    for (key, label, preset_name, tip) in [
+        ("plan06", "평면0.6", Some("평면외곽선"), "평면외곽선 (0.6 pt) 표준 레이어 추가 및 선택"),
+        ("inner03", "내선0.3", Some("내선(바닥)"), "내선(바닥) (0.3 pt) 표준 레이어 추가 및 선택"),
+        ("all12", "★12종", None, "현장 실무 표준 12종 레이어 일괄 추가"),
+    ] {
+        let chip_r = Rect::from_min_size(pos2(x, cy - CHIP_H / 2.0), vec2(43.0, CHIP_H));
+        let resp = ui.interact(chip_r, wid("pal-preset", key), Sense::click());
+        chip(ui, chip_r, false, resp.hovered(), &t);
+        text(ui, chip_r.center(), Align2::CENTER_CENTER, label, font(10.0), t.text);
+        if resp.on_hover_text(tip).clicked() {
+            let params = match preset_name {
+                Some(n) => json!({ "name": n }),
+                None => json!({}),
+            };
+            let _ = app.run("legend.addFieldPresets", params);
+        }
+        x = chip_r.right() + 3.0;
+    }
+
+    // Row 2: Always-visible Color Swatch Palette (Target toggle [선/면], None [∅], 8 field colors, Swatches panel button).
+    let cy = row(2);
+    text(ui, pos2(r.left() + 14.0, cy), Align2::LEFT_CENTER, "색상", font(11.0), t.text_dim);
+    let mut x = r.left() + CHIPS_X;
+    let fill_active = app.session.fill_active;
+    let target_r = Rect::from_min_size(pos2(x, cy - 11.5), vec2(28.0, 23.0));
+    let target_resp = ui.interact(target_r, wid("pal-color-target", ()), Sense::click());
+    chip(ui, target_r, fill_active, target_resp.hovered(), &t);
+    text(ui, target_r.center(), Align2::CENTER_CENTER, if fill_active { "면" } else { "선" }, font(10.5), t.text);
+    if target_resp.on_hover_text("클릭: 선 색상 ⇄ 채움(면) 색상 대상 전환 (단축키 X)").clicked() {
+        let _ = app.run("paint.toggleActive", json!({}));
+    }
+    x = target_r.right() + 3.0;
+
+    // None swatch [/]
+    let none_r = Rect::from_min_size(pos2(x, cy - 11.5), vec2(21.0, 23.0));
+    let none_resp = ui.interact(none_r, wid("pal-color-none", ()), Sense::click());
+    ui.painter().rect(none_r, CornerRadius::same(4), t.input, Stroke::new(1.0, if none_resp.hovered() { t.text } else { t.input_border }), StrokeKind::Inside);
+    ui.painter().line_segment([pos2(none_r.left() + 3.0, none_r.bottom() - 3.0), pos2(none_r.right() - 3.0, none_r.top() + 3.0)], Stroke::new(1.6, t.caution));
+    if none_resp.on_hover_text("색 없음 (현재 대상의 선 또는 채움 지우기 · Delete / /)").clicked() {
+        let _ = app.run("paint.none", json!({}));
+    }
+    x = none_r.right() + 3.0;
+
+    for (key, tip, rgb) in FIELD_SWATCHES {
+        let sw_r = Rect::from_min_size(pos2(x, cy - 11.5), vec2(18.0, 23.0));
+        let resp = ui.interact(sw_r, wid("pal-swatch", key), Sense::click());
+        let sw_col = crate::panels::c32(&vectorcraft_color::Color::rgb8(rgb[0], rgb[1], rgb[2]));
+        let edge = if resp.hovered() { Stroke::new(1.5, t.text) } else { Stroke::new(1.0, t.input_border) };
+        ui.painter().rect(sw_r, CornerRadius::same(4), sw_col, edge, StrokeKind::Inside);
+        let resp = resp.on_hover_text(format!("{tip}\n좌클릭: 현재 대상({}), 우클릭: 반대 대상 색상 지정", if fill_active { "면 채움" } else { "선" }));
+        if resp.clicked() {
+            let cmd = if fill_active { "paint.setFill" } else { "paint.setStroke" };
+            let _ = app.run(cmd, json!({ "color": rgb }));
+        } else if resp.secondary_clicked() {
+            let cmd = if fill_active { "paint.setStroke" } else { "paint.setFill" };
+            let _ = app.run(cmd, json!({ "color": rgb }));
+        }
+        x = sw_r.right() + 2.5;
+    }
+    let more_col_r = Rect::from_min_size(pos2(x, cy - 11.5), vec2(22.0, 23.0));
+    let more_col_resp = ui.interact(more_col_r, wid("pal-color-more", ()), Sense::click());
+    chip(ui, more_col_r, false, more_col_resp.hovered(), &t);
+    crate::icons::paint(ui, "ellipsis", more_col_r.shrink(5.0), t.text);
+    if more_col_resp.on_hover_text("전체 색상표(스와치) 및 색상 선택기 열기").clicked() {
+        crate::menus::invoke(app, "window.panel", json!({ "panel": "swatches" }));
+    }
+
+    // Row 3: Hatch: 45°, 135°, Alternate, None.
+    let cy = row(3);
     text(ui, pos2(r.left() + 14.0, cy), Align2::LEFT_CENTER, tw!("Hatch"), font(11.0), t.text_dim);
     let mut x = r.left() + CHIPS_X;
 
@@ -142,32 +223,31 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         }
         x = chip_r.right() + 4.0;
     }
-    // Line type: the first selected line's, or the next line's; none when the selected lines'
+    // Row 4: Line type: the first selected line's, or the next line's; none when the selected lines'
     // dashes differ.
-    let cy = row(2);
+    let cy = row(4);
     text(ui, pos2(r.left() + 14.0, cy), Align2::LEFT_CENTER, tw!("Line"), font(11.0), t.text_dim);
-    let shown = (!mixed.dash).then(|| stroke.as_ref().map_or(LineType::Solid, LineType::of));
     let kinds = line_types();
     let parts: Vec<Seg> =
-        kinds.iter().map(|(key, label, kind)| Seg { key, label, on: shown.as_ref().is_some_and(|s| s.same(kind)), soon: None }).collect();
-    let look = SegLook { h: 26.0, pad: 9.0, font: font(12.0) };
+        kinds.iter().map(|(key, label, kind)| Seg { key, label, on: shown_dash.as_ref().is_some_and(|s| s.same(kind)), soon: None }).collect();
+    let look = SegLook { h: 25.0, pad: 9.0, font: font(12.0) };
     if let (Some(key), _) = segments(ui, "dash", pos2(r.left() + CHIPS_X, cy), &look, &parts, &t)
         && let Some((_, _, kind)) = kinds.iter().find(|(k, _, _)| *k == key)
     {
         set = Some(json!({ "dash": kind.dash_pt() }));
     }
     // Cut Face, and the legend's own buttons.
-    let cy = head.bottom() + 2.0 + 3.0 * ROW_H + 4.0 + 13.0;
+    let cy = head.bottom() + 2.0 + 5.0 * ROW_H + 3.0 + 13.0;
     let open = app.session.active().is_some();
-    let cut_btn = small_button(ui, wid("palette-cut", ()), pos2(r.left() + 14.0, cy), 26.0, tw!("Cut Face"), open, &t)
+    let cut_btn = small_button(ui, wid("palette-cut", ()), pos2(r.left() + 14.0, cy), 25.0, tw!("Cut Face"), open, &t)
         .on_hover_text(tw!("Cut border (0.8 pt) and alternating hatch"));
     if cut_btn.clicked() {
         app.run("hatch.cutFace", json!({})).ok();
     }
     let x = cut_btn.rect.right() + 4.0;
-    let add = small_button(ui, wid("palette-to-legend", ()), pos2(x, cy), 26.0, tw!("Add to Legend"), open, &t)
+    let add = small_button(ui, wid("palette-to-legend", ()), pos2(x, cy), 25.0, tw!("Add to Legend"), open, &t)
         .on_hover_text(tw!("Make a legend row of this look and put the selected lines on it"));
-    let back = small_button(ui, wid("palette-from-legend", ()), pos2(add.rect.right() + 4.0, cy), 26.0, tw!("Back to the Legend"), open, &t)
+    let back = small_button(ui, wid("palette-from-legend", ()), pos2(add.rect.right() + 4.0, cy), 25.0, tw!("Back to the Legend"), open, &t)
         .on_hover_text(tw!("Give the selected lines, or the next line, their row's look"));
     if let Some(p) = set {
         crate::panels::stroke::set(app, p);
