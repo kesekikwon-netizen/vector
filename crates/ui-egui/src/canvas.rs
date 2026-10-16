@@ -1532,7 +1532,8 @@ fn context_menu(app: &mut VectorcraftApp, resp: &egui::Response, xf: &Xf) {
             if has_interaction {
                 let _ = app.session.cancel_interaction();
             }
-            let _ = app.run("edit.undo", json!({}));
+            // As Ctrl+Z: while a Trowel line is drawn, its last point (review J024 N2).
+            crate::menus::invoke(app, "edit.undo", json!({}));
             return;
         }
     }

@@ -297,6 +297,7 @@
   - 시험 `picking_a_line_is_quick_in_a_big_drawing`(도구): 한 그룹에 짧은 선 2만 개, 그 사이를 움직이고 누르기 → 안내 대화, 1초 안. 고치기 전 코드로 돌리면 2.74초로 실패, 고친 뒤 통과(전체 12개 0.06초).
 - 코드 N2·화면 N1 그리는 중 되돌리기: `menus::invoke`에서 Trowel 도구가 Backspace를 가져가는 동안(점이 있을 때) `edit.undo`는 마지막 점을 지운다. Ctrl+Z, 편집 메뉴, 펜 막대 「되돌리기」가 모두 이 길로 온다. 점이 없으면 예전처럼 문서를 되돌린다.
   - 시험 `the_keyboard_reaches_the_strata_line_while_it_is_drawn`에 Ctrl+Z 단계를 더했다(점 셋 → Ctrl+Z → 「토층선 Ⅰ」 그대로 → Enter면 「토층선 Ⅱ」 2점). 고치기 전 코드에서는 4438행에서 실패했다.
+  - 펜 옆 단추(캔버스 오른쪽 누르기, J017 「펜 단추 1 = 되돌리기」)도 같은 `menus::invoke`로 보낸다. D4 빌드 때 단면선·토층선을 이 목록에 넣으면서 「그리는 중에도 `edit.undo`」로 정했던 것(빌드 절 「정한 것」)을 이것으로 바꾼다. 같은 시험에 오른쪽 누르기 단계를 더했고, 고치기 전 코드에서는 4459행에서 실패했다.
 - 코드 N3 토층선: 「토층선 」을 표시 목록에서 뺐다. 번호(「층위 번호」·「토층 번호」)·설명(「토층설명」)은 그대로 건너뛴다.
   - 시험 기대값 변경: `marks_are_told_from_drawn_lines`가 「토층선 Ⅰ」을 표시가 **아님**으로 본다. 근거: 검토 N3과 `is_mark`의 뜻(「손으로 그린 선이 아님」), 사람 결정 H10의 추천.
   - 새 엔진 시험 `level_lines_take_a_strata_line_but_not_a_table`: 「토층선 Ⅰ」로 해발선이 생긴다.
@@ -343,4 +344,16 @@
 | `cargo xtask layers` | 0 | 27 crate, 층 위반 없음 | `r2-layers.log` |
 | `twmissing.py` | 0 | 글자열 255개 중 번역 빠짐 0 | 터미널 |
 | 고치기 전 코드로 새 시험 돌리기(임시로 되돌린 뒤 복원) | 101 | 선 집기 2.74초로 실패, Ctrl+Z 4438행·풍선 839행 실패 | 터미널 |
-| GitHub 「Trowel CI」 (이 커밋) | - | push 뒤 확인 | GitHub Actions |
+| GitHub 「Trowel CI」 run 38960953412 (커밋 `89105ae`) | - | **성공** | GitHub Actions |
+
+펜 옆 단추를 고친 뒤 다시 돌린 것(로그 `j024/r2b-*.log`): `cargo fmt --all -- --check` 0, `cargo test -p vectorcraft-ui-egui` 0(1,066 + 6 통과), `cargo test -p vectorcraft` 0(66 통과), `cargo clippy --workspace --all-targets -- -D warnings` 0. 고친 곳은 `canvas.rs` 한 줄과 화면 시험이라 엔진·도구·문서 시험은 `89105ae` 결과를 쓴다. GitHub CI는 다음 커밋에서 본다.
+
+### 완료 기준 7 확인 3 · 기준 8 다시 (새로 띄운 앱, `89105ae` 릴리스 빌드 sha256 `b8b7d9c7…`)
+- `scene_d4r2.py`(앞 장면에 두 단계를 더함)로 돌렸다. 결과 scratchpad `shots/d4r2/`, 보고 그림 `/mnt/project-files/design/trowel-run/d4/`.
+  - 키 1/2/4/3, 빈 곳 안내, 높이 칸 닫힘, 토층선 Backspace는 앞과 같다.
+  - 그리는 중 Ctrl+Z: 토층선 Ⅰ–Ⅲ 뒤 점 셋 → Ctrl+Z → 마지막 점만 지워지고 Ⅰ–Ⅲ 그대로 → Enter로 「토층선 Ⅳ」(`ctrlz-pair.png`).
+  - 토층선 위 해발선: 해발선 도구로 「토층선 Ⅰ」을 누르면 높이 칸이 열린다(`trowelAsk {for: level, text: "32.5"}`), Esc로 닫힘.
+  - 범례: 재작업 2 전 「평면외곽선 따로 1」 「단면선 따로 16」이 이제 없다(`legend-before-after.png`).
+  - 표고: `ui.render` 4배에서 ▽와 「32.5m」(`spot-render-crop.png`).
+- 기준 8 비교(`d4-compare-tools.png`): 처음 띄운 화면이 `a33d898` 화면과 바이트까지 같다(도구 열에 바뀐 것 없음). 칸·가름줄·글자 자리는 앞 측정 그대로.
+  - **남은 차이**: (1) 고고학 밖 칸 아이콘(R·S·K·I·H·Z 등)이 VectorCraft 그림이라 시안 그림과 모양이 다르고 1–3 px 크다(D4 범위 밖). (2) 해발선·단면 기호가 들어가는 범례 줄은 사람 결정 H9로 남는다(셈에서 빠져 「따로」는 이제 안 뜸). 길게 누르기 펼침은 화면 확인 검토가 XTest로 확인했다. 그래서 「통과」가 아니라 「차이 1건 + 결정 1건 남음」이다.

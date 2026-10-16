@@ -4450,6 +4450,16 @@ fn the_keyboard_reaches_the_strata_line_while_it_is_drawn() {
     };
     assert_eq!((points(&h, "토층선 Ⅰ"), points(&h, "토층선 Ⅱ")), (Some(2), Some(2)));
     h.app.run("edit.undo", json!({})).unwrap();
+    // The pen's side button (a right click on the canvas) undoes as Ctrl+Z does.
+    for (x, y) in [(20.0, 240.0), (200.0, 250.0), (380.0, 240.0)] {
+        h.click_at(h.on_screen(x, y));
+    }
+    h.press(h.on_screen(100.0, 120.0), PointerButton::Secondary);
+    h.settle();
+    assert!(object_names(&h).iter().any(|n| n == "토층선 Ⅰ"), "{:?}", object_names(&h));
+    h.key(egui::Key::Enter);
+    assert_eq!(points(&h, "토층선 Ⅱ"), Some(2));
+    h.app.run("edit.undo", json!({})).unwrap();
     // Esc drops a line being drawn: nothing made.
     for (x, y) in [(20.0, 260.0), (200.0, 270.0)] {
         h.click_at(h.on_screen(x, y));
