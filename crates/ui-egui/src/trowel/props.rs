@@ -12,7 +12,11 @@ const FIELD_H: f32 = 22.0;
 
 /// The properties' height: open, or folded to the head.
 pub(super) fn height(ctx: &egui::Context) -> f32 {
-    if folded(ctx) { 33.0 } else { 112.0 }
+    if folded(ctx) {
+        33.0
+    } else {
+        112.0
+    }
 }
 
 fn folded(ctx: &egui::Context) -> bool {
@@ -55,7 +59,17 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         let cy = cy + FIELD_H / 2.0 + 5.0 + 8.0;
         let u = app.session.general_unit();
         let x = text(ui, pos2(left, cy), Align2::LEFT_CENTER, tw!("Size"), font(11.0), t.text_dim).right() + 4.0;
-        text(ui, pos2(x, cy), Align2::LEFT_CENTER, format!("{} × {}", u.format(w), u.format(h)), mono(11.0), t.text);
+        let label = if u == vectorcraft_doc::Unit::Millimeters {
+            let fmt_v = |pts: f64| {
+                let v = u.from_pt(pts);
+                let s = format!("{v:.1}");
+                s.strip_suffix(".0").unwrap_or(&s).to_string()
+            };
+            format!("{} × {} mm", fmt_v(w), fmt_v(h))
+        } else {
+            format!("{} × {}", u.format(w), u.format(h))
+        };
+        text(ui, pos2(x, cy), Align2::LEFT_CENTER, label, mono(11.0), t.text);
     }
 }
 

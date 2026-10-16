@@ -107,13 +107,65 @@ fn subtract_interval(intervals: Vec<(f64, f64)>, u: f64, v: f64) -> Vec<(f64, f6
     out
 }
 
+/// Normalizes flattened profile points so closed loops become a single non-self-intersecting
+/// left-to-right chain from `min_x` to `max_x`.
+fn normalize_profile_points(profile_pts: Vec<Point>, ceiling_y: f64) -> Vec<Point> {
+    if profile_pts.len() >= 4
+        && let (Some(&first), Some(&last)) = (profile_pts.first(), profile_pts.last())
+        && first.distance(last) < 1.0
+    {
+        let pts = &profile_pts[..profile_pts.len() - 1];
+        let n = pts.len();
+        if n >= 3 {
+            let mut min_idx = 0usize;
+            let mut max_idx = 0usize;
+            for (i, p) in pts.iter().enumerate() {
+                if p.x < pts[min_idx].x {
+                    min_idx = i;
+                }
+                if p.x > pts[max_idx].x {
+                    max_idx = i;
+                }
+            }
+            if min_idx != max_idx {
+                let mut chain_a = Vec::new();
+                let mut idx = min_idx;
+                for _ in 0..=n {
+                    chain_a.push(pts[idx]);
+                    if idx == max_idx {
+                        break;
+                    }
+                    idx = (idx + 1) % n;
+                }
+
+                let mut chain_b = Vec::new();
+                let mut idx = min_idx;
+                for _ in 0..=n {
+                    chain_b.push(pts[idx]);
+                    if idx == max_idx {
+                        break;
+                    }
+                    idx = (idx + n - 1) % n;
+                }
+
+                let avg_a = chain_a.iter().map(|p| p.y).sum::<f64>() / (chain_a.len().max(1) as f64);
+                let avg_b = chain_b.iter().map(|p| p.y).sum::<f64>() / (chain_b.len().max(1) as f64);
+                // Pick the chain farthest from ceiling_y so the profile interior is included in or excluded cleanly
+                return if (avg_a - ceiling_y).abs() <= (avg_b - ceiling_y).abs() { chain_a } else { chain_b };
+            }
+        }
+    }
+    profile_pts
+}
+
 /// Clips a horizontal scanline at y against the open void between the ceiling and ground profile,
 /// and subtracts all interior obstacle intervals.
 pub fn clip_elevation_scanline(y: f64, ground_profile: &BezPath, obstacles: &[BezPath], x_min: f64, x_max: f64, ceiling_y: f64) -> Vec<(f64, f64)> {
-    let profile_pts = flatten_path(ground_profile, 0.25);
-    if profile_pts.len() < 2 {
+    let raw_pts = flatten_path(ground_profile, 0.25);
+    if raw_pts.len() < 2 {
         return Vec::new();
     }
+    let profile_pts = normalize_profile_points(raw_pts, ceiling_y);
 
     let p_start = profile_pts[0];
     let p_end = *profile_pts.last().unwrap_or(&p_start);
@@ -206,19 +258,27 @@ pub fn clip_elevation_scanline(y: f64, ground_profile: &BezPath, obstacles: &[Be
 /// Generates all elevation line segments and labels according to the given ElevationSpec.
 pub fn generate_elevation(ground_profile: &BezPath, obstacles: &[BezPath], spec: &ElevationSpec, scale_cfg: Option<&ScaleConfig>) -> ElevationOutput {
     let profile_bounds = ground_profile.bounding_box();
-    if profile_bounds.width() < 1e-4 || profile_bounds.height() < 1e-4 {
+    if profile_bounds.width() < 1e-4 {
         return ElevationOutput::default();
     }
 
     let x_min = profile_bounds.x0;
     let x_max = profile_bounds.x1;
+    let is_flat_datum = profile_bounds.height() < 1.0;
 
+    let ref_y = if is_flat_datum || spec.fill_below_profile { profile_bounds.y0 } else { profile_bounds.y1 };
     let (ppm, canvas_origin_y, world_origin_y) = match scale_cfg {
-        Some(sc) => (sc.scale.points_per_meter(), sc.canvas_origin.y, sc.world_origin.1),
+        Some(sc) => {
+            if spec.datum_m.abs() > 1e-6 && sc.world_origin.1.abs() < 1e-6 {
+                (sc.scale.points_per_meter(), ref_y, spec.datum_m)
+            } else {
+                (sc.scale.points_per_meter(), sc.canvas_origin.y, sc.world_origin.1)
+            }
+        }
         None => {
             // Default 1:20 scale (1 meter = 50mm = 141.732pt)
             let default_ppm = (72.0 / 0.0254) / 20.0;
-            (default_ppm, profile_bounds.y1, spec.datum_m)
+            (default_ppm, ref_y, spec.datum_m)
         }
     };
 
@@ -234,9 +294,21 @@ pub fn generate_elevation(ground_profile: &BezPath, obstacles: &[BezPath], spec:
         ElevationRangeMode::Auto => {
             let minor = spec.minor_interval_m.max(0.01);
             let major = spec.major_interval_m.max(0.05);
-            let min_m = (lowest_elevation_m / minor).floor() * minor;
-            let max_m = (highest_elevation_m / major).ceil() * major;
-            (min_m, max_m)
+            if is_flat_datum {
+                // Horizontal datum line: generate 2 major intervals (1.0m) of continuous elevation lines below it
+                let max_m = (highest_elevation_m / minor).round() * minor;
+                let min_m = max_m - 2.0 * major;
+                (min_m, max_m)
+            } else if spec.fill_below_profile {
+                // Ensure at least one full major interval below the profile bottom so continuous lines appear beneath
+                let min_m = ((lowest_elevation_m - minor * 0.5) / major).floor() * major;
+                let max_m = (highest_elevation_m / major).ceil() * major;
+                (min_m, max_m)
+            } else {
+                let min_m = (lowest_elevation_m / minor).floor() * minor;
+                let max_m = (highest_elevation_m / major).ceil() * major;
+                (min_m, max_m)
+            }
         }
         ElevationRangeMode::Explicit { min_elevation_m, max_elevation_m } => (min_elevation_m, max_elevation_m),
     };
@@ -248,7 +320,8 @@ pub fn generate_elevation(ground_profile: &BezPath, obstacles: &[BezPath], spec:
     let minor_step = spec.minor_interval_m.max(0.01);
     let min_scanline_y = canvas_origin_y - (max_elev - world_origin_y) * ppm;
     let max_scanline_y = canvas_origin_y - (min_elev - world_origin_y) * ppm;
-    let bound_y = if spec.fill_below_profile { max_scanline_y.max(profile_bounds.y1) + 50.0 } else { min_scanline_y.min(profile_bounds.y0) - 50.0 };
+    let fill_below = spec.fill_below_profile || is_flat_datum;
+    let bound_y = if fill_below { max_scanline_y.max(profile_bounds.y1) + 50.0 } else { min_scanline_y.min(profile_bounds.y0) - 50.0 };
 
     let count = ((max_elev - min_elev) / minor_step).round() as i64;
     let mut segments = Vec::new();
@@ -261,7 +334,32 @@ pub fn generate_elevation(ground_profile: &BezPath, obstacles: &[BezPath], spec:
         let major_mult = (elev / spec.major_interval_m).round();
         let is_major = (elev - major_mult * spec.major_interval_m).abs() < 1e-4;
 
-        let intervals = clip_elevation_scanline(y, ground_profile, obstacles, x_min, x_max, bound_y);
+        let intervals = if is_flat_datum {
+            // For a flat horizontal datum line, emit a full continuous line [x_min, x_max] minus any obstacles
+            let mut ivs = vec![(x_min, x_max)];
+            for obs in obstacles {
+                let obs_pts = flatten_path(obs, 0.25);
+                if obs_pts.len() >= 3 {
+                    let mut obs_segs = Vec::with_capacity(obs_pts.len());
+                    for i in 0..obs_pts.len().saturating_sub(1) {
+                        obs_segs.push((obs_pts[i], obs_pts[i + 1]));
+                    }
+                    if let (Some(&first), Some(&last)) = (obs_pts.first(), obs_pts.last())
+                        && first.distance(last) > 1e-6
+                    {
+                        obs_segs.push((last, first));
+                    }
+                    let obs_xs = scanline_intersections(&obs_segs, y);
+                    for chunk in obs_xs.chunks_exact(2) {
+                        ivs = subtract_interval(ivs, chunk[0], chunk[1]);
+                    }
+                }
+            }
+            ivs.retain(|(a, b)| *b - *a >= 0.5);
+            ivs
+        } else {
+            clip_elevation_scanline(y, ground_profile, obstacles, x_min, x_max, bound_y)
+        };
         if intervals.is_empty() {
             continue;
         }

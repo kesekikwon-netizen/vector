@@ -321,9 +321,17 @@ pub(crate) fn control_bar_contents(app: &mut VectorcraftApp, ui: &mut Ui) {
                 crate::panels::transform::constrain_link(app, ui);
             }
             widgets::field_label(ui, egui::RichText::new(tl!(lbl)).size(12.0).color(t.text_dim));
-            if let Some(nv) = widgets::num_field(ui, ("cb", k), Some(v), units, 80.0) {
+            let changed = if app.ui.trowel {
+                widgets::num_field_compact(ui, ("cb", k), Some(v), units, 64.0)
+            } else {
+                widgets::num_field(ui, ("cb", k), Some(v), units, 80.0)
+            };
+            if let Some(nv) = changed {
                 app.run("object.setBounds", json!({k: nv, "reference": 4, "proportional": link})).ok();
             }
+        }
+        if app.ui.trowel {
+            widgets::field_label(ui, egui::RichText::new(units.suffix()).size(11.0).color(t.text_dim));
         }
     }
 }

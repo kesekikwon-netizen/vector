@@ -143,10 +143,19 @@ fn get_bezpath_from_node(node: &Node) -> Option<BezPath> {
 fn section_line(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "trowel.sectionLine";
 
-    let p0 = p.get("p0").or_else(|| p.get("p1")).and_then(parse_point).ok_or_else(|| bad(C, "missing or invalid `p0` or `p1`"))?;
-    let p1 = if p.get("p0").is_some() { p.get("p1") } else { p.get("p2") }
+    let p0 = p
+        .get("p0")
+        .or_else(|| p.get("start"))
+        .or_else(|| p.get("p1"))
         .and_then(parse_point)
-        .ok_or_else(|| bad(C, "missing or invalid `p1` or `p2`"))?;
+        .ok_or_else(|| bad(C, "missing or invalid `p0` or `p1`"))?;
+    let p1 = if p.get("p0").is_some() || p.get("start").is_some() {
+        p.get("p1").or_else(|| p.get("end"))
+    } else {
+        p.get("p2")
+    }
+    .and_then(parse_point)
+    .ok_or_else(|| bad(C, "missing or invalid `p1` or `p2`"))?;
 
     let label_start = p.get("labelStart").and_then(|v| v.as_str()).unwrap_or("A").to_string();
     let label_end = p.get("labelEnd").and_then(|v| v.as_str()).unwrap_or("A′").to_string();
@@ -246,7 +255,12 @@ fn spot_elevation(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "trowel.spotElevation";
 
     let at = p.get("at").and_then(parse_point).ok_or_else(|| bad(C, "missing or invalid `at`"))?;
-    let elevation = p.get("elevation").and_then(|v| v.as_f64()).ok_or_else(|| bad(C, "missing `elevation` value"))?;
+    let elevation = p
+        .get("elevation")
+        .or_else(|| p.get("elevation_m"))
+        .or_else(|| p.get("elevationM"))
+        .and_then(|v| v.as_f64())
+        .ok_or_else(|| bad(C, "missing `elevation` value"))?;
 
     let marker = match p.get("marker").and_then(|v| v.as_str()).map(str::to_ascii_lowercase).as_deref() {
         Some("triangle") => SpotMarkerKind::Triangle,
@@ -646,32 +660,42 @@ fn insert_section_marker(s: &mut Session, p: &Value) -> Result<Value> {
         let mut children = Vec::new();
 
         if kind == "datum" {
-            // Section Elevation Benchmark Tick (┣ 93.0m horizontal or ┳ 93.0m vertical)
-            let mut tick_bez = BezPath::new();
-            let text_pos = if orientation == "vertical" {
-                // Top T-tick (┳) for vertical section B-B'
-                tick_bez.move_to(Point::new(origin.x - 4.0, origin.y));
-                tick_bez.line_to(Point::new(origin.x + 4.0, origin.y));
-                tick_bez.move_to(origin);
-                tick_bez.line_to(Point::new(origin.x, origin.y + 6.0));
-                Point::new(origin.x + 6.0, origin.y + 2.0)
+            // Korean field standard Section Elevation Benchmark:
+            // Black reference line (14pt, 0.2pt) + Filled Red Bar ┃ (1.6 x 6.5 pt) + 6pt elevation text ("93.0m")
+            let mut line_bez = BezPath::new();
+            let (bar_rect, text_pos) = if orientation == "vertical" {
+                line_bez.move_to(origin);
+                line_bez.line_to(Point::new(origin.x, origin.y + 14.0));
+                (
+                    kurbo::Rect::from_center_size(origin, kurbo::Size::new(6.5, 1.6)),
+                    Point::new(origin.x + 5.5, origin.y + 2.2),
+                )
             } else {
-                // Right/left ┣ tick for horizontal section A-A'
-                tick_bez.move_to(Point::new(origin.x, origin.y - 4.0));
-                tick_bez.line_to(Point::new(origin.x, origin.y + 4.0));
-                tick_bez.move_to(origin);
-                tick_bez.line_to(Point::new(origin.x + 6.0, origin.y));
-                Point::new(origin.x + 8.0, origin.y + 2.0)
+                line_bez.move_to(Point::new(origin.x - 14.0, origin.y));
+                line_bez.line_to(origin);
+                (
+                    kurbo::Rect::from_center_size(origin, kurbo::Size::new(1.6, 6.5)),
+                    Point::new(origin.x + 4.5, origin.y + 2.2),
+                )
             };
+
+            let ref_id = doc.alloc_id();
+            let mut ref_node = Node::path(ref_id, PathData::from_bezpath(&line_bez), Appearance::basic(Paint::None, Paint::solid(black), 0.2));
+            ref_node.name = Some("해발 보조선".to_string());
+            children.push(Arc::new(ref_node));
+
+            let mut bar_bez = BezPath::new();
+            bar_bez.extend(bar_rect.to_path(0.1));
             let tid = doc.alloc_id();
-            let mut tnode = Node::path(tid, PathData::from_bezpath(&tick_bez), Appearance::basic(Paint::None, Paint::solid(red_ref), 0.5));
+            let mut tnode = Node::path(tid, PathData::from_bezpath(&bar_bez), Appearance::basic(Paint::solid(red_ref), Paint::None, 0.0));
             tnode.name = Some("해발 기준 눈금".to_string());
             children.push(Arc::new(tnode));
 
             let lbl_str = format!("{elev_m:.1}m");
             let lid = doc.alloc_id();
             let cs = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
-            let lobj = TextObject::point(text_pos, &lbl_str, cs);
+            let mut lobj = TextObject::point(text_pos, &lbl_str, cs);
+            lobj.para.justify = Justify::Left;
             let mut lnode = Node::new(lid, NodeKind::Text(Box::new(lobj)));
             lnode.name = Some(format!("해발 {lbl_str}"));
             children.push(Arc::new(lnode));
@@ -684,46 +708,76 @@ fn insert_section_marker(s: &mut Session, p: &Value) -> Result<Value> {
             return Ok(json!({ "id": gid.0, "kind": "datum", "elevationM": elev_m }));
         }
 
-        // Section Cut Markers (A-A', B-B', a-a', b-b') with Red Reference Block ■ + Sightline Check-Arrow ∠
+        // Section Cut Markers (A-A', B-B', a-a', b-b') with Red Reference Block ■ + Collinear Sightline Check-Arrow:
+        // Horizontal: Left is `∠───■` (with `A` above shaft), Right is mirror-symmetric `■───⦣` (with `A′` above shaft).
+        // Vertical: Top is vertical red block `■` with shaft extending up and barb folding right, Bottom is mirror-symmetric.
         let mut red_bars = BezPath::new();
         let mut arrows = BezPath::new();
-        let endpoints = if orientation == "vertical" {
-            [(origin, label_start.clone()), (Point::new(origin.x, origin.y + span), label_end.clone())]
+
+        if orientation == "vertical" {
+            // Top endpoint (e.g. "B") at origin: red block extends inward (downward), shaft extends upward
+            let pt0 = origin;
+            let bar0 = kurbo::Rect::new(pt0.x - 1.4, pt0.y, pt0.x + 1.4, pt0.y + 8.5);
+            red_bars.extend(bar0.to_path(0.1));
+            arrows.move_to(Point::new(pt0.x - 1.4, pt0.y));
+            arrows.line_to(Point::new(pt0.x - 1.4, pt0.y - 16.0));
+            arrows.line_to(Point::new(pt0.x + 3.8, pt0.y - 10.5));
+
+            let lid0 = doc.alloc_id();
+            let cs0 = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
+            let mut lobj0 = TextObject::point(Point::new(pt0.x + 3.5, pt0.y - 2.5), &label_start, cs0);
+            lobj0.para.justify = Justify::Left;
+            let mut lnode0 = Node::new(lid0, NodeKind::Text(Box::new(lobj0)));
+            lnode0.name = Some(format!("기호 {label_start}"));
+            children.push(Arc::new(lnode0));
+
+            // Bottom endpoint (e.g. "B′") at origin.y + span: red block extends inward (upward), shaft extends downward
+            let pt1 = Point::new(origin.x, origin.y + span);
+            let bar1 = kurbo::Rect::new(pt1.x - 1.4, pt1.y - 8.5, pt1.x + 1.4, pt1.y);
+            red_bars.extend(bar1.to_path(0.1));
+            arrows.move_to(Point::new(pt1.x - 1.4, pt1.y));
+            arrows.line_to(Point::new(pt1.x - 1.4, pt1.y + 16.0));
+            arrows.line_to(Point::new(pt1.x + 3.8, pt1.y + 10.5));
+
+            let lid1 = doc.alloc_id();
+            let cs1 = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
+            let mut lobj1 = TextObject::point(Point::new(pt1.x + 3.5, pt1.y + 7.5), &label_end, cs1);
+            lobj1.para.justify = Justify::Left;
+            let mut lnode1 = Node::new(lid1, NodeKind::Text(Box::new(lobj1)));
+            lnode1.name = Some(format!("기호 {label_end}"));
+            children.push(Arc::new(lnode1));
         } else {
-            [(origin, label_start.clone()), (Point::new(origin.x + span, origin.y), label_end.clone())]
-        };
+            // Left endpoint (e.g. "A") at origin: `∠───■`
+            let pt0 = origin;
+            let bar0 = kurbo::Rect::new(pt0.x, pt0.y - 1.4, pt0.x + 8.5, pt0.y + 1.4);
+            red_bars.extend(bar0.to_path(0.1));
+            arrows.move_to(Point::new(pt0.x, pt0.y + 1.4));
+            arrows.line_to(Point::new(pt0.x - 16.0, pt0.y + 1.4));
+            arrows.line_to(Point::new(pt0.x - 10.5, pt0.y - 3.8));
 
-        for (pt, lbl) in &endpoints {
-            if orientation == "vertical" {
-                // Vertical red bar (2.0 x 7.5 pt) + rightward check-arrow ∠
-                let bar_r = kurbo::Rect::from_center_size(*pt, kurbo::Size::new(2.0, 7.5));
-                red_bars.extend(bar_r.to_path(0.1));
-                arrows.move_to(Point::new(pt.x - 2.0, pt.y));
-                arrows.line_to(Point::new(pt.x + 11.0, pt.y));
-                arrows.line_to(Point::new(pt.x + 8.0, pt.y + 3.0));
+            let lid0 = doc.alloc_id();
+            let cs0 = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
+            let mut lobj0 = TextObject::point(Point::new(pt0.x - 6.0, pt0.y - 1.5), &label_start, cs0);
+            lobj0.para.justify = Justify::Center;
+            let mut lnode0 = Node::new(lid0, NodeKind::Text(Box::new(lobj0)));
+            lnode0.name = Some(format!("기호 {label_start}"));
+            children.push(Arc::new(lnode0));
 
-                let lid = doc.alloc_id();
-                let cs = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
-                let lobj = TextObject::point(Point::new(pt.x + 13.0, pt.y + 2.0), lbl, cs);
-                let mut lnode = Node::new(lid, NodeKind::Text(Box::new(lobj)));
-                lnode.name = Some(format!("기호 {lbl}"));
-                children.push(Arc::new(lnode));
-            } else {
-                // Horizontal red bar (7.5 x 2.0 pt) + upward check-arrow ∠
-                let bar_r = kurbo::Rect::from_center_size(*pt, kurbo::Size::new(7.5, 2.0));
-                red_bars.extend(bar_r.to_path(0.1));
-                arrows.move_to(Point::new(pt.x, pt.y + 2.0));
-                arrows.line_to(Point::new(pt.x, pt.y - 11.0));
-                arrows.line_to(Point::new(pt.x + 3.0, pt.y - 8.0));
+            // Right endpoint (e.g. "A′") at origin.x + span: mirror-symmetric `■───⦣`
+            let pt1 = Point::new(origin.x + span, origin.y);
+            let bar1 = kurbo::Rect::new(pt1.x - 8.5, pt1.y - 1.4, pt1.x, pt1.y + 1.4);
+            red_bars.extend(bar1.to_path(0.1));
+            arrows.move_to(Point::new(pt1.x, pt1.y + 1.4));
+            arrows.line_to(Point::new(pt1.x + 16.0, pt1.y + 1.4));
+            arrows.line_to(Point::new(pt1.x + 10.5, pt1.y - 3.8));
 
-                let lid = doc.alloc_id();
-                let cs = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
-                let mut lobj = TextObject::point(Point::new(pt.x, pt.y - 13.5), lbl, cs);
-                lobj.para.justify = Justify::Center;
-                let mut lnode = Node::new(lid, NodeKind::Text(Box::new(lobj)));
-                lnode.name = Some(format!("기호 {lbl}"));
-                children.push(Arc::new(lnode));
-            }
+            let lid1 = doc.alloc_id();
+            let cs1 = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
+            let mut lobj1 = TextObject::point(Point::new(pt1.x + 6.0, pt1.y - 1.5), &label_end, cs1);
+            lobj1.para.justify = Justify::Center;
+            let mut lnode1 = Node::new(lid1, NodeKind::Text(Box::new(lobj1)));
+            lnode1.name = Some(format!("기호 {label_end}"));
+            children.push(Arc::new(lnode1));
         }
 
         let bar_id = doc.alloc_id();
@@ -732,7 +786,7 @@ fn insert_section_marker(s: &mut Session, p: &Value) -> Result<Value> {
         children.push(Arc::new(bar_node));
 
         let arr_id = doc.alloc_id();
-        let mut arr_node = Node::path(arr_id, PathData::from_bezpath(&arrows), Appearance::basic(Paint::None, Paint::solid(black), 0.3));
+        let mut arr_node = Node::path(arr_id, PathData::from_bezpath(&arrows), Appearance::basic(Paint::None, Paint::solid(black), 0.35));
         arr_node.name = Some("시선 화살표".to_string());
         children.push(Arc::new(arr_node));
 

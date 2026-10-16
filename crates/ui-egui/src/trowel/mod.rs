@@ -67,6 +67,28 @@ pub(crate) fn card_took_press(ctx: &egui::Context) -> bool {
     card::took_press(ctx)
 }
 
+/// Compute a visible placement position near the active viewport center (or active artboard
+/// center), applying a small cascade offset on consecutive insertions so multiple 1-click
+/// symbols do not stack on the exact same pixel, and switch to the Selection tool so the user
+/// can immediately drag the newly inserted symbol.
+pub(crate) fn place_symbol_at(app: &mut VectorcraftApp, ctx: &egui::Context, base_offset: [f64; 2]) -> [f64; 2] {
+    let step_id = wid("symbol-cascade-step", ());
+    let step = ctx.data(|d| d.get_temp::<u32>(step_id).unwrap_or(0));
+    ctx.data_mut(|d| d.insert_temp(step_id, (step + 1) % 6));
+    let cascade = f64::from(step) * 14.0;
+    let center = app
+        .view()
+        .map(|v| [v.center.x, v.center.y])
+        .or_else(|| {
+            let d = app.session.active()?;
+            let ab = d.doc.artboards.first()?;
+            Some([ab.rect.x0 + ab.rect.width() * 0.5, ab.rect.y0 + ab.rect.height() * 0.5])
+        })
+        .unwrap_or([240.0, 200.0]);
+    app.select_tool("selection");
+    [center[0] + base_offset[0] + cascade, center[1] + base_offset[1] + cascade * 0.6]
+}
+
 /// Lay out Trowel's window. Screen mode 2 (full screen with the menu bar off) leaves out the bars
 /// above the canvas, screen mode 3 (full screen) everything but the canvas.
 pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {

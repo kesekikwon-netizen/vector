@@ -3437,3 +3437,27 @@ fn test_always_visible_palettes_work_without_popups() {
     h.click(wid("scrap-scale", 20_u32));
     assert_eq!(h.app.session.active().unwrap().doc.scale.as_ref().unwrap().scale.denom, 20.0);
 }
+
+#[test]
+fn test_trowel_ux_dedup_units_and_one_click_workflows() {
+    let mut h = Harness::new();
+    h.app.run("document.setUnits", json!({"units": "Millimeters"})).unwrap();
+    h.app.run("shape.rectangle", json!({"x": 0.0, "y": 0.0, "width": 28.346456692913385, "height": 56.69291338582677})).unwrap();
+    h.settle();
+    let right = h.panel(RIGHT);
+    let props_line = h.line_in(right);
+    assert!(props_line.contains("10 × 20 mm"), "Millimeters size should show a single trailing 'mm': {props_line}");
+    assert!(!props_line.contains("10 mm × 20 mm"), "Must not duplicate 'mm' before '×': {props_line}");
+
+    // Clicking hatch chip with no selection sets default_hatch on Session
+    h.app.run("select.none", json!({})).unwrap();
+    h.settle();
+    h.click(wid("hatch", "135"));
+    assert_eq!(h.app.session.default_hatch, vectorcraft_doc::HatchDirection::Deg135);
+
+    // Clicking a 1-click symbol button while using Pen tool places symbol and switches to Selection tool
+    h.app.select_tool("pen");
+    assert_eq!(h.app.session.tool_id(), "pen");
+    h.click(wid("scrap-sec", "ah"));
+    assert_eq!(h.app.session.tool_id(), "selection", "1-click symbol insertion auto-switches to selection tool");
+}

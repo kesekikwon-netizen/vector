@@ -186,13 +186,10 @@ fn generate_children(doc: &mut Document, spec: &ElevationSpec) -> Result<(Vec<Ar
     for label in &out.labels {
         if spec.red_datum_tick {
             let tid = doc.alloc_id();
-            let dir = if label.anchor_left { -1.0 } else { 1.0 };
+            let bar_r = kurbo::Rect::from_center_size(label.at, kurbo::Size::new(1.6, 6.5));
             let mut tick_bez = BezPath::new();
-            tick_bez.move_to(Point::new(label.at.x, label.at.y - 3.5));
-            tick_bez.line_to(Point::new(label.at.x, label.at.y + 3.5));
-            tick_bez.move_to(label.at);
-            tick_bez.line_to(Point::new(label.at.x + dir * 5.0, label.at.y));
-            let mut tnode = Node::path(tid, PathData::from_bezpath(&tick_bez), Appearance::basic(Paint::None, Paint::solid(red_ref), 0.5));
+            tick_bez.extend(bar_r.to_path(0.1));
+            let mut tnode = Node::path(tid, PathData::from_bezpath(&tick_bez), Appearance::basic(Paint::solid(red_ref), Paint::None, 0.0));
             tnode.name = Some("해발 붉은 눈금".to_string());
             children.push(Arc::new(tnode));
         }
@@ -201,18 +198,16 @@ fn generate_children(doc: &mut Document, spec: &ElevationSpec) -> Result<(Vec<Ar
         let style = CharStyle { size: spec.label_font_size_pt, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
         let origin = if spec.red_datum_tick {
             if label.anchor_left {
-                Point::new(label.at.x - 7.0, label.at.y + spec.label_font_size_pt * 0.35)
+                Point::new(label.at.x - 4.5, label.at.y + spec.label_font_size_pt * 0.35)
             } else {
-                Point::new(label.at.x + 7.0, label.at.y + spec.label_font_size_pt * 0.35)
+                Point::new(label.at.x + 4.5, label.at.y + spec.label_font_size_pt * 0.35)
             }
         } else {
             Point::new(label.at.x + if label.anchor_left { 2.0 } else { -2.0 }, label.at.y - 2.0)
         };
         let mut t_obj = TextObject::point(origin, &label.text, style);
         if spec.red_datum_tick {
-            if label.anchor_left {
-                t_obj.para.justify = Justify::Right;
-            }
+            t_obj.para.justify = if label.anchor_left { Justify::Right } else { Justify::Left };
         } else if !label.anchor_left {
             t_obj.para.justify = Justify::Right;
         }
@@ -241,22 +236,130 @@ pub(crate) fn recompute_elevation_children(doc: &mut Document, group_id: NodeId)
 }
 
 fn create(s: &mut Session, p: &Value) -> Result<Value> {
-    let default_profile = s.doc()?.selection.objects.first().copied().or_else(|| {
-        let doc = &s.doc().ok()?.doc;
-        let mut best: Option<(NodeId, f64)> = None;
-        doc.walk(|n| {
-            if let NodeKind::Path { path, .. } = &n.kind {
-                let bb = path.to_bezpath().bounding_box();
-                let w = bb.width();
-                if w > 10.0 && best.is_none_or(|(_, bw)| w > bw) {
-                    best = Some((n.id, w));
+    let explicit_profile = p.get("profileId").or_else(|| p.get("profileNodeId")).and_then(|v| v.as_u64()).map(NodeId);
+    let target_parent = s.doc()?.target_parent()?;
+
+    // Resolve or synthesize a continuous profile path when invoked from the UI without an explicit profileId
+    let default_profile = if explicit_profile.is_some() {
+        explicit_profile
+    } else {
+        let sel_ids = s.doc()?.selection.objects.clone();
+        let mut best_sel: Option<(NodeId, kurbo::Rect)> = None;
+        let mut combined_bb: Option<kurbo::Rect> = None;
+        {
+            let doc = &s.doc()?.doc;
+            for &id in &sel_ids {
+                if let Some(n) = doc.node(id)
+                    && n.elevation.is_none()
+                    && !matches!(
+                        (&n.kind, n.name.as_deref()),
+                        (NodeKind::Group { .. }, Some(nm))
+                            if nm.contains("눈금")
+                                || nm.contains("기호")
+                                || nm.contains("단면")
+                                || nm.contains("해발")
+                                || nm.contains("방위")
+                                || nm.contains("축척")
+                                || nm.contains("토층")
+                    )
+                    && let Some(bp) = get_bezpath_from_node(n)
+                {
+                    let bb = bp.bounding_box();
+                    let min_w = if matches!(n.kind, NodeKind::Group { .. }) { 25.0 } else { 1e-4 };
+                    if bb.width() > min_w {
+                        combined_bb = Some(match combined_bb {
+                            Some(c) => c.union(bb),
+                            None => bb,
+                        });
+                        if best_sel.is_none_or(|(_, b)| bb.width() > b.width()) {
+                            best_sel = Some((id, bb));
+                        }
+                    }
                 }
             }
-        });
-        best.map(|(id, _)| id)
-    });
+        }
+
+        if let (Some((best_id, best_bb)), Some(comb)) = (best_sel, combined_bb) {
+            if sel_ids.len() > 1 && comb.width() > best_bb.width() * 1.4 {
+                // Multiple scattered shapes selected: create a continuous horizontal datum baseline spanning their full width
+                let datum_id = s.edit("Elevation Baseline", |doc, _| {
+                    let pid = doc.alloc_id();
+                    let pd = PathData::single(SubPath::polyline(&[Point::new(comb.x0, comb.y1), Point::new(comb.x1, comb.y1)], false));
+                    let mut pnode = Node::path(pid, pd, Appearance::basic(Paint::None, Paint::None, 0.0));
+                    pnode.name = Some("해발 기준선".to_string());
+                    doc.insert(target_parent, usize::MAX, pnode).map_err(|e| bad("elevation.create", e.to_string()))?;
+                    Ok(pid)
+                })?;
+                Some(datum_id)
+            } else {
+                Some(best_id)
+            }
+        } else {
+            // No path selected: look for top-level user paths on layers (ignoring generated groups)
+            let mut best_doc: Option<(NodeId, kurbo::Rect)> = None;
+            let mut all_user_bb: Option<kurbo::Rect> = None;
+            {
+                let doc = &s.doc()?.doc;
+                for layer in &doc.layers {
+                    if !layer.visible || layer.locked {
+                        continue;
+                    }
+                    for child in layer.children().map_or(&[][..], |v| v.as_slice()) {
+                        if child.elevation.is_some() {
+                            continue;
+                        }
+                        if let NodeKind::Path { path, .. } = &child.kind {
+                            let bb = path.to_bezpath().bounding_box();
+                            if bb.width() > 10.0 {
+                                all_user_bb = Some(match all_user_bb {
+                                    Some(c) => c.union(bb),
+                                    None => bb,
+                                });
+                                if best_doc.is_none_or(|(_, b)| bb.width() > b.width()) {
+                                    best_doc = Some((child.id, bb));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let (Some((best_id, best_bb)), Some(comb)) = (best_doc, all_user_bb) {
+                if comb.width() > best_bb.width() * 1.4 {
+                    let datum_id = s.edit("Elevation Baseline", |doc, _| {
+                        let pid = doc.alloc_id();
+                        let pd = PathData::single(SubPath::polyline(&[Point::new(comb.x0, comb.y1), Point::new(comb.x1, comb.y1)], false));
+                        let mut pnode = Node::path(pid, pd, Appearance::basic(Paint::None, Paint::None, 0.0));
+                        pnode.name = Some("해발 기준선".to_string());
+                        doc.insert(target_parent, usize::MAX, pnode).map_err(|e| bad("elevation.create", e.to_string()))?;
+                        Ok(pid)
+                    })?;
+                    Some(datum_id)
+                } else {
+                    Some(best_id)
+                }
+            } else if p.get("fillBelowProfile").is_some() || p.get("redDatumTick").is_some() {
+                // 1-click UI button on a blank canvas: create a standard 220pt horizontal datum line at center
+                let (cx, cy) = p
+                    .get("at")
+                    .and_then(|v| v.as_array())
+                    .and_then(|a| Some((a.first()?.as_f64()?, a.get(1)?.as_f64()?)))
+                    .unwrap_or((300.0, 220.0));
+                let datum_id = s.edit("Elevation Baseline", |doc, _| {
+                    let pid = doc.alloc_id();
+                    let pd = PathData::single(SubPath::polyline(&[Point::new(cx - 110.0, cy), Point::new(cx + 110.0, cy)], false));
+                    let mut pnode = Node::path(pid, pd, Appearance::basic(Paint::None, Paint::None, 0.0));
+                    pnode.name = Some("해발 기준선".to_string());
+                    doc.insert(target_parent, usize::MAX, pnode).map_err(|e| bad("elevation.create", e.to_string()))?;
+                    Ok(pid)
+                })?;
+                Some(datum_id)
+            } else {
+                None
+            }
+        }
+    };
+
     let spec = spec_from_params("elevation.create", p, default_profile)?;
-    let target_parent = s.doc()?.target_parent()?;
 
     s.edit("Automatic Elevation Lines", |doc, sel| {
         let (children, seg_count, lbl_count) = generate_children(doc, &spec)?;

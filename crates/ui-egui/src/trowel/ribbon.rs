@@ -224,25 +224,12 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
                             d.remove::<&'static str>(trowel_popup_id());
                         }
                     });
-                }
-                let res = match key {
-                    "section-line" => app.run("trowel.sectionLine", json!({ "start": [50.0, 150.0], "end": [250.0, 150.0], "label": "A" })),
-                    "spot-height" => app.run("trowel.spotElevation", json!({ "x": 100.0, "y": 100.0, "elevation_m": 152.34 })),
-                    "north" => app.run("plate.updateNorthArrow", json!({})),
-                    "scale-bar" => app.run("plate.updateScaleBar", json!({ "total_m": 1.0, "divisions": 5 })),
-                    "legend" => app.run("style.generateLegend", json!({})),
-                    "title-block" => {
-                        super::plate::toggle_dialog(ui.ctx());
-                        Ok(json!({}))
+                } else {
+                    match key {
+                        "title-block" => super::plate::toggle_dialog(ui.ctx()),
+                        "strata" => super::gpkg_browser::toggle_dialog(ui.ctx()),
+                        _ => {}
                     }
-                    "strata" => {
-                        super::gpkg_browser::toggle_dialog(ui.ctx());
-                        Ok(json!({}))
-                    }
-                    _ => Ok(json!({})),
-                };
-                if let Err(e) = res {
-                    app.status(e);
                 }
             }
             Some(Act::Soon(_)) | None => {}
@@ -507,7 +494,9 @@ fn show_trowel_tile_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_
                     ui.horizontal_wrapped(|ui| {
                         for sc in [10u32, 20, 30, 40, 50, 60, 80, 100, 200] {
                             if ui.button(format!("1/{sc}")).clicked() {
-                                let _ = app.run("trowel.insertScaleBar", json!({ "scale": sc, "style": style_str }));
+                                let at = super::place_symbol_at(app, ctx, [0.0, 90.0]);
+                                let _ = app.run("doc.setScale", json!({ "scale": f64::from(sc), "epsg": 5186 }));
+                                let _ = app.run("trowel.insertScaleBar", json!({ "scale": sc, "style": style_str, "at": at }));
                             }
                         }
                     });
@@ -523,19 +512,28 @@ fn show_trowel_tile_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_
                             ("b", "vertical", "b–b′ (세로)"),
                         ] {
                             if ui.button(desc).clicked() {
-                                let _ = app.run("trowel.insertSectionMarker", json!({ "label": lbl, "orientation": orient, "kind": "cut" }));
+                                let at = super::place_symbol_at(app, ctx, [0.0, 0.0]);
+                                let _ =
+                                    app.run("trowel.insertSectionMarker", json!({ "label": lbl, "orientation": orient, "kind": "cut", "at": at }));
                             }
                         }
                     });
                     ui.add_space(4.0);
                     ui.label(egui::RichText::new("단면 양끝 해발 기준 붉은 눈금:").font(font(11.0)).color(t.text_dim));
                     ui.horizontal_wrapped(|ui| {
-                        if ui.button("┣ 93.0m (가로단면)").clicked() {
-                            let _ =
-                                app.run("trowel.insertSectionMarker", json!({ "kind": "datum", "orientation": "horizontal", "elevationM": 93.0 }));
+                        if ui.button("──┃ 93.0m (가로단면)").clicked() {
+                            let at = super::place_symbol_at(app, ctx, [0.0, 0.0]);
+                            let _ = app.run(
+                                "trowel.insertSectionMarker",
+                                json!({ "kind": "datum", "orientation": "horizontal", "elevationM": 93.0, "at": at }),
+                            );
                         }
                         if ui.button("┳ 93.0m (세로단면)").clicked() {
-                            let _ = app.run("trowel.insertSectionMarker", json!({ "kind": "datum", "orientation": "vertical", "elevationM": 93.0 }));
+                            let at = super::place_symbol_at(app, ctx, [0.0, 0.0]);
+                            let _ = app.run(
+                                "trowel.insertSectionMarker",
+                                json!({ "kind": "datum", "orientation": "vertical", "elevationM": 93.0, "at": at }),
+                            );
                         }
                     });
                 }
@@ -548,7 +546,8 @@ fn show_trowel_tile_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_
                     });
                     ui.data_mut(|d| d.insert_temp(elev_id, elev_m));
                     ui.add_space(4.0);
-                    if ui.button("자동 해발선: 단면선 아래쪽 + 우측 붉은 눈금 (┣)").clicked() {
+                    if ui.button("자동 해발선: 단면선 아래쪽 + 우측 붉은 눈금 (──┃)").clicked() {
+                        app.select_tool("selection");
                         let _ = app.run(
                             "elevation.create",
                             json!({
@@ -563,6 +562,7 @@ fn show_trowel_tile_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_
                         );
                     }
                     if ui.button("자동 해발선: 빈 곳(위쪽) + 좌측 숫자 (기본)").clicked() {
+                        app.select_tool("selection");
                         let _ = app.run(
                             "elevation.create",
                             json!({
@@ -576,13 +576,19 @@ fn show_trowel_tile_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_
                     }
                     ui.add_space(4.0);
                     ui.horizontal_wrapped(|ui| {
-                        if ui.button(format!("붉은 눈금 ┣ {elev_m:.1}m 찍기")).clicked() {
-                            let _ =
-                                app.run("trowel.insertSectionMarker", json!({ "kind": "datum", "orientation": "horizontal", "elevationM": elev_m }));
+                        if ui.button(format!("붉은 눈금 ──┃ {elev_m:.1}m 찍기")).clicked() {
+                            let at = super::place_symbol_at(app, ctx, [0.0, 0.0]);
+                            let _ = app.run(
+                                "trowel.insertSectionMarker",
+                                json!({ "kind": "datum", "orientation": "horizontal", "elevationM": elev_m, "at": at }),
+                            );
                         }
                         if ui.button(format!("세로 눈금 ┳ {elev_m:.1}m 찍기")).clicked() {
-                            let _ =
-                                app.run("trowel.insertSectionMarker", json!({ "kind": "datum", "orientation": "vertical", "elevationM": elev_m }));
+                            let at = super::place_symbol_at(app, ctx, [0.0, 0.0]);
+                            let _ = app.run(
+                                "trowel.insertSectionMarker",
+                                json!({ "kind": "datum", "orientation": "vertical", "elevationM": elev_m, "at": at }),
+                            );
                         }
                     });
                 }
@@ -593,7 +599,8 @@ fn show_trowel_tile_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_
                         ui.label(egui::RichText::new("회전 각도:").font(font(11.0)).color(t.text_dim));
                         ui.add(egui::DragValue::new(&mut deg).speed(1.0).range(-180.0..=180.0).suffix("°"));
                         if ui.button("방위표 넣기").clicked() {
-                            let _ = app.run("trowel.insertNorthArrow", json!({ "rotationDeg": deg }));
+                            let at = super::place_symbol_at(app, ctx, [90.0, -70.0]);
+                            let _ = app.run("trowel.insertNorthArrow", json!({ "rotationDeg": deg, "at": at }));
                         }
                     });
                     ui.data_mut(|d| d.insert_temp(deg_id, deg));
@@ -602,7 +609,8 @@ fn show_trowel_tile_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_
                         for a in [-45.0, -30.0, -15.0, 0.0, 15.0, 30.0, 45.0, 90.0] {
                             if ui.small_button(format!("{a:+.0}°")).clicked() {
                                 ui.data_mut(|d| d.insert_temp(deg_id, a));
-                                let _ = app.run("trowel.insertNorthArrow", json!({ "rotationDeg": a }));
+                                let at = super::place_symbol_at(app, ctx, [90.0, -70.0]);
+                                let _ = app.run("trowel.insertNorthArrow", json!({ "rotationDeg": a, "at": at }));
                             }
                         }
                     });
@@ -610,20 +618,25 @@ fn show_trowel_tile_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_
                 "legend" => {
                     ui.label(egui::RichText::new("현장 도면 자주 쓰는 스탬프 · 토층설명:").font(font(11.0)).color(t.text_dim));
                     if ui.button("토층설명 7p 텍스트 넣기 (I : 흑갈색 사질점토…)").clicked() {
-                        let _ = app.run("stratigraphy.generateTable", json!({ "at": [120, 440], "format": "inline", "fontSizePt": 7.0 }));
+                        let at = super::place_symbol_at(app, ctx, [-80.0, 60.0]);
+                        let _ = app.run("stratigraphy.generateTable", json!({ "at": at, "format": "inline", "fontSizePt": 7.0 }));
                     }
                     ui.horizontal_wrapped(|ui| {
                         if ui.button("교란 (6p)").clicked() {
-                            let _ = app.run("trowel.insertFieldStamp", json!({ "kind": "disturbance" }));
+                            let at = super::place_symbol_at(app, ctx, [0.0, 20.0]);
+                            let _ = app.run("trowel.insertFieldStamp", json!({ "kind": "disturbance", "at": at }));
                         }
                         if ui.button("조사경계 (6p+파선)").clicked() {
-                            let _ = app.run("trowel.insertFieldStamp", json!({ "kind": "excavation_limit" }));
+                            let at = super::place_symbol_at(app, ctx, [0.0, 20.0]);
+                            let _ = app.run("trowel.insertFieldStamp", json!({ "kind": "excavation_limit", "at": at }));
                         }
                         if ui.button("격자 기호 (A1~C3)").clicked() {
-                            let _ = app.run("trowel.insertFieldStamp", json!({ "kind": "grid_labels" }));
+                            let at = super::place_symbol_at(app, ctx, [0.0, 20.0]);
+                            let _ = app.run("trowel.insertFieldStamp", json!({ "kind": "grid_labels", "at": at }));
                         }
                         if ui.button("현장 선굵기 규격 주기").clicked() {
-                            let _ = app.run("trowel.insertFieldStamp", json!({ "kind": "spec_note" }));
+                            let at = super::place_symbol_at(app, ctx, [0.0, 20.0]);
+                            let _ = app.run("trowel.insertFieldStamp", json!({ "kind": "spec_note", "at": at }));
                         }
                     });
                     ui.add_space(4.0);
@@ -632,10 +645,9 @@ fn show_trowel_tile_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_
                         for n in 1..=10u32 {
                             let rom = vectorcraft_doc::stratigraphy::to_ascii_roman(n);
                             if ui.small_button(&rom).clicked() {
-                                let _ = app.run(
-                                    "stratigraphy.circledNumber",
-                                    json!({ "at": [180.0 + (n as f64) * 18.0, 200.0], "number": n, "style": "roman_ascii", "fontSizePt": 6.0 }),
-                                );
+                                let at = super::place_symbol_at(app, ctx, [0.0, 0.0]);
+                                let _ = app
+                                    .run("stratigraphy.circledNumber", json!({ "at": at, "number": n, "style": "roman_ascii", "fontSizePt": 6.0 }));
                             }
                         }
                     });
