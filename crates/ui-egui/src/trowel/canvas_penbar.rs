@@ -125,12 +125,7 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui, canvas: Rect, t: &Tokens) {
             }
         }
         // While a strata or section line is being drawn its points aren't in the drawing yet: Undo
-        // takes the last one back, as Backspace does.
-        Some(_) if app.session.tool_claims_key(vectorcraft_tools::ToolKey::Backspace, app.view_info()) => {
-            let view = app.view_info();
-            let r = app.session.tool_key(vectorcraft_tools::ToolKey::Backspace, vectorcraft_tools::Mods::default(), view);
-            crate::canvas::apply_requests(app, r);
-        }
+        // takes the last one back, as Backspace does (`menus::invoke`).
         Some(_) => crate::menus::invoke(app, "edit.undo", json!({})),
         None => {}
     }

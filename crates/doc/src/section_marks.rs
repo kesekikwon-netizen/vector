@@ -9,9 +9,10 @@ use crate::{Document, Node, NodeKind};
 const PREFIXES: [&str; 2] = ["단면 기호 ", "단면선 "];
 
 /// How the other marks the archaeology tools and the drawing set's elements put in are named: datum
-/// ticks, spot heights, layer boundaries, numbers and descriptions, scale bars, north arrows,
-/// slope hachures.
-const MARK_PREFIXES: [&str; 9] = ["단면 해발 눈금", "표고 ", "토층선 ", "층위 번호", "토층 번호", "토층설명", "축척 막대", "방위표", "비탈면 빗금"];
+/// ticks, spot heights, layer numbers, descriptions and tables, scale bars, north arrows, slope
+/// hachures. A layer boundary (「토층선 Ⅰ」) is a line drawn by hand: it can be a ground line.
+const MARK_PREFIXES: [&str; 9] =
+    ["단면 해발 눈금", "표고 ", "층위 번호", "토층 번호", "토층설명", "토층 설명표", "축척 막대", "방위표", "비탈면 빗금"];
 
 /// Whether `n` is a mark the tools put in (A–A′ marks, level lines, datum ticks …), not a line
 /// drawn by hand: the Level Lines and Slope Hachure tools don't take one for the line clicked.
@@ -106,12 +107,21 @@ mod tests {
             n.name = name.map(str::to_string);
             n
         };
-        for name in ["단면 기호 A–A′", "단면선 B–B′", "단면 해발 눈금 (32.5m)", "표고 32.5m", "토층선 Ⅰ", "층위 번호 Ⅱ", "토층설명 7p", "비탈면 빗금"]
-        {
+        for name in [
+            "단면 기호 A–A′",
+            "단면선 B–B′",
+            "단면 해발 눈금 (32.5m)",
+            "표고 32.5m",
+            "층위 번호 Ⅱ",
+            "토층설명 7p",
+            "토층 설명표 (토층)",
+            "비탈면 빗금",
+        ] {
             assert!(is_mark(&named(Some(name))), "{name}");
         }
-        // A drawn line, a group of them, and the section layer's name on a group are not.
-        for name in [None, Some("지표선"), Some("단면선 (잘린 땅)"), Some("단면선")] {
+        // A drawn line, a group of them, the section layer's name on a group and a layer
+        // boundary (drawn by hand, review J024 N3) are not.
+        for name in [None, Some("지표선"), Some("단면선 (잘린 땅)"), Some("단면선"), Some("토층선 Ⅰ")] {
             assert!(!is_mark(&named(name)), "{name:?}");
         }
     }

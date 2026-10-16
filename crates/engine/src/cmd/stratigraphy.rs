@@ -211,10 +211,10 @@ fn add_layer(s: &mut Session, p: &Value) -> Result<Value> {
 
 /// The most points a boundary takes (a long freehand line at a screen point each).
 const MAX_BOUNDARY_POINTS: usize = 100_000;
-/// The description block's type size and line spacing (as `stratigraphy.generateTable`'s inline
-/// block: 7 pt, at least 11 pt apart).
+/// The description block's type size and its lines' least spacing (as `stratigraphy.generateTable`'s
+/// inline block: 7 pt, 1.65 times the size and at least 11 pt apart).
 const NOTE_PT: f64 = 7.0;
-const NOTE_LINE: f64 = 11.55;
+const NOTE_LINE: f64 = 11.0;
 // The block's name (a double-click on its lines types in them, `section_marks::is_note_block`).
 use vectorcraft_doc::section_marks::NOTE_BLOCK;
 /// The layer numbers' type size (the field's 6 pt) and how far over the line their baseline is.
@@ -302,7 +302,9 @@ fn boundary(s: &mut Session, p: &Value) -> Result<Value> {
         let group = |id: NodeId| matches!(doc.node(id).map(|n| &n.kind), Some(NodeKind::Group { .. }));
         let block = match placement.as_ref() {
             Some(pl) if !grid => pl.node_id.filter(|id| group(*id)).map(|id| {
-                let size = Some(pl.font_size_pt).filter(|v| v.is_finite() && (2.0..=72.0).contains(v)).unwrap_or(NOTE_PT);
+                // The table's own size (review J024 N6), no larger than type takes (1296 pt, as
+                // the type commands cap it) and at least 2 pt.
+                let size = Some(pl.font_size_pt).filter(|v| v.is_finite() && *v > 0.0).map_or(NOTE_PT, |v| v.clamp(2.0, 1296.0));
                 (id, pl.origin, size)
             }),
             Some(_) => {

@@ -247,7 +247,9 @@ fn slot(app: &mut VectorcraftApp, ui: &Ui, tools: &[&'static str], icon: &str, s
     };
     // Its other tools, for those who don't know to look.
     let tip = if tools.len() > 1 { format!("{tip}\n{}", tw!("Press and hold for more tools")) } else { tip };
-    let resp = resp.on_hover_text(tip);
+    // Not while its flyout is open: the tip would cover the tools in it (review J024 UI N2).
+    let open = press.is_some() || crate::toolbar::flyout_open_at(app, ui.ctx(), rect);
+    let resp = if open { resp } else { resp.on_hover_text(tip) };
     if press.is_some() || held && resp.clicked() {
         // Releasing the long press that opened the flyout leaves it open.
         None

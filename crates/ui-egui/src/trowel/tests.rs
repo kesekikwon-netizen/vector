@@ -833,6 +833,10 @@ fn tool_column_has_the_mockup_groups() {
     h.press(rects[12].center(), PointerButton::Secondary);
     let flyout = h.ctx.data(|d| d.get_temp::<Vec<String>>(egui::Id::new("flyout-tools")));
     assert_eq!(flyout, Some(vec!["sectionCut".to_string(), "slopeHachure".to_string()]));
+    // While it is open the slot's tooltip doesn't cover it (review J024 UI N2).
+    h.rest_at(rects[12].center());
+    assert!(h.app.ui.flyout.is_some());
+    assert!(!h.texts.iter().any(|p| p.text.contains("Click two points")), "no tooltip over the flyout");
     h.app.ui.flyout = None;
     h.settle();
     // The archaeology tools are tools: a click picks one, and the slot shows it chosen.
@@ -4421,6 +4425,31 @@ fn the_keyboard_reaches_the_strata_line_while_it_is_drawn() {
         }
     });
     assert_eq!(anchors, Some(2), "the third point taken back");
+    // Ctrl+Z while a line is drawn takes its last point back too, not the line before (review
+    // J024 N2): Enter then makes 「토층선 Ⅱ」 of two points, and 「토층선 Ⅰ」 is still there.
+    for (x, y) in [(20.0, 240.0), (200.0, 250.0), (380.0, 240.0)] {
+        h.click_at(h.on_screen(x, y));
+    }
+    let undo =
+        |pressed| Event::Key { key: egui::Key::Z, physical_key: Some(egui::Key::Z), pressed, repeat: false, modifiers: egui::Modifiers::COMMAND };
+    h.frame(vec![undo(true)]);
+    h.frame(vec![undo(false)]);
+    h.settle();
+    assert!(object_names(&h).iter().any(|n| n == "토층선 Ⅰ"), "{:?}", object_names(&h));
+    h.key(egui::Key::Enter);
+    let points = |h: &Harness, name: &str| {
+        let mut anchors = None;
+        h.app.session.active().unwrap().doc.walk(|n| {
+            if n.name.as_deref() == Some(name)
+                && let vectorcraft_doc::NodeKind::Path { path, .. } = &n.kind
+            {
+                anchors = path.subpaths.first().map(|sp| sp.anchors.len());
+            }
+        });
+        anchors
+    };
+    assert_eq!((points(&h, "토층선 Ⅰ"), points(&h, "토층선 Ⅱ")), (Some(2), Some(2)));
+    h.app.run("edit.undo", json!({})).unwrap();
     // Esc drops a line being drawn: nothing made.
     for (x, y) in [(20.0, 260.0), (200.0, 270.0)] {
         h.click_at(h.on_screen(x, y));

@@ -3030,6 +3030,16 @@ pub fn invoke(app: &mut VectorcraftApp, id: &str, p: Value) {
     if waits_for_ime(app, id) {
         return;
     }
+    // A Trowel line still being drawn has its points outside the drawing: Undo (Ctrl+Z, the menu,
+    // the pen bar) takes the last one back rather than an earlier step (review J024 N2).
+    if id == "edit.undo" && vectorcraft_tools::catalog::is_trowel_tool(app.session.tool_id()) {
+        let view = app.view_info();
+        if app.session.tool_claims_key(vectorcraft_tools::ToolKey::Backspace, view) {
+            let r = app.session.tool_key(vectorcraft_tools::ToolKey::Backspace, vectorcraft_tools::Mods::default(), view);
+            crate::canvas::apply_requests(app, r);
+            return;
+        }
+    }
     if let Some((kind, fields)) = menu_dialog(id)
         && p.as_object().is_none_or(|o| o.is_empty())
     {

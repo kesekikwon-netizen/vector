@@ -171,6 +171,50 @@ fn level_lines_refuse_marks_and_points_off_the_canvas() {
     assert_eq!(node_count(&s), before);
 }
 
+/// A soil layer boundary is drawn by hand and can be the ground line (review J024 N3); a grid
+/// description table's lines are a mark (N7).
+#[test]
+fn level_lines_take_a_strata_line_but_not_a_table() {
+    let mut s = session();
+    let b = run(&mut s, "stratigraphy.boundary", json!({"points": [[0, 200], [100, 200], [200, 300], [300, 200], [400, 200]]}));
+    assert_eq!(node(&s, &b["id"]).name.as_deref(), Some("토층선 Ⅰ"));
+    let r = run(&mut s, "trowel.levelLines", json!({"profileId": b["id"], "at": [150, 250], "elevationM": 32.0}));
+    assert!(!named(&node(&s, &r["id"]), "주 해발선").is_empty(), "{r}");
+    let grid = run(&mut s, "stratigraphy.generateTable", json!({"format": "grid", "at": [50, 300]}));
+    let table = node(&s, &grid["nodeId"]);
+    let lines = named(&table, "표 격자").first().map(|n| n.id.0).unwrap();
+    let e = s.execute("trowel.levelLines", &json!({"profileId": lines, "at": [50, 300], "elevationM": 32.0})).unwrap_err();
+    assert!(e.to_string().contains("not the ground line"), "{e}");
+}
+
+/// Level lines in a legend row's layer keep their own weights (review J024 H9, the default until
+/// it is decided): the row doesn't count them as set apart, and neither Revert to the Legend nor
+/// Change Weights at Once changes them.
+#[test]
+fn level_lines_keep_their_weights_in_a_legend_row() {
+    let mut s = session();
+    let row = NodeId(run(&mut s, "layer.new", json!({"name": "단면선", "top": true}))["id"].as_u64().unwrap());
+    let ground = pit(&mut s);
+    run(&mut s, "stroke.set", json!({"weight": 0.8, "ids": [ground["id"]]}));
+    run(&mut s, "legend.set", json!({"id": row.0, "weight": 0.8}));
+    let r = run(&mut s, "trowel.levelLines", json!({"profileId": ground["id"], "at": [150, 250], "elevationM": 32.0}));
+    let in_row = |s: &Session, id: &Value| s.doc().unwrap().doc.ancestry(NodeId(id.as_u64().unwrap())).unwrap_or_default().contains(&row);
+    assert!(in_row(&s, &r["id"]), "the level lines are in the row's layer");
+    let layer = s.doc().unwrap().doc.node(row).unwrap().clone();
+    let counted: Vec<u64> = vectorcraft_doc::legend::lines(&layer).into_iter().map(|n| n.id.0).collect();
+    assert_eq!(counted, vec![ground["id"].as_u64().unwrap()], "only the ground line is the row's");
+    let widths = |s: &Session| {
+        let g = node(s, &r["id"]);
+        [named(&g, "주 해발선"), named(&g, "해발선")].concat().iter().map(|n| n.appearance.stroke().map(|st| st.width)).collect::<Vec<_>>()
+    };
+    let before = widths(&s);
+    assert!(before.contains(&Some(0.5)) && before.contains(&Some(0.3)), "{before:?}");
+    run(&mut s, "legend.revert", json!({"all": true}));
+    run(&mut s, "legend.weights", json!({"how": "value", "from": 0.5, "to": 0.4, "overrides": true}));
+    run(&mut s, "legend.weights", json!({"how": "ratio", "ratio": 0.8, "overrides": true}));
+    assert_eq!(widths(&s), before);
+}
+
 /// A datum tick from the drawing set's element keeps its one decimal; level lines ask for the
 /// height as typed (`format: 'auto'`, review J024 6).
 #[test]
@@ -313,11 +357,33 @@ fn strata_boundaries_past_ten_and_with_a_table_already_there() {
             _ => None,
         })
         .collect();
-    let step = (9.0 * 1.65f64).max(11.55);
+    let step = (9.0 * 1.65f64).max(11.0);
     assert!(ys.len() == 3 && ys.windows(2).all(|w| (w[1] - w[0] - step).abs() < 1e-6), "9 pt lines {step} apart: {ys:?}");
     let note = node(&s, &c["noteId"]);
     let NodeKind::Text(t) = &note.kind else { panic!("{:?}", note.name) };
     assert_eq!(t.runs.first().map(|r| r.style.size), Some(9.0));
+    // In 6 pt the table's lines are 11 pt apart (its least spacing): the line added keeps to it
+    // (review J024 N6). In 100 pt, the size the table has.
+    for (pt, step) in [(6.0, 11.0), (100.0, 165.0)] {
+        let mut s = session();
+        for y in [20, 50] {
+            run(&mut s, "stratigraphy.boundary", json!({"points": [[50, y], [250, y + 5]]}));
+        }
+        run(&mut s, "stratigraphy.generateTable", json!({"format": "inline", "fontSizePt": pt, "at": [50, 300]}));
+        let c = run(&mut s, "stratigraphy.boundary", json!({"points": [[50, 80], [250, 85]]}));
+        let ys: Vec<f64> = node(&s, &c["blockId"])
+            .children()
+            .unwrap()
+            .iter()
+            .filter_map(|n| match &n.kind {
+                NodeKind::Text(t) => Some(t.xf.translation().y),
+                _ => None,
+            })
+            .collect();
+        assert!(ys.len() == 3 && ys.windows(2).all(|w| (w[1] - w[0] - step).abs() < 1e-6), "{pt} pt lines {step} apart: {ys:?}");
+        let NodeKind::Text(t) = &node(&s, &c["noteId"]).kind else { panic!("not text") };
+        assert_eq!(t.runs.first().map(|r| r.style.size), Some(pt));
+    }
 
     // A grid table: it keeps its placement, the lines go in a block of their own, found again.
     let mut s = session();

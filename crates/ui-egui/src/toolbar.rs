@@ -264,6 +264,11 @@ pub(crate) fn open_flyout(app: &mut VectorcraftApp, ctx: &egui::Context, tools: 
     });
 }
 
+/// Whether a flyout is open beside the button at `rect` ([`open_flyout`]).
+pub(crate) fn flyout_open_at(app: &VectorcraftApp, ctx: &egui::Context, rect: egui::Rect) -> bool {
+    app.ui.flyout.is_some() && ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new("flyout-anchor"))) == Some(rect)
+}
+
 /// How a press on a tool group's button opens its flyout.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum FlyoutPress {

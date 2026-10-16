@@ -64,8 +64,10 @@ pub(crate) fn open(app: &mut VectorcraftApp, kind: &str, p: &Value) {
         _ => return,
     };
     let Some(doc) = app.session.active().map(|st| st.uid) else { return };
-    // The line was found: a 「Click the ground line」 from a miss before is said and done.
-    if !app.ui.status_error {
+    // The line was found: a 「Click the ground line」 from a miss before is said and done (any other
+    // message stays, review J024 N8).
+    let hints = [tw!("Click the ground line"), tw!("Click the line to hachure along")];
+    if !app.ui.status_error && hints.contains(&app.ui.status.as_str()) {
         app.status(String::new());
     }
     app.trowel_ask = Some(Ask { what, doc, text: None, at: None, focus: true });

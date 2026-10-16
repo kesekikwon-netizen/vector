@@ -71,8 +71,7 @@ fn path_at(cx: &ToolContext, p: Point) -> Option<NodeId> {
     let mut opt = cx.hit_options();
     opt.path_only = true;
     opt.tol = opt.tol.max(cx.tol(PICK_PX));
-    let mark = |id: NodeId| cx.doc.node(id).is_some_and(vectorcraft_doc::section_marks::is_mark);
-    let hit = vectorcraft_doc::hit::hit_test_skipping(cx.doc, p, opt, &mark)?;
+    let hit = vectorcraft_doc::hit::hit_test_skipping(cx.doc, p, opt, &vectorcraft_doc::section_marks::is_mark)?;
     matches!(cx.doc.node(hit.leaf)?.kind, NodeKind::Path { .. }).then_some(hit.leaf)
 }
 
@@ -518,6 +517,38 @@ mod tests {
         let mut t = create("levelLines").unwrap();
         assert_eq!(click(t.as_mut(), &cx, 150.0, 101.0), vec![Action::Dialog(ASK_LEVEL.into(), json!({"profileId": id.0, "at": [150.0, 101.0]}))]);
         assert_eq!(click(t.as_mut(), &cx, 50.0, 300.0), vec![Action::Dialog(HINT.into(), json!({"tool": "levelLines"}))]);
+    }
+
+    /// Picking a line looks at each object once (review J024 N1: a lookup per object made a hover
+    /// 8.9 s in a drawing of 50,000 lines): 20,000 short lines in one group, a hover and a click
+    /// between them take well under a second.
+    #[test]
+    fn picking_a_line_is_quick_in_a_big_drawing() {
+        let (mut d, _) = doc_with_rect();
+        let l = d.layers[0].id;
+        let lines: Vec<std::sync::Arc<vectorcraft_doc::Node>> = (0..20_000u32)
+            .map(|i| {
+                let (x, y) = (f64::from(i % 100) * 20.0, 500.0 + f64::from(i / 100) * 20.0);
+                let sp = vectorcraft_geom::SubPath::polyline(&[Point::new(x, y), Point::new(x + 5.0, y)], false);
+                std::sync::Arc::new(vectorcraft_doc::Node::path(
+                    d.alloc_id(),
+                    vectorcraft_geom::PathData::single(sp),
+                    vectorcraft_doc::Appearance::default_art(),
+                ))
+            })
+            .collect();
+        let gid = d.alloc_id();
+        d.insert(Some(l), usize::MAX, vectorcraft_doc::Node::group(gid, lines)).unwrap();
+        let (s, p) = (Selection::default(), paint());
+        let cx = cx(&d, &s, &p);
+        let mut t = create("levelLines").unwrap();
+        // Inside the group's bounds, between its lines.
+        let start = std::time::Instant::now();
+        t.pointer(&cx, &ev(PointerKind::Move, 12.5, 510.0));
+        let a = click(t.as_mut(), &cx, 12.5, 510.0);
+        let took = start.elapsed();
+        assert_eq!(a, vec![Action::Dialog(HINT.into(), json!({"tool": "levelLines"}))]);
+        assert!(took < std::time::Duration::from_secs(1), "{took:?}");
     }
 
     #[test]
