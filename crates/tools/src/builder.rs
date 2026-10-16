@@ -658,9 +658,7 @@ fn lp_hover(cx: &ToolContext, cache: &mut RegionCache, p: Point, edge: bool) -> 
     if !sel_is_live && let Some(i) = cache.at(cx, p) {
         return LpHover::Region(i);
     }
-    if !edge
-        && let Some((_, bp)) = unselected_shape_at(cx.doc, p)
-    {
+    if !edge && let Some((_, bp)) = unselected_shape_at(cx.doc, p) {
         return LpHover::Part(bp);
     }
     LpHover::None

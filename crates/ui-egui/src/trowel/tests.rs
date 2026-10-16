@@ -2,14 +2,14 @@
 //! (`win-plan`, design 2.1 §3) unless a test says otherwise, with the app's own title bar and one
 //! document open.
 
-use egui::{pos2, vec2, Event, PointerButton, Pos2, Rect};
+use egui::{Event, PointerButton, Pos2, Rect, pos2, vec2};
 use serde_json::json;
 use vectorcraft_doc::NodeId;
 use vectorcraft_engine::Session;
 
 use super::*;
-use crate::theme::Tokens;
 use crate::VectorcraftApp;
+use crate::theme::Tokens;
 
 /// The ribbon's tiles, left to right.
 const TILES: [&str; 23] = [

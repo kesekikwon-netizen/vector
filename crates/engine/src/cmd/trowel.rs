@@ -5,7 +5,7 @@
 //! - `trowel.newSitePlan`: 1:100 A3 landscape site layout drawing with plan legend group.
 //! - `trowel.newPlate`: A4 portrait report plate drawing.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::*;
 use crate::{Result, Session};

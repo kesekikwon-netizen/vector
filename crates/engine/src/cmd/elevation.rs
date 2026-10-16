@@ -339,11 +339,8 @@ fn create(s: &mut Session, p: &Value) -> Result<Value> {
                 }
             } else if p.get("fillBelowProfile").is_some() || p.get("redDatumTick").is_some() {
                 // 1-click UI button on a blank canvas: create a standard 220pt horizontal datum line at center
-                let (cx, cy) = p
-                    .get("at")
-                    .and_then(|v| v.as_array())
-                    .and_then(|a| Some((a.first()?.as_f64()?, a.get(1)?.as_f64()?)))
-                    .unwrap_or((300.0, 220.0));
+                let (cx, cy) =
+                    p.get("at").and_then(|v| v.as_array()).and_then(|a| Some((a.first()?.as_f64()?, a.get(1)?.as_f64()?))).unwrap_or((300.0, 220.0));
                 let datum_id = s.edit("Elevation Baseline", |doc, _| {
                     let pid = doc.alloc_id();
                     let pd = PathData::single(SubPath::polyline(&[Point::new(cx - 110.0, cy), Point::new(cx + 110.0, cy)], false));

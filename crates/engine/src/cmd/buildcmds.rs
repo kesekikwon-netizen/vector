@@ -605,10 +605,9 @@ fn lp_fill(s: &mut Session, p: &Value) -> Result<Value> {
                 if let Some(st) = node.appearance.stroke_mut() {
                     st.width = vectorcraft_doc::hatch::DEFAULT_CUT_BORDER_PT;
                 } else {
-                    node.appearance.items.push(AppearanceItem::Stroke(StrokeLayer::new(
-                        Paint::solid(Color::BLACK),
-                        vectorcraft_doc::hatch::DEFAULT_CUT_BORDER_PT,
-                    )));
+                    node.appearance
+                        .items
+                        .push(AppearanceItem::Stroke(StrokeLayer::new(Paint::solid(Color::BLACK), vectorcraft_doc::hatch::DEFAULT_CUT_BORDER_PT)));
                 }
             } else {
                 node.hatch = Some(vectorcraft_doc::hatch::HatchStyle {

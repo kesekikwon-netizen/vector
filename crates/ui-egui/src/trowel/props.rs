@@ -12,11 +12,7 @@ const FIELD_H: f32 = 22.0;
 
 /// The properties' height: open, or folded to the head.
 pub(super) fn height(ctx: &egui::Context) -> f32 {
-    if folded(ctx) {
-        33.0
-    } else {
-        112.0
-    }
+    if folded(ctx) { 33.0 } else { 112.0 }
 }
 
 fn folded(ctx: &egui::Context) -> bool {

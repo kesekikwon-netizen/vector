@@ -227,11 +227,8 @@ fn get(s: &mut Session, p: &Value) -> Result<Value> {
 
     let doc = s.doc()?;
     let leaf_ids = collect_hatchable_ids(&doc.doc, &ids);
-    let target_node = leaf_ids
-        .iter()
-        .filter_map(|id| doc.doc.node(*id))
-        .find(|n| n.hatch.is_some())
-        .or_else(|| leaf_ids.first().and_then(|id| doc.doc.node(*id)));
+    let target_node =
+        leaf_ids.iter().filter_map(|id| doc.doc.node(*id)).find(|n| n.hatch.is_some()).or_else(|| leaf_ids.first().and_then(|id| doc.doc.node(*id)));
 
     let Some(node) = target_node else {
         return Ok(json!({

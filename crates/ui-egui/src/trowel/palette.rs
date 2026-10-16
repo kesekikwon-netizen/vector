@@ -82,11 +82,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         let lbl_font = if label.len() > 3 { mono(8.5) } else { mono(9.0) };
         text(ui, pos2(chip_r.center().x, cy + 5.0), Align2::CENTER_CENTER, label, lbl_font, t.text);
         if resp.on_hover_text(tip).clicked() {
-            set = Some(if dashed {
-                json!({ "weight": w, "dash": LineType::Dashed.dash_pt() })
-            } else {
-                json!({ "weight": w })
-            });
+            set = Some(if dashed { json!({ "weight": w, "dash": LineType::Dashed.dash_pt() }) } else { json!({ "weight": w }) });
         }
         x = chip_r.right() + 2.0;
     }
@@ -115,8 +111,17 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     // None swatch [/]
     let none_r = Rect::from_min_size(pos2(x, cy - 11.5), vec2(21.0, 23.0));
     let none_resp = ui.interact(none_r, wid("pal-color-none", ()), Sense::click());
-    ui.painter().rect(none_r, CornerRadius::same(4), t.input, Stroke::new(1.0, if none_resp.hovered() { t.text } else { t.input_border }), StrokeKind::Inside);
-    ui.painter().line_segment([pos2(none_r.left() + 3.0, none_r.bottom() - 3.0), pos2(none_r.right() - 3.0, none_r.top() + 3.0)], Stroke::new(1.6, t.caution));
+    ui.painter().rect(
+        none_r,
+        CornerRadius::same(4),
+        t.input,
+        Stroke::new(1.0, if none_resp.hovered() { t.text } else { t.input_border }),
+        StrokeKind::Inside,
+    );
+    ui.painter().line_segment(
+        [pos2(none_r.left() + 3.0, none_r.bottom() - 3.0), pos2(none_r.right() - 3.0, none_r.top() + 3.0)],
+        Stroke::new(1.6, t.caution),
+    );
     if none_resp.on_hover_text("색 없음 (현재 대상의 선 또는 채움 지우기 · Delete / /)").clicked() {
         let _ = app.run("paint.none", json!({}));
     }
@@ -128,7 +133,8 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         let sw_col = crate::panels::c32(&vectorcraft_color::Color::rgb8(rgb[0], rgb[1], rgb[2]));
         let edge = if resp.hovered() { Stroke::new(1.5, t.text) } else { Stroke::new(1.0, t.input_border) };
         ui.painter().rect(sw_r, CornerRadius::same(4), sw_col, edge, StrokeKind::Inside);
-        let resp = resp.on_hover_text(format!("{tip}\n좌클릭: 현재 대상({}), 우클릭: 반대 대상 색상 지정", if fill_active { "면 채움" } else { "선" }));
+        let resp =
+            resp.on_hover_text(format!("{tip}\n좌클릭: 현재 대상({}), 우클릭: 반대 대상 색상 지정", if fill_active { "면 채움" } else { "선" }));
         if resp.clicked() {
             let cmd = if fill_active { "paint.setFill" } else { "paint.setStroke" };
             let _ = app.run(cmd, json!({ "color": rgb }));

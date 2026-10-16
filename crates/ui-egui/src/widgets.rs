@@ -213,11 +213,7 @@ pub fn num_field_compact(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug
     let id = ui.id().with(id);
     let fmt_compact = |pt: f64| -> String {
         let u = round_to(unit.from_pt(pt), 1);
-        if (u - u.round()).abs() < 1e-4 {
-            format!("{:.0}", u.round())
-        } else {
-            format!("{u:.1}")
-        }
+        if (u - u.round()).abs() < 1e-4 { format!("{:.0}", u.round()) } else { format!("{u:.1}") }
     };
     let shown = value.map(fmt_compact).unwrap_or_default();
     take_dialog_focus(ui, id, &shown);

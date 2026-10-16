@@ -149,13 +149,9 @@ fn section_line(s: &mut Session, p: &Value) -> Result<Value> {
         .or_else(|| p.get("p1"))
         .and_then(parse_point)
         .ok_or_else(|| bad(C, "missing or invalid `p0` or `p1`"))?;
-    let p1 = if p.get("p0").is_some() || p.get("start").is_some() {
-        p.get("p1").or_else(|| p.get("end"))
-    } else {
-        p.get("p2")
-    }
-    .and_then(parse_point)
-    .ok_or_else(|| bad(C, "missing or invalid `p1` or `p2`"))?;
+    let p1 = if p.get("p0").is_some() || p.get("start").is_some() { p.get("p1").or_else(|| p.get("end")) } else { p.get("p2") }
+        .and_then(parse_point)
+        .ok_or_else(|| bad(C, "missing or invalid `p1` or `p2`"))?;
 
     let label_start = p.get("labelStart").and_then(|v| v.as_str()).unwrap_or("A").to_string();
     let label_end = p.get("labelEnd").and_then(|v| v.as_str()).unwrap_or("A′").to_string();
@@ -666,17 +662,11 @@ fn insert_section_marker(s: &mut Session, p: &Value) -> Result<Value> {
             let (bar_rect, text_pos) = if orientation == "vertical" {
                 line_bez.move_to(origin);
                 line_bez.line_to(Point::new(origin.x, origin.y + 14.0));
-                (
-                    kurbo::Rect::from_center_size(origin, kurbo::Size::new(6.5, 1.6)),
-                    Point::new(origin.x + 5.5, origin.y + 2.2),
-                )
+                (kurbo::Rect::from_center_size(origin, kurbo::Size::new(6.5, 1.6)), Point::new(origin.x + 5.5, origin.y + 2.2))
             } else {
                 line_bez.move_to(Point::new(origin.x - 14.0, origin.y));
                 line_bez.line_to(origin);
-                (
-                    kurbo::Rect::from_center_size(origin, kurbo::Size::new(1.6, 6.5)),
-                    Point::new(origin.x + 4.5, origin.y + 2.2),
-                )
+                (kurbo::Rect::from_center_size(origin, kurbo::Size::new(1.6, 6.5)), Point::new(origin.x + 4.5, origin.y + 2.2))
             };
 
             let ref_id = doc.alloc_id();
