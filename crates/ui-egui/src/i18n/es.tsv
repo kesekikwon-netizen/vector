@@ -1715,6 +1715,7 @@
 	Nonbreaking Hyphen	Guion de no separación
 	Nonbreaking Space	Espacio de no separación
 	None	Ninguno
+	None (Delete)	Ninguno (eliminar)
 	None (/)	Ninguno (/)
 	None (keep transparency)	Ninguno (conservar transparencia)
 	None.	Ninguno.
@@ -4102,3 +4103,5 @@ lighting	Light	Luz
 	Change Weights at Once	Cambiar grosores a la vez
 	Add Legend Group	Añadir grupo de leyenda
 	Add to Legend	Añadir a la leyenda
+@msg	Rule layer added: {name}	Capa de regla añadida: {name}
+@msg	Removed empty unused layers: {removed}	Capas vacías sin usar eliminadas: {removed}

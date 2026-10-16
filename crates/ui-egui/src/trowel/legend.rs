@@ -377,7 +377,7 @@ pub(super) fn add_single_rule(app: &mut VectorcraftApp, group: LegendGroup, name
         }),
     )?;
     let _ = app.run("legend.pick", json!({ "id": id_u64 }));
-    app.status(format!("규칙 레이어 추가됨: {name}"));
+    app.status(format!("Rule layer added: {name}"));
     Ok(())
 }
 
@@ -406,7 +406,7 @@ fn prune_empty_layers(app: &mut VectorcraftApp) -> Result<(), String> {
     if let Some(cur) = current {
         let _ = app.run("layer.setCurrent", json!({ "id": cur.0 }));
     }
-    app.status(format!("비어 있는 미사용 레이어 {removed}개를 정리했습니다."));
+    app.status(format!("Removed empty unused layers: {removed}"));
     Ok(())
 }
 

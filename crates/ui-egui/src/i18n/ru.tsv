@@ -1711,6 +1711,7 @@
 	Nonbreaking Hyphen	Неразрывный дефис
 	Nonbreaking Space	Неразрывный пробел
 	None	Нет
+	None (Delete)	Нет (удалить)
 	None (/)	Нет (/)
 	None (keep transparency)	Нет (сохранить прозрачность)
 	None.	Нет.
@@ -4100,3 +4101,5 @@ lighting	Light	Свет
 	Change Weights at Once	Изменить толщины разом
 	Add Legend Group	Добавить группу легенды
 	Add to Legend	Добавить в легенду
+@msg	Rule layer added: {name}	Добавлен слой правила: {name}
+@msg	Removed empty unused layers: {removed}	Удалено пустых неиспользуемых слоёв: {removed}

@@ -1697,12 +1697,7 @@ fn weights_card_previews_and_applies_a_ratio() {
     assert!(want.len() >= 4, "{want:?}");
     for (names, from, to) in &want {
         let cell = h.texts.iter().find(|p| p.text == *names && card.contains_rect(p.rect)).unwrap_or_else(|| panic!("{names} in {line_in}")).rect;
-        let row: Vec<String> = h
-            .texts
-            .iter()
-            .filter(|p| card.contains_rect(p.rect) && (p.rect.center().y - cell.center().y).abs() < 2.0)
-            .map(|p| p.text.clone())
-            .collect();
+        let row: Vec<String> = h.texts.iter().filter(|p| card.contains_rect(p.rect) && same_line(p.rect, cell)).map(|p| p.text.clone()).collect();
         assert!(row.contains(from) && row.contains(to), "{names}: {from} → {to} in {row:?}");
     }
     assert!(line_in.contains("Lines that change: 1. One Ctrl+Z puts them all back."), "{line_in}");
@@ -1966,7 +1961,13 @@ fn weights_card_changes_by_the_ratio_just_typed() {
 fn table_line(h: &Harness, name: &str) -> Vec<String> {
     let card = h.rect(wid("weights-card", ())).expect("the card");
     let cell = h.texts.iter().find(|p| p.text == name && card.contains_rect(p.rect)).unwrap_or_else(|| panic!("{name} in {}", h.line_in(card))).rect;
-    h.texts.iter().filter(|p| card.contains_rect(p.rect) && (p.rect.center().y - cell.center().y).abs() < 2.0).map(|p| p.text.clone()).collect()
+    h.texts.iter().filter(|p| card.contains_rect(p.rect) && same_line(p.rect, cell)).map(|p| p.text.clone()).collect()
+}
+
+/// Whether two texts sit on one line of a table: their glyphs overlap in height. (Not their
+/// centres within 2 points: Hangul from one fallback font stands taller than digits, by up to 3.)
+fn same_line(a: Rect, b: Rect) -> bool {
+    a.top() < b.bottom() && b.top() < a.bottom()
 }
 
 /// The table follows a ratio being typed, before Enter: what it shows is what Change does (UI
@@ -2984,22 +2985,34 @@ fn test_adversarial_recent_books_json_roundtrip() {
 #[test]
 fn test_adversarial_drawing_book_resolve_missing_status() {
     use super::book::{ResolvedDrawingBook, StrataGpkgStatus};
-    use std::path::{Path, PathBuf};
 
-    // 1. Non-existent .gpkg file path -> StrataGpkgStatus::Missing
-    let missing_gpkg = Path::new("D:\\발굴\\하가리\\하가리.gpkg");
-    let book_missing = ResolvedDrawingBook::resolve(missing_gpkg);
+    // 1. Non-existent .gpkg file path -> StrataGpkgStatus::Missing. A path in this system's own
+    // form: Linux and macOS read `D:\발굴\…` as one file name (the Windows form is checked below
+    // on Windows).
+    let survey_missing = std::env::temp_dir().join("trowel_no_such_survey").join("하가리");
+    let missing_gpkg = survey_missing.join("하가리.gpkg");
+    let book_missing = ResolvedDrawingBook::resolve(&missing_gpkg);
     assert!(book_missing.strata_status.is_missing(), "Expected Missing status for non-existent .gpkg path, got {:?}", book_missing.strata_status);
     match &book_missing.strata_status {
         StrataGpkgStatus::Missing { filename, expected_path } => {
             assert_eq!(filename, "하가리.gpkg");
-            assert_eq!(expected_path, missing_gpkg);
+            assert_eq!(expected_path, &missing_gpkg);
         }
         other => panic!("Expected StrataGpkgStatus::Missing, got {:?}", other),
     }
     assert_eq!(book_missing.name, "하가리");
-    assert_eq!(book_missing.survey_dir, PathBuf::from("D:\\발굴\\하가리"));
-    assert_eq!(book_missing.drawing_book_dir, PathBuf::from("D:\\발굴\\하가리\\도면"));
+    assert_eq!(book_missing.survey_dir, survey_missing);
+    assert_eq!(book_missing.drawing_book_dir, survey_missing.join("도면"));
+    #[cfg(windows)]
+    {
+        use std::path::{Path, PathBuf};
+        let missing_gpkg = Path::new("D:\\발굴\\하가리\\하가리.gpkg");
+        let book_missing = ResolvedDrawingBook::resolve(missing_gpkg);
+        assert!(book_missing.strata_status.is_missing(), "{:?}", book_missing.strata_status);
+        assert_eq!(book_missing.name, "하가리");
+        assert_eq!(book_missing.survey_dir, PathBuf::from("D:\\발굴\\하가리"));
+        assert_eq!(book_missing.drawing_book_dir, PathBuf::from("D:\\발굴\\하가리\\도면"));
+    }
 
     // 2. Existing directory lacking any .gpkg -> StrataGpkgStatus::Disconnected
     let base_dir = std::env::temp_dir()
@@ -3080,12 +3093,12 @@ fn test_adversarial_drawing_book_resolve_missing_status() {
     assert_eq!(book_standalone.drawing_book_dir, book_standalone.survey_dir.join("도면"), "Drawing book must be <survey_dir>/도면 per §14(1)");
 
     // 6. Case sensitivity: Uppercase .GPKG missing file -> StrataGpkgStatus::Missing
-    let uppercase_missing = Path::new("D:\\발굴\\하가리\\하가리.GPKG");
-    let book_upper_missing = ResolvedDrawingBook::resolve(uppercase_missing);
+    let uppercase_missing = survey_missing.join("하가리.GPKG");
+    let book_upper_missing = ResolvedDrawingBook::resolve(&uppercase_missing);
     assert!(book_upper_missing.strata_status.is_missing(), "Uppercase .GPKG path must return Missing status");
     if let StrataGpkgStatus::Missing { filename, expected_path } = &book_upper_missing.strata_status {
         assert_eq!(filename, "하가리.GPKG");
-        assert_eq!(expected_path, uppercase_missing);
+        assert_eq!(expected_path, &uppercase_missing);
     }
     assert_eq!(book_upper_missing.drawing_book_dir, book_upper_missing.survey_dir.join("도면"), "Drawing book must be <survey_dir>/도면 per §14(1)");
 

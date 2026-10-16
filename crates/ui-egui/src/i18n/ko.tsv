@@ -1700,6 +1700,7 @@
 	Nonbreaking Hyphen	줄바꿈 없는 하이픈
 	Nonbreaking Space	줄바꿈 없는 공백
 	None	없음
+	None (Delete)	없음 (삭제)
 	None (/)	없음 (/)
 	None (keep transparency)	없음 (투명도 유지)
 	None.	없음.
@@ -4289,3 +4290,5 @@ trowel	…and {n} more	…외 {n}줄
 trowel	Alternating Hatch (45°/135°). Click to flip direction	번갈아 빗금 (45°/135°). 클릭하여 방향 전환
 trowel	Cut border (0.8 pt) and alternating hatch	단면 외곽선 (0.8 pt) 및 번갈아 빗금
 trowel	Odd-cycle conflict (3+ mutually adjacent faces)! Click to flip direction	홀수 순환 충돌 (인접한 3면 이상)! 클릭하여 방향 전환
+@msg	Rule layer added: {name}	규칙 레이어 추가됨: {name}
+@msg	Removed empty unused layers: {removed}	비어 있는 미사용 레이어 {removed}개를 정리했습니다.
