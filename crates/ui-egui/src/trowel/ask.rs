@@ -17,7 +17,7 @@ pub enum AskFor {
     Spot { at: [f64; 2] },
 }
 
-/// The box while it is open ([`crate::state::UiState::trowel_ask`]).
+/// The box while it is open ([`crate::VectorcraftApp::trowel_ask`]).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Ask {
     pub what: AskFor,
@@ -35,6 +35,8 @@ pub struct Ask {
 /// The highest and lowest heights taken, in metres: past them a typing slip.
 const HIGHEST_M: f64 = 9_000.0;
 const LOWEST_M: f64 = -11_000.0;
+/// The box's inner width: the field with its unit, the hint under it and the two buttons.
+const INNER_W: f32 = 210.0;
 
 /// Open the box for a tool's click (`kind` [`vectorcraft_tools::trowel::ASK_LEVEL`] or
 /// [`vectorcraft_tools::trowel::ASK_SPOT`], `p` its `{profileId?, at}`); a click that found no
@@ -56,7 +58,7 @@ pub(crate) fn open(app: &mut VectorcraftApp, kind: &str, p: &Value) {
         _ => return,
     };
     let Some(doc) = app.session.active().map(|st| st.uid) else { return };
-    app.ui.trowel_ask = Some(Ask { what, doc, text: None, at: None, focus: true });
+    app.trowel_ask = Some(Ask { what, doc, text: None, at: None, focus: true });
 }
 
 /// A height as typed: `32.5`, `32.5m`, `32,5` (a decimal comma), in metres.
@@ -84,9 +86,9 @@ fn put(app: &mut VectorcraftApp, what: &AskFor, m: f64) -> Result<Value, String>
 
 /// The box, while it is open and its drawing is the one in front.
 pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context) {
-    let Some(mut ask) = app.ui.trowel_ask.clone() else { return };
+    let Some(mut ask) = app.trowel_ask.clone() else { return };
     if app.session.active().map(|st| st.uid) != Some(ask.doc) {
-        app.ui.trowel_ask = None;
+        app.trowel_ask = None;
         return;
     }
     let t = Tokens::get(ctx);
@@ -108,7 +110,10 @@ pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context) {
             .inner_margin(egui::Margin::same(12))
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing = vec2(6.0, 8.0);
-                let (r, _) = ui.allocate_exact_size(vec2(width_of(ui, title, font(12.0)).max(150.0), 16.0), Sense::hover());
+                // An area is as wide as the screen allows: the box keeps to its own width.
+                let inner = width_of(ui, title, font(12.0)).max(INNER_W);
+                ui.set_width(inner);
+                let (r, _) = ui.allocate_exact_size(vec2(inner, 16.0), Sense::hover());
                 text_at(ui, r.left_center(), title, font(12.0), t.text_dim);
                 ui.horizontal(|ui| {
                     let field = egui::TextEdit::singleline(&mut text).id(wid("ask-field", ())).desired_width(116.0).font(mono(13.0));
@@ -131,7 +136,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context) {
                     ui.add_space(14.0);
                 }
                 let layout = egui::Layout::right_to_left(egui::Align::Center);
-                ui.allocate_ui_with_layout(vec2(ui.available_width(), 28.0), layout, |ui| {
+                ui.allocate_ui_with_layout(vec2(inner, 28.0), layout, |ui| {
                     if super::scale_dialog::dialog_button(ui, wid("ask", "ok"), tw!("Put in"), true, &t).clicked() {
                         done = Some(true);
                     }
@@ -150,17 +155,17 @@ pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context) {
             let Some(m) = parse_height(&text) else {
                 // Wrong: the box stays, saying so, with the field to fix.
                 ctx.memory_mut(|mem| mem.request_focus(wid("ask-field", ())));
-                app.ui.trowel_ask = Some(ask);
+                app.trowel_ask = Some(ask);
                 return;
             };
-            app.ui.trowel_ask = None;
+            app.trowel_ask = None;
             ctx.data_mut(|d| d.insert_temp(datum_elevation_id(), m));
             if let Err(e) = put(app, &ask.what, m) {
                 app.status_error(e);
             }
         }
-        Some(false) => app.ui.trowel_ask = None,
-        None => app.ui.trowel_ask = Some(ask),
+        Some(false) => app.trowel_ask = None,
+        None => app.trowel_ask = Some(ask),
     }
 }
 

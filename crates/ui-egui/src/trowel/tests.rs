@@ -127,7 +127,7 @@ impl Harness {
     /// What the text field `id` holds.
     fn field_text(&self, id: egui::Id) -> Option<String> {
         let _ = self.rect(id)?;
-        self.app.ui.trowel_ask.as_ref().and_then(|a| a.text.clone())
+        self.app.trowel_ask.as_ref().and_then(|a| a.text.clone())
     }
 
     /// A few frames with nothing new, so what the last one changed is laid out and seen.
@@ -4372,6 +4372,9 @@ fn digits_pick_the_archaeology_tools_in_trowel_only() {
         digit(&mut h, d, key);
         assert_eq!(h.app.session.tool_id(), tool, "{d}");
         assert_eq!(canvas_penbar::is_visible(&h.app), penbar, "{tool}");
+        // The status bar says how to use it, not where to search commands.
+        let hint: String = crate::chrome::current_hint(&h.app).into_iter().map(|(s, _)| s).collect();
+        assert!(hint.starts_with("Click ") && !hint.contains("search every command"), "{tool}: {hint}");
     }
     // The classic window: a digit is no tool's key.
     h.app.ui.trowel = false;
@@ -4403,13 +4406,14 @@ fn the_archaeology_tools_draw_the_eighth_chapter() {
     h.app.run("select.none", json!({})).unwrap();
     h.click(wid("tool", "levelLines"));
     h.click_at(h.on_screen(200.0, 100.0));
-    assert_eq!((h.app.ui.status.as_str(), h.app.ui.trowel_ask.is_none()), ("Click the ground line", true), "a click on nothing");
+    assert_eq!((h.app.ui.status.as_str(), h.app.trowel_ask.is_none()), ("Click the ground line", true), "a click on nothing");
     h.click_at(h.on_screen(160.0, 230.0));
-    assert!(h.rect(wid("ask-field", ())).is_some(), "the height box");
+    let (field, ok) = (h.rect(wid("ask-field", ())).expect("the height box"), h.rect(wid("ask", "ok")).expect("넣기"));
+    assert!(ok.right() - field.left() <= 212.0, "the box keeps to its own width: {field:?} {ok:?}");
     assert!(h.texts.iter().any(|p| p.text == "Height here"), "its title");
     let before = h.node_count();
     h.type_into(wid("ask-field", ()), "32.5");
-    assert!(h.app.ui.trowel_ask.is_none(), "{}", h.app.ui.status);
+    assert!(h.app.trowel_ask.is_none(), "{}", h.app.ui.status);
     assert!(object_names(&h).iter().any(|n| n == "단면 해발 눈금 (32.5m)"), "the datum tick: {:?}", object_names(&h));
     let mut levels = vec![];
     h.app.session.active().unwrap().doc.walk(|n| levels.extend(n.elevation.as_ref().map(|e| e.datum_m)));

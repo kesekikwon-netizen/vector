@@ -779,6 +779,32 @@ fn hint_for(tool: &str) -> Option<&'static [(&'static str, bool)]> {
             ("Alt+Click", true),
             (" to set spacing and orientation", false),
         ],
+        // Trowel's archaeology tools (design 3.0 §5 ④).
+        "sectionCut" => &[
+            ("Click", true),
+            (" two points for the A–A′ marks  |  ", false),
+            ("Drag", true),
+            (" from one end to the other  |  ", false),
+            ("Shift", true),
+            (" for 45° steps  |  ", false),
+            ("Esc", true),
+            (" to stop", false),
+        ],
+        "slopeHachure" => &[("Click", true), (" a line to hachure along it", false)],
+        "levelLines" => &[("Click", true), (" the ground line, then type the height there", false)],
+        "spotHeight" => &[("Click", true), (" a point, then type its height", false)],
+        "strataLine" => &[
+            ("Click", true),
+            (" to add a point  |  ", false),
+            ("Drag", true),
+            (" to draw freehand  |  ", false),
+            ("Enter", true),
+            (" to finish  |  ", false),
+            ("Backspace", true),
+            (" to take the last point back  |  ", false),
+            ("Esc", true),
+            (" to stop", false),
+        ],
         _ => return None,
     })
 }
@@ -882,6 +908,21 @@ mod tests {
     }
     use serde_json::json;
     use vectorcraft_engine::Session;
+
+    /// Trowel's archaeology tools have their own hints, in Korean (the window they live in) though
+    /// the other complete languages don't list them ([`super::hint_strings`] covers the classic
+    /// tools).
+    #[test]
+    fn the_archaeology_tools_have_korean_hints() {
+        let ko = crate::i18n::Lang::from_code("ko").unwrap();
+        for tool in vectorcraft_tools::catalog::trowel_tools() {
+            let segments = super::hint_for(tool.id).unwrap_or_else(|| panic!("{}: no hint", tool.id));
+            for &(text, bold) in segments {
+                let text = if bold { text.rsplit_once('+').map_or(text, |(_, k)| k) } else { text };
+                assert!(crate::i18n::has(ko, text), "{}: {text:?}", tool.id);
+            }
+        }
+    }
 
     #[test]
     fn hints_name_keys_as_the_menus_do() {

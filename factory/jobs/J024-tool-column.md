@@ -128,3 +128,16 @@
 
 - 처음 clippy 실패 두 건은 이번 변경에서 생긴 것이고 고쳤다. 기존 실패는 없었다.
 - 린트 고침 두 건 뒤에 다시 돌린 것은 clippy 전체와 엔진 고고학 시험 4개다. 화면 시험 1,060은 고치기 전 코드에서 돌렸다(고친 두 곳은 엔진 안이고 동작이 같다: 너비 비교의 NaN 처리, 시험 안의 if 합치기).
+
+## 검증 중 찾아 고친 것 — 2026-10-16
+- GitHub 「Trowel CI」 run 38937920345(커밋 `8dff460`): **실패**. `cargo clippy --workspace --all-targets`에서 `apps/vectorcraft`(시험 빌드)가 `UiState { .., ..Default::default() }`로 만드는데 새 필드 `pub(crate) trowel_ask` 때문에 E0451(`window.rs:247`, `main.rs:691`). 로컬 clippy를 손댄 crate만 돌려서 놓쳤다. 이번 변경으로 생긴 실패다. → 높이 칸 상태를 `UiState`에서 빼서 `VectorcraftApp::trowel_ask`로 옮김. 윈도우 빌드는 통과.
+- 새로 띄운 앱에서 높이 칸이 약 600 px로 넓게 그려짐(egui Area가 화면 폭만큼 열림). → 안쪽 폭 210으로 고정(`ask.rs` `INNER_W`). 시험: 넣기 버튼 오른쪽 − 입력 칸 왼쪽 ≤ 212.
+- 새로 띄운 앱의 상태줄이 다섯 도구에서 「누르기 Ctrl+Shift+/ 모든 명령 검색」만 보임(도구 안내 없음). → `chrome.rs` `hint_for`에 다섯 도구 안내, `ko.tsv` 11줄. 다른 완전 언어(ja 등)에는 요구하지 않는다(클래식 도구 목록 `hint_strings`에 넣지 않음, 한국어만 새 시험 `the_archaeology_tools_have_korean_hints`). 시험: `digits_pick_the_archaeology_tools_in_trowel_only`가 안내가 「Click …」으로 시작하는지 확인.
+
+| 명령 | 종료 코드 | 결과 | 기록 |
+|---|---|---|---|
+| `cargo fmt --all -- --check` | 0 | 통과 | `j024/fmt2.log` |
+| `cargo clippy --workspace --all-targets -- -D warnings` | 0 | 경고 없음(앱 crate 포함) | `j024/clippy-ws.log` |
+| `cargo test -p vectorcraft-ui-egui` | 0 | 1,061 + 6 통과 · 0 실패 | `j024/test-ui2.log` |
+| `cargo test -p vectorcraft` | 0 | 66 통과 | `j024/test-app.log` |
+| GitHub 「Trowel CI」 | - | 이 커밋 push 뒤 확인 | - |

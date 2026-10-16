@@ -306,10 +306,6 @@ pub struct UiState {
     /// The first start of a version with Trowel's window has switched to it
     /// ([`crate::workspaces::start_trowel`]): later starts keep the user's workspace.
     pub trowel_started: bool,
-    /// Trowel's height box (design 3.0 §5 ④), while a Level Lines or Spot Height click asks for a
-    /// height ([`crate::trowel::ask`]).
-    #[serde(skip)]
-    pub(crate) trowel_ask: Option<crate::trowel::ask::Ask>,
     /// Screen mode: 0 normal, 1 full screen with menu, 2 full screen, 3 presentation. Not saved:
     /// the app always starts in Normal Screen Mode, with its menus and panels (#472: a saved
     /// Presentation Mode came back on restart with no way out).
@@ -537,7 +533,6 @@ impl Default for UiState {
             status_error: false,
             trowel: false,
             trowel_started: false,
-            trowel_ask: None,
             palette_open: false,
             palette_query: String::new(),
             screen_mode: 0,
