@@ -136,12 +136,39 @@ pub const TOOL_GROUPS: &[&[ToolInfo]] = &[
     &[t("zoom", "Zoom Tool", Some("Z"), "tool-zoom")],
 ];
 
+/// Trowel's archaeology tools (design 3.0 §5 ④), under 「고고학」 in Trowel's tool column only: not
+/// in the classic toolbar, its menus or its shortcut lists ([`all_tools`]). Their keys 1–4 pick
+/// them in Trowel's window ([`trowel_tool_for_shortcut`]). Groups as in [`TOOL_GROUPS`].
+pub const TROWEL_TOOLS: &[&[ToolInfo]] = &[
+    &[t("sectionCut", "Section Line Tool", Some("1"), "tw-section-line"), t("slopeHachure", "Slope Hachure Tool", None, "tw-hachure")],
+    &[t("levelLines", "Level Lines Tool", Some("2"), "tw-level")],
+    &[t("spotHeight", "Spot Height Tool", Some("3"), "tw-spot-height")],
+    &[t("strataLine", "Strata Line Tool", Some("4"), "tw-strata-line")],
+];
+
+/// The classic toolbar's tools ([`TOOL_GROUPS`]).
 pub fn all_tools() -> impl Iterator<Item = &'static ToolInfo> {
     TOOL_GROUPS.iter().flat_map(|g| g.iter())
 }
 
+/// Trowel's archaeology tools ([`TROWEL_TOOLS`]).
+pub fn trowel_tools() -> impl Iterator<Item = &'static ToolInfo> {
+    TROWEL_TOOLS.iter().flat_map(|g| g.iter())
+}
+
+/// Any tool, the classic toolbar's or Trowel's.
 pub fn tool_info(id: &str) -> Option<&'static ToolInfo> {
-    all_tools().find(|t| t.id == id)
+    all_tools().chain(trowel_tools()).find(|t| t.id == id)
+}
+
+/// Is `id` one of Trowel's archaeology tools?
+pub fn is_trowel_tool(id: &str) -> bool {
+    trowel_tools().any(|t| t.id == id)
+}
+
+/// Trowel's archaeology tool for a key such as "1".
+pub fn trowel_tool_for_shortcut(s: &str) -> Option<&'static ToolInfo> {
+    trowel_tools().find(|t| t.shortcut == Some(s))
 }
 
 /// Tool for a single-key shortcut such as "V" or "Shift+M".
@@ -182,6 +209,11 @@ mod tests {
         sc.dedup();
         assert_eq!(sc.len(), n, "duplicate shortcuts");
         assert!(n > 40);
+        // Trowel's tools: their own ids and keys, none the classic toolbar uses.
+        for t in trowel_tools() {
+            assert!(!ids.contains(&t.id), "{} is a classic tool too", t.id);
+            assert!(t.shortcut.is_none_or(|k| !sc.contains(&k) && k.len() == 1 && k.chars().all(|c| c.is_ascii_digit())), "{}", t.id);
+        }
     }
 
     #[test]
@@ -191,5 +223,10 @@ mod tests {
         assert_eq!(group_of("star"), group_of("rectangle"));
         assert!(is_selection_tool("groupSelection") && !is_selection_tool("pen"));
         assert!(edits_anchors("pen") && !edits_anchors("rectangle"));
+        assert_eq!(tool_info("levelLines").map(|t| t.shortcut), Some(Some("2")));
+        assert!(is_trowel_tool("strataLine") && !is_trowel_tool("pen"));
+        assert_eq!(trowel_tool_for_shortcut("1").map(|t| t.id), Some("sectionCut"));
+        assert!(tool_for_shortcut("1").is_none() && all_tools().all(|t| !is_trowel_tool(t.id)), "not in the classic lists");
+        assert_eq!(group_of("slopeHachure"), None, "not in the classic toolbar");
     }
 }

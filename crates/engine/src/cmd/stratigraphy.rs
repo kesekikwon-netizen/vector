@@ -36,6 +36,15 @@ pub fn specs() -> Vec<CommandSpec> {
             add_layer
         ),
         cmd!(
+            "stratigraphy.boundary",
+            "Soil Layer Boundary",
+            [],
+            None,
+            "{points: [[x,y], ...], tableId?: string} the Strata Line tool's line (design 3.0 §5 ④): the boundary drawn with the pen, the next layer number (Ⅰ, Ⅱ … in the table's style, 6 pt) over its middle, the table's new row and a line `Ⅰ층 : ` added to the 7 pt description block under the drawing (made under this line when there is none; the lines already typed stay), as one undo step",
+            has_doc,
+            boundary
+        ),
+        cmd!(
             "stratigraphy.removeLayer",
             "Remove Stratigraphy Layer",
             ["Trowel", "토층"],
@@ -197,6 +206,131 @@ fn add_layer(s: &mut Session, p: &Value) -> Result<Value> {
             "index": index,
             "count": table.layers.len(),
         }))
+    })
+}
+
+/// The most points a boundary takes (a long freehand line at a screen point each).
+const MAX_BOUNDARY_POINTS: usize = 100_000;
+/// The description block's type size and line spacing (as `stratigraphy.generateTable`'s inline
+/// block: 7 pt, at least 11 pt apart).
+const NOTE_PT: f64 = 7.0;
+const NOTE_LINE: f64 = 11.55;
+/// The layer numbers' type size (the field's 6 pt) and how far over the line their baseline is.
+const NUMBER_PT: f64 = 6.0;
+const NUMBER_RISE: f64 = 4.0;
+
+/// The point halfway along the polyline `pts` (its only point for one point).
+fn halfway(pts: &[Point]) -> Option<Point> {
+    let total: f64 = pts.windows(2).map(|w| w[0].distance(w[1])).sum();
+    let mut left = total / 2.0;
+    for w in pts.windows(2) {
+        let d = w[0].distance(w[1]);
+        if d >= left && d > 0.0 {
+            return Some(w[0].lerp(w[1], left / d));
+        }
+        left -= d;
+    }
+    pts.last().copied()
+}
+
+fn boundary(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "stratigraphy.boundary";
+    let pts: Vec<Point> = p
+        .get("points")
+        .and_then(Value::as_array)
+        .ok_or_else(|| bad(C, "give `points`, [[x, y], ...]"))?
+        .iter()
+        .map(|v| parse_point(v).filter(|q| q.x.is_finite() && q.y.is_finite()).ok_or_else(|| bad(C, "each point is [x, y]")))
+        .collect::<Result<_>>()?;
+    if pts.len() < 2 {
+        return Err(bad(C, "a boundary needs two points"));
+    }
+    if pts.len() > MAX_BOUNDARY_POINTS {
+        return Err(bad(C, format!("a boundary takes at most {MAX_BOUNDARY_POINTS} points")));
+    }
+    let table_id = p.get("tableId").and_then(Value::as_str).map(str::to_string);
+    let middle = halfway(&pts).ok_or_else(|| bad(C, "a boundary needs two points"))?;
+    let first = *pts.first().ok_or_else(|| bad(C, "a boundary needs two points"))?;
+    let bounds = pts.iter().fold(Rect::from_points(first, first), |r, q| r.union_pt(*q));
+    let target_parent = s.doc()?.target_parent()?;
+    // Drawn with the pen: the legend row's weight and line type, never filled.
+    let stroke = if s.paint.stroke.is_none() { Paint::solid(Color::BLACK) } else { s.paint.stroke.clone() };
+    let look = s.new_art_look(Paint::None, stroke, s.paint.stroke_width.max(0.1));
+
+    s.edit("Soil Layer Boundary", |doc, sel| {
+        // A table made here numbers its layers Ⅰ, Ⅱ … as the field's section drawings do.
+        let new_table = !doc.stratigraphy_tables.iter().any(|t| t.id == table_id.as_deref().unwrap_or("default"));
+        let (number, badge, placement) = {
+            let table = get_or_create_table(&mut doc.stratigraphy_tables, table_id.as_deref())?;
+            if new_table {
+                table.numbering_style = NumberingStyle::Roman;
+            }
+            let number = table.layers.iter().map(|l| l.index).max().unwrap_or(0).saturating_add(1);
+            (number, table.numbering_style.format(number), table.placement.clone())
+        };
+
+        let mut line = Node::path(doc.alloc_id(), PathData::single(vectorcraft_geom::SubPath::polyline(&pts, false)), Appearance::default());
+        look.apply(doc, &mut line);
+        line.name = Some(format!("토층선 {badge}"));
+        let line_id = line.id;
+        doc.insert(target_parent, usize::MAX, line).map_err(|e| bad(C, e.to_string()))?;
+
+        let number_id = doc.alloc_id();
+        let style = CharStyle { size: NUMBER_PT, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
+        let mut text = TextObject::point(Point::new(middle.x, middle.y - NUMBER_RISE), &badge, style);
+        text.para.justify = Justify::Center;
+        let mut number_node = Node::new(number_id, NodeKind::Text(Box::new(text)));
+        number_node.name = Some(format!("층위 번호 {badge}"));
+        doc.insert(target_parent, usize::MAX, number_node).map_err(|e| bad(C, e.to_string()))?;
+
+        // The description block: the one made before while it is still there, else a new one under
+        // this line.
+        let block = placement
+            .as_ref()
+            .and_then(|pl| pl.node_id.filter(|id| matches!(doc.node(*id).map(|n| &n.kind), Some(NodeKind::Group { .. }))).map(|id| (id, pl.origin)));
+        let (block_id, origin, made) = match block {
+            Some((id, origin)) => (id, origin, false),
+            None => {
+                let origin = Point::new(bounds.x0, bounds.y1 + 24.0);
+                let gid = doc.alloc_id();
+                let mut g = Node::new(gid, NodeKind::Group { children: vec![], clip: false });
+                g.name = Some("토층설명 7p".to_string());
+                doc.insert(target_parent, usize::MAX, g).map_err(|e| bad(C, e.to_string()))?;
+                (gid, origin, true)
+            }
+        };
+        let row = match doc.node(block_id).map(|n| &n.kind) {
+            Some(NodeKind::Group { children, .. }) => children.len(),
+            _ => 0,
+        };
+        let note_id = doc.alloc_id();
+        let style = CharStyle { size: NOTE_PT, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
+        let note = TextObject::point(Point::new(origin.x, origin.y + row as f64 * NOTE_LINE + NOTE_PT), &format!("{badge}층 : "), style);
+        let mut note_node = Node::new(note_id, NodeKind::Text(Box::new(note)));
+        note_node.name = Some(format!("토층설명 {badge}"));
+        doc.insert(Some(block_id), usize::MAX, note_node).map_err(|e| bad(C, e.to_string()))?;
+
+        let table = get_or_create_table(&mut doc.stratigraphy_tables, table_id.as_deref())?;
+        table.layers.push(StratigraphyLayer {
+            index: number,
+            custom_badge: None,
+            description: SoilDescription::default(),
+            fill_style: StratigraphyFillStyle::None,
+            badge_node_id: Some(number_id),
+            face_node_id: None,
+        });
+        table.layers.sort_by_key(|l| l.index);
+        if made {
+            table.placement = Some(StratigraphyTablePlacement {
+                origin,
+                width_pt: 420.0,
+                font_size_pt: NOTE_PT,
+                format: TableRenderFormat::Inline,
+                node_id: Some(block_id),
+            });
+        }
+        sel.objects = vec![line_id];
+        Ok(json!({ "id": line_id.0, "number": number, "badge": badge, "numberId": number_id.0, "noteId": note_id.0, "blockId": block_id.0 }))
     })
 }
 

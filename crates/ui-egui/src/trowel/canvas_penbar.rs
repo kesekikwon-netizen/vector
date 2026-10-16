@@ -25,22 +25,7 @@ const CLEAR_ZOOM: f32 = 8.0;
 /// Returns whether the Canvas Pen Bar should be displayed for the active tool.
 pub fn is_visible(app: &VectorcraftApp) -> bool {
     let tool = app.session.tool_id();
-    matches!(
-        tool,
-        "pen"
-            | "pencil"
-            | "paintbrush"
-            | "curvature"
-            | "lineSegment"
-            | "section-line"
-            | "spot-height"
-            | "find-number"
-            | "posthole"
-            | "hachure"
-            | "stratigraphy"
-            | "pottery"
-            | "pottery-rim"
-    )
+    matches!(tool, "pen" | "pencil" | "paintbrush" | "curvature" | "lineSegment" | "sectionCut" | "strataLine" | "pottery" | "pottery-rim")
 }
 
 /// The pen bar over `canvas`, while a drawing tool is in hand ([`is_visible`]).
@@ -127,6 +112,13 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui, canvas: Rect, t: &Tokens) {
             if let Some(id) = app.session.active().and_then(|d| d.selection.objects.first().copied()) {
                 crate::menus::invoke(app, "path.close", json!({ "id": id.0 }));
             }
+        }
+        // While a strata line is being drawn its points aren't in the drawing yet: Undo takes the
+        // last one back, as Backspace does.
+        Some(_) if app.session.tool_claims_key(vectorcraft_tools::ToolKey::Backspace, app.view_info()) => {
+            let view = app.view_info();
+            let r = app.session.tool_key(vectorcraft_tools::ToolKey::Backspace, vectorcraft_tools::Mods::default(), view);
+            crate::canvas::apply_requests(app, r);
         }
         Some(_) => crate::menus::invoke(app, "edit.undo", json!({})),
         None => {}

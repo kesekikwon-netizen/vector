@@ -32,6 +32,7 @@ pub mod shape;
 pub mod slice;
 pub mod symbolism;
 pub mod text;
+pub mod trowel;
 pub mod typewidget;
 pub mod xform;
 
@@ -597,6 +598,7 @@ pub fn create(id: &str) -> Box<dyn Tool> {
             .or_else(|| printtiling::create(other))
             .or_else(|| cropimage::create(other))
             .or_else(|| cut::create(other))
+            .or_else(|| trowel::create(other))
             .unwrap_or_else(|| Box::new(NoopTool(tool_info(other).map(|t| t.id).unwrap_or("selection")))),
     }
 }

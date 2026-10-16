@@ -4325,3 +4325,21 @@ trowel	Align Right	오른쪽 정렬
 trowel	Align Tops	위 정렬
 trowel	Align Middles	세로 가운데 정렬
 trowel	Align Bottoms	아래 정렬
+trowel	Section Line	단면선
+trowel	Level Lines	해발선
+trowel	Strata Line	토층선
+trowel	Click two points: the A–A′ marks, with the next free letter	두 점을 누르면 A–A′ 표시가 생깁니다. 글자는 아직 쓰지 않은 다음 글자입니다
+trowel	Click a line: slope hachures along it	선을 누르면 그 선을 따라 경사 표시를 넣습니다
+trowel	Click the ground line and type the height there: level lines that stop at it	지표선을 누르고 그 자리의 높이를 넣으면 해발선을 그립니다. 해발선은 지표선에서 멈춥니다
+trowel	Click a point and type its height: ▽ and 32.5m	점을 누르고 높이를 넣으면 ▽와 「32.5m」가 생깁니다
+trowel	Draw a layer boundary: its number and a description line come with it. Enter ends it	층 경계를 그리면 층 번호와 토층 설명 줄이 함께 생깁니다. Enter로 끝냅니다
+trowel	Click the line to hachure along	경사 표시를 넣을 선을 누르세요
+trowel	Click the ground line	지표선을 누르세요
+trowel	Height here	기준 높이
+trowel	Type a height in metres, such as 32.5	높이를 m 단위로 넣으세요 (예: 32.5)
+trowel	Put in	넣기
+	Section Line Tool	단면선 도구
+	Slope Hachure Tool	경사 표시 도구
+	Level Lines Tool	해발선 도구
+	Spot Height Tool	표고 도구
+	Strata Line Tool	토층선 도구

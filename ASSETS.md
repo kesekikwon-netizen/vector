@@ -319,6 +319,7 @@ Generated-in-code art is original and has no file to list. This covers the defau
 | `assets/icons/tw-hand.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-import.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-legend.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-level.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 | Design 3.0 tool column (D4) |
 | `assets/icons/tw-line.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-magnet.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-new.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) from its design 3.0 mockup | MIT OR Apache-2.0 |  |
@@ -335,12 +336,13 @@ Generated-in-code art is original and has no file to list. This covers the defau
 | `assets/icons/tw-scale-bar.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-scale.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-scissors.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
-| `assets/icons/tw-section-line.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-section-line.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 | Redrawn for the design 3.0 tool column (D4) |
 | `assets/icons/tw-section.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-select.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-sheet.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
-| `assets/icons/tw-spot-height.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-spot-height.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 | Redrawn for the design 3.0 tool column (D4) |
 | `assets/icons/tw-strata.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-strata-line.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 | Design 3.0 tool column (D4) |
 | `assets/icons/tw-title-block.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-type.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-underlay.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |

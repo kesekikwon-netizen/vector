@@ -167,7 +167,7 @@ fn chip(ui: &mut Ui, id: egui::Id, label: &str, on: bool, t: &Tokens) -> egui::R
 }
 
 /// A dialog button (the mockup's `.btn`), 28 points tall: the one that does it in ink.
-fn dialog_button(ui: &mut Ui, id: egui::Id, label: &str, strong: bool, t: &Tokens) -> egui::Response {
+pub(super) fn dialog_button(ui: &mut Ui, id: egui::Id, label: &str, strong: bool, t: &Tokens) -> egui::Response {
     let f = font(12.0);
     let (r, _) = ui.allocate_exact_size(vec2(width_of(ui, label, f.clone()) + 28.0, 28.0), Sense::hover());
     let resp = ui.interact(r, id, Sense::click());

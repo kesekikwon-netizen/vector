@@ -13,6 +13,7 @@ use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Str
 use crate::VectorcraftApp;
 use crate::theme::{self, Tokens};
 
+pub(crate) mod ask;
 pub mod book;
 pub mod canvas_penbar;
 mod caption;
@@ -50,7 +51,7 @@ const CAPTION_H: f32 = 32.0;
 const MENU_H: f32 = 28.0;
 const RIBBON_H: f32 = 86.0;
 const STATUS_H: f32 = 28.0;
-const TOOLS_W: f32 = 56.0;
+const TOOLS_W: f32 = 50.0;
 const SET_W: f32 = 216.0;
 const RIGHT_W: f32 = 304.0;
 const TABS_H: f32 = 34.0;
@@ -135,6 +136,7 @@ pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {
     style_dialog::show_dialog(app, ui.ctx());
     gpkg_browser::show_dialog(app, ui.ctx());
     scale_dialog::show(app, ui.ctx());
+    ask::show(app, ui.ctx());
 }
 
 /// The right column (design 3.0 §5 ⑦–⑨): the legend at the top, taking the height left, the pen

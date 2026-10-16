@@ -158,6 +158,8 @@ pub enum SpotMarkerKind {
     #[default]
     Dot,
     Triangle,
+    /// ▽ with its tip on the point, the level mark on Korean section and plan drawings.
+    TriangleDown,
     Crosshair,
 }
 
@@ -171,11 +173,23 @@ pub struct SpotElevationSpec {
     pub halo: bool,
     pub prefix_plus: bool,
     pub suffix_m: bool,
+    /// One decimal for a height in whole 10 cm (`32.5m`), else two (`32.45m`), as level lines
+    /// label theirs; off, always two.
+    pub short_label: bool,
 }
 
 impl Default for SpotElevationSpec {
     fn default() -> Self {
-        Self { at: Point::ZERO, elevation_m: 0.0, marker: SpotMarkerKind::Dot, font_size_pt: 7.0, halo: true, prefix_plus: true, suffix_m: true }
+        Self {
+            at: Point::ZERO,
+            elevation_m: 0.0,
+            marker: SpotMarkerKind::Dot,
+            font_size_pt: 7.0,
+            halo: true,
+            prefix_plus: true,
+            suffix_m: true,
+            short_label: false,
+        }
     }
 }
 
@@ -215,6 +229,16 @@ pub fn generate_spot_elevation_geometry(spec: &SpotElevationSpec) -> SpotElevati
             marker_path.line_to(Point::new(spec.at.x + side * 0.4, spec.at.y));
             false
         }
+        SpotMarkerKind::TriangleDown => {
+            // Equilateral triangle side = 7.0 pt standing on its tip at the point
+            let side = 7.0;
+            let h = side * (3.0f64.sqrt() / 2.0);
+            marker_path.move_to(spec.at);
+            marker_path.line_to(Point::new(spec.at.x - side * 0.5, spec.at.y - h));
+            marker_path.line_to(Point::new(spec.at.x + side * 0.5, spec.at.y - h));
+            marker_path.close_path();
+            false
+        }
         SpotMarkerKind::Crosshair => {
             // Target circle r = 3.0 pt + crosshair ticks
             add_circle(&mut marker_path, spec.at, 3.0);
@@ -228,8 +252,17 @@ pub fn generate_spot_elevation_geometry(spec: &SpotElevationSpec) -> SpotElevati
 
     let sign = if spec.prefix_plus && spec.elevation_m > 0.0 { "+" } else { "" };
     let unit = if spec.suffix_m { "m" } else { "" };
-    let text = format!("{}{:.2}{}", sign, spec.elevation_m, unit);
-    let label_pos = Point::new(spec.at.x + 5.0, spec.at.y - 4.0);
+    let whole_dm = ((spec.elevation_m * 10.0).round() - spec.elevation_m * 10.0).abs() < 1e-4;
+    let text = if spec.short_label && whole_dm {
+        format!("{}{:.1}{}", sign, spec.elevation_m, unit)
+    } else {
+        format!("{}{:.2}{}", sign, spec.elevation_m, unit)
+    };
+    let label_pos = match spec.marker {
+        // Beside the triangle, level with its middle.
+        SpotMarkerKind::TriangleDown => Point::new(spec.at.x + 5.5, spec.at.y - 3.0 + spec.font_size_pt * 0.35),
+        _ => Point::new(spec.at.x + 5.0, spec.at.y - 4.0),
+    };
 
     SpotElevationGeometry { marker_path, marker_fill, label_pos, text, font_size_pt: spec.font_size_pt, halo: spec.halo }
 }

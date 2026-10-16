@@ -173,6 +173,13 @@ pub fn tool_for_key(key: &str) -> Option<&'static str> {
     vectorcraft_tools::catalog::all_tools().find(|t| tool_shortcut(t.id).and_then(normalize).as_deref() == Some(n.as_str())).map(|t| t.id)
 }
 
+/// Trowel's archaeology tool whose (effective) shortcut is `key` ("1"): Trowel's window only picks
+/// them ([`vectorcraft_tools::catalog::TROWEL_TOOLS`]).
+pub fn trowel_tool_for_key(key: &str) -> Option<&'static str> {
+    let n = normalize(key)?;
+    vectorcraft_tools::catalog::trowel_tools().find(|t| tool_shortcut(t.id).and_then(normalize).as_deref() == Some(n.as_str())).map(|t| t.id)
+}
+
 /// Command whose effective shortcut is exactly `key` (for single-key command shortcuts: X, D, /).
 pub fn command_for_key(key: &str) -> Option<&'static str> {
     let n = normalize(key)?;

@@ -126,6 +126,9 @@ pub struct Tokens {
     /// Trowel (D3): the mark of a state that is as it should be (the pen as its legend row), the
     /// glyph on it `on_action`.
     pub ok: Color32,
+    /// Trowel (D4): the red of the section marks on paper (the Section Line tool's icon), the same
+    /// in every theme.
+    pub section_mark: Color32,
 }
 
 impl Tokens {
@@ -187,6 +190,7 @@ impl Tokens {
             caution_edge: hex(0x8a6a2a),
             caution_wash: hex(0x3f3524),
             ok: hex(0x45af63),
+            section_mark: hex(0xe8334f),
         };
         match b {
             Brightness::Dark => base,
@@ -347,6 +351,7 @@ impl Tokens {
                 caution_edge: hex(0xd9c27a),
                 caution_wash: hex(0xf7efd6),
                 ok: hex(0x3f6b31),
+                section_mark: hex(0xe8334f),
             },
         }
     }

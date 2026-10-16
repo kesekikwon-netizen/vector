@@ -1,51 +1,86 @@
-//! The tool column: fourteen slots in five groups (design 2.1 §3), the archaeology tools under
-//! them and the fill and stroke at the bottom. A slot shows the tool in hand when it holds it, else
-//! the one last used from it; a long press or a right click opens its other tools (the classic
-//! toolbar's flyout).
+//! The tool column (design 3.0 §4 `.a-tools`, §5 ④): Illustrator's order in four groups, the
+//! archaeology tools under 「고고학」 (keys 1–4) and the view tools last. A slot shows the tool in
+//! hand when it holds it, else the one last used from it; a long press or a right click opens its
+//! other tools (the classic toolbar's flyout). The fill and stroke are the pen's (§5 ⑧), not here.
 
 use serde_json::json;
 
 use super::*;
 
-/// The slots, top to bottom: their tools (first = the slot's own, with Trowel's icon) and whether
-/// a group ends after it.
-const SLOTS: &[(&[&str], &str, bool)] = &[
-    (&["selection"], "tw-select", false),
-    (&["directSelection", "groupSelection", "lasso", "magicWand"], "tw-direct", true),
-    (&["pen", "curvature", "addAnchor", "deleteAnchor", "anchorPoint"], "tw-pen", false),
-    (&["pencil", "smooth", "pathEraser", "join", "paintbrush", "blobBrush"], "tw-pencil", false),
-    (&["lineSegment", "arc", "spiral"], "tw-line", false),
-    (&["rectangle", "roundedRectangle", "ellipse", "polygon", "star"], "tw-rect", false),
-    (&["type", "areaType", "typeOnPath", "verticalType"], "tw-type", true),
-    (&["rotate", "reflect"], "tw-rotate", false),
-    (&["scale", "shear", "reshape", "freeTransform"], "tw-scale", false),
-    (&["scissors", "knife", "eraser"], "tw-scissors", true),
-    (&["livePaintBucket", "livePaintSelection", "shapeBuilder"], "tw-bucket", false),
-    (&["eyedropper", "measure"], "tw-dropper", true),
-    (&["hand", "rotateView"], "tw-hand", false),
-    (&["zoom"], "tw-zoom", false),
+/// One slot: its tools (first = the slot's own, with Trowel's icon) and that icon.
+type Slot = (&'static [&'static str], &'static str);
+
+/// The groups, top to bottom, a line between each two; the archaeology group has its caption.
+const GROUPS: &[(bool, &[Slot])] = &[
+    (false, &[(&["selection"], "tw-select"), (&["directSelection", "groupSelection", "lasso", "magicWand"], "tw-direct")]),
+    (
+        false,
+        &[
+            (&["pen", "curvature", "addAnchor", "deleteAnchor", "anchorPoint"], "tw-pen"),
+            (&["pencil", "smooth", "pathEraser", "join", "paintbrush", "blobBrush"], "tw-pencil"),
+            (&["lineSegment", "arc", "spiral"], "tw-line"),
+            (&["rectangle", "roundedRectangle", "ellipse", "polygon", "star"], "tw-rect"),
+            (&["type", "areaType", "typeOnPath", "verticalType"], "tw-type"),
+        ],
+    ),
+    (
+        false,
+        &[
+            (&["rotate", "reflect"], "tw-rotate"),
+            (&["scale", "shear", "reshape", "freeTransform"], "tw-scale"),
+            (&["scissors", "knife", "eraser"], "tw-scissors"),
+            (&["livePaintBucket", "livePaintSelection", "shapeBuilder"], "tw-bucket"),
+            (&["eyedropper", "measure"], "tw-dropper"),
+        ],
+    ),
+    (
+        true,
+        &[
+            (&["sectionCut", "slopeHachure"], "tw-section-line"),
+            (&["levelLines"], "tw-level"),
+            (&["spotHeight"], "tw-spot-height"),
+            (&["strataLine"], "tw-strata-line"),
+        ],
+    ),
+    (false, &[(&["hand", "rotateView"], "tw-hand"), (&["zoom"], "tw-zoom")]),
 ];
 
-/// A tool's button as in the mockup; a shorter window tightens it.
-const BUTTON: egui::Vec2 = vec2(40.0, 27.0);
+/// A tool's button as in the mockup (`.tl`); a shorter window tightens it.
+const BUTTON: egui::Vec2 = vec2(38.0, 32.0);
 const BUTTON_TIGHT: f32 = 22.0;
-/// The fill and stroke under the tools: the gap above them and their height (including the clear button).
-const PROXY_GAP: f32 = 6.0;
-const PROXY_H: f32 = 58.0;
+/// The room around the buttons: above the first and under the last (`padding`), between two
+/// (`gap`), and either side of the line between groups (`.tsep` margin).
+const PAD: f32 = 8.0;
+const GAP: f32 = 2.0;
+const SEP_MARGIN: f32 = 4.0;
+/// From one group's last button to the next one's first: the gaps, the margins and the line.
+const SEPARATOR: f32 = 2.0 * GAP + 2.0 * SEP_MARGIN + 1.0;
+/// The archaeology group's caption (`.tcap`): above it and its line's height.
+const CAPTION_TOP: f32 = 2.0;
+const CAPTION_H: f32 = 13.0;
+const CAPTION_PT: f32 = 10.0;
+/// The icons' size; the Section Line's (its red marks) is 20.
+const ICON: f32 = 18.0;
+const ICON_SECTION: f32 = 20.0;
 
-/// The archaeology tools (J009): their keys, icons and names.
-/// (`section-line` is in the top Ribbon only so it isn't duplicated here. Find Number, which has
-/// no engine command, and Posthole Depth, which called one that doesn't exist instead of
-/// `trowel.depthMarker`, left with design 3.0 D1; the column's archaeology tools come back in D4.)
-fn arch() -> [(&'static str, &'static str, &'static str); 2] {
-    [("spot-height", "tw-spot-height", tw!("Spot Height")), ("hachure", "tw-hachure", tw!("Slope Hachure"))]
+/// The archaeology tools' names and what they do (design 3.0 §5 ④), for their tooltips.
+fn arch_tip(id: &str) -> Option<(&'static str, &'static str)> {
+    Some(match id {
+        "sectionCut" => (tw!("Section Line"), tw!("Click two points: the A–A′ marks, with the next free letter")),
+        "slopeHachure" => (tw!("Slope Hachure"), tw!("Click a line: slope hachures along it")),
+        "levelLines" => (tw!("Level Lines"), tw!("Click the ground line and type the height there: level lines that stop at it")),
+        "spotHeight" => (tw!("Spot Height"), tw!("Click a point and type its height: ▽ and 32.5m")),
+        "strataLine" => (tw!("Strata Line"), tw!("Draw a layer boundary: its number and a description line come with it. Enter ends it")),
+        _ => return None,
+    })
 }
 
-/// How tall the tools are with buttons `bh` tall: the slots and the lines between their groups,
-/// then the archaeology tools' title and buttons, from the padding at the top.
+/// How tall the tools are with buttons `bh` tall, from the column's top.
 fn tools_height(bh: f32) -> f32 {
-    let lines = SLOTS.iter().filter(|s| s.2).count() as f32;
-    6.0 + SLOTS.len() as f32 * (bh + 1.0) + lines * 7.0 + 4.0 + 12.0 + arch().len() as f32 * (bh + 1.0)
+    let slots: usize = GROUPS.iter().map(|g| g.1.len()).sum();
+    let groups = GROUPS.len() as f32;
+    let captions = GROUPS.iter().filter(|g| g.0).count() as f32;
+    2.0 * PAD + slots as f32 * (bh + GAP) - groups * GAP + (groups - 1.0) * SEPARATOR + captions * (CAPTION_TOP + CAPTION_H + GAP)
 }
 
 pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
@@ -65,15 +100,13 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
             if ui.input(|i| i.pointer.any_pressed()) {
                 ui.data_mut(|d| d.remove::<egui::Id>(held_id()));
             }
-            // The tools as in the mockup with the fill and stroke under them while they fit; then the
-            // buttons tighten; then the tools scroll above the fill and stroke at the column's foot.
-            let room = r.height() - PROXY_GAP - PROXY_H - 8.0;
-            let bh = if tools_height(BUTTON.y) <= room { BUTTON.y } else { BUTTON_TIGHT };
+            // The tools as in the mockup while they fit; then the buttons tighten; then they scroll.
+            let bh = if tools_height(BUTTON.y) <= r.height() { BUTTON.y } else { BUTTON_TIGHT };
             let height = tools_height(bh);
-            let (chosen, proxy_top) = if height <= room {
-                (tools(app, ui, r, r.top(), bh, &t), r.top() + height + PROXY_GAP)
+            let chosen = if height <= r.height() {
+                tools(app, ui, r, r.top(), bh, &t)
             } else {
-                let view = Rect::from_min_max(r.min, pos2(r.right() - 1.0, r.top() + room));
+                let view = Rect::from_min_max(r.min, pos2(r.right() - 1.0, r.bottom()));
                 let mut list = ui.new_child(egui::UiBuilder::new().max_rect(view).layout(egui::Layout::top_down(egui::Align::Min)));
                 list.set_clip_rect(view);
                 let mut chosen = None;
@@ -81,55 +114,13 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
                     let (_, content) = ui.allocate_space(vec2(view.width(), height));
                     chosen = tools(app, ui, r, content.top(), bh, &t);
                 });
-                (chosen, view.bottom() + PROXY_GAP)
+                chosen
             };
-            // Fill and stroke + Clear (없애기) button directly below.
-            let proxy = Rect::from_min_size(pos2(r.left(), proxy_top), vec2(r.width(), 32.0));
-            let mut cell =
-                ui.new_child(egui::UiBuilder::new().id(wid("proxy", ())).max_rect(proxy).layout(egui::Layout::top_down(egui::Align::Center)));
-            crate::panels::proxy(app, &mut cell, 30.0);
-
-            let none_rect = Rect::from_min_size(pos2(r.center().x - 22.0, proxy_top + 34.0), vec2(44.0, 18.0));
-            let none_resp =
-                ui.interact(none_rect, wid("proxy-none", ()), Sense::click()).on_hover_text("안에 채운 색 / 선 색 없애기 (단축키: Delete 또는 /)");
-            let none_fill = if none_resp.hovered() { t.hover } else { t.button };
-            ui.painter().rect(none_rect, CornerRadius::same(4), none_fill, Stroke::new(1.0, t.border), StrokeKind::Inside);
-            let chip = Rect::from_min_size(pos2(none_rect.left() + 3.0, none_rect.center().y - 4.0), vec2(8.0, 8.0));
-            ui.painter().rect(chip, CornerRadius::same(1), t.input, Stroke::new(1.0, t.border), StrokeKind::Inside);
-            ui.painter()
-                .line_segment([pos2(chip.left() + 1.0, chip.bottom() - 1.0), pos2(chip.right() - 1.0, chip.top() + 1.0)], Stroke::new(1.4, t.clay));
-            text(ui, pos2(none_rect.left() + 13.0, none_rect.center().y), Align2::LEFT_CENTER, "없애기", font(9.0), t.text);
-            if none_resp.clicked() {
-                let (fill_paint, _) = crate::panels::current_paints(app);
-                let has_fill = !matches!(fill_paint, vectorcraft_color::Paint::None);
-                if app.session.fill_active || has_fill {
-                    let _ = app.run("paint.setFill", json!({ "none": true }));
-                } else {
-                    let _ = app.run("paint.none", json!({}));
-                }
-            } else if none_resp.secondary_clicked() {
-                let _ = app.run("paint.setStroke", json!({ "none": true }));
-            }
-
             match chosen {
                 Some(Pick::Tool(id)) => app.select_tool(&id),
                 Some(Pick::Options(id)) => {
                     app.select_tool(&id);
                     app.run("tool.options", json!({ "tool": id })).ok();
-                }
-                Some(Pick::Arch(key)) => {
-                    let res = match key {
-                        // Near the middle of the view, at the elevation the drawing set sets.
-                        "spot-height" => {
-                            let at = place_symbol_at(app, &ctx, [0.0, 0.0]);
-                            app.run("trowel.spotElevation", json!({ "at": at, "elevation": datum_elevation_m(&ctx) }))
-                        }
-                        "hachure" => app.run("trowel.slopeHachures", json!({})),
-                        _ => Ok(json!({})),
-                    };
-                    if let Err(e) = res {
-                        app.status_error(e);
-                    }
                 }
                 None => {}
             }
@@ -139,51 +130,49 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         });
 }
 
-/// The slots and the archaeology tools in the column `r`, from `top`, their buttons `bh` tall.
-/// Returns what a press picked.
+/// The groups in the column `r`, from `top`, their buttons `bh` tall. Returns what a press picked.
 fn tools(app: &mut VectorcraftApp, ui: &Ui, r: Rect, top: f32, bh: f32, t: &Tokens) -> Option<Pick> {
     let active = app.session.tool_id().to_string();
-    let x = r.center().x - BUTTON.x / 2.0;
-    let mut y = top + 6.0;
+    // Centred left of the column's edge line.
+    let mid = r.left() + (r.width() - 1.0) / 2.0;
+    let x = mid - BUTTON.x / 2.0;
+    let mut y = top + PAD;
     let mut chosen = None;
-    for (tools, icon, group_ends) in SLOTS {
-        let key = tools.first().copied().unwrap_or_default();
-        // The tool last used from the slot, kept with the classic toolbar's (apart from them).
-        let memory = format!("trowel/{key}");
-        let on = tools.contains(&active.as_str());
-        if on {
-            app.ui.slot_tool.insert(memory.clone(), active.clone());
+    for (i, (captioned, slots)) in GROUPS.iter().enumerate() {
+        if i > 0 {
+            ui.painter().hline((mid - 14.0)..=(mid + 14.0), y + GAP + SEP_MARGIN + 0.5, Stroke::new(1.0, t.border));
+            y += SEPARATOR;
         }
-        let shown = if on {
-            active.clone()
-        } else {
-            app.ui.slot_tool.get(&memory).filter(|s| tools.contains(&s.as_str())).cloned().unwrap_or_else(|| key.to_string())
-        };
-        let rect = Rect::from_min_size(pos2(x, y), vec2(BUTTON.x, bh));
-        if let Some(pick) = slot(app, ui, tools, icon, &shown, rect, on, t) {
-            chosen = Some(pick);
+        if *captioned {
+            y += CAPTION_TOP;
+            // 10 points as in the mockup (「고고학」); a longer word in another language smaller, to fit.
+            let caption = tw!("Archaeology");
+            let room = r.width() - 4.0;
+            let wide = width_of(ui, caption, font(CAPTION_PT));
+            let size = if wide > room { (CAPTION_PT * room / wide).max(7.0) } else { CAPTION_PT };
+            text(ui, pos2(mid, y + CAPTION_H / 2.0), Align2::CENTER_CENTER, caption, font(size), t.text_dim);
+            y += CAPTION_H + GAP;
         }
-        y = rect.bottom() + 1.0;
-        if *group_ends {
-            ui.painter().hline((r.center().x - 14.0)..=(r.center().x + 14.0), y + 3.5, Stroke::new(1.0, t.border));
-            y += 7.0;
+        for (tools, icon) in slots.iter() {
+            let key = tools.first().copied().unwrap_or_default();
+            // The tool last used from the slot, kept with the classic toolbar's (apart from them).
+            let memory = format!("trowel/{key}");
+            let on = tools.contains(&active.as_str());
+            if on {
+                app.ui.slot_tool.insert(memory.clone(), active.clone());
+            }
+            let shown = if on {
+                active.clone()
+            } else {
+                app.ui.slot_tool.get(&memory).filter(|s| tools.contains(&s.as_str())).cloned().unwrap_or_else(|| key.to_string())
+            };
+            let rect = Rect::from_min_size(pos2(x, y), vec2(BUTTON.x, bh));
+            if let Some(pick) = slot(app, ui, tools, icon, &shown, rect, on, t) {
+                chosen = Some(pick);
+            }
+            y = rect.bottom() + GAP;
         }
-    }
-    // The archaeology tools (J009): their group title and buttons.
-    y += 4.0;
-    text(ui, pos2(r.center().x, y + 5.0), Align2::CENTER_CENTER, tw!("Archaeology"), font(9.0), t.text_dim);
-    y += 12.0;
-    for (key, icon, label) in arch() {
-        let rect = Rect::from_min_size(pos2(x, y), vec2(BUTTON.x, bh));
-        let resp = ui.interact(rect, wid("arch", key), Sense::click()).on_hover_text(label);
-        if resp.hovered() {
-            ui.painter().rect_filled(rect, CornerRadius::same(7), t.hover);
-        }
-        crate::icons::paint(ui, icon, Rect::from_center_size(rect.center(), vec2(19.0, 19.0)), t.icon);
-        if resp.clicked() {
-            chosen = Some(Pick::Arch(key));
-        }
-        y = rect.bottom() + 1.0;
+        y -= GAP;
     }
     chosen
 }
@@ -198,8 +187,6 @@ enum Pick {
     Tool(String),
     /// A double click: the tool and its options.
     Options(String),
-    /// One of the archaeology tools (J009).
-    Arch(&'static str),
 }
 
 /// One slot's button at `rect`, showing tool `shown` (the slot's own `icon` when it is the first).
@@ -214,12 +201,17 @@ fn slot(app: &mut VectorcraftApp, ui: &Ui, tools: &[&'static str], icon: &str, s
     } else {
         Color32::TRANSPARENT
     };
-    ui.painter().rect_filled(rect, CornerRadius::same(8), fill);
+    ui.painter().rect_filled(rect, CornerRadius::same(7), fill);
     let info = vectorcraft_tools::tool_info(shown);
     let glyph = if shown == key { icon } else { info.map_or(icon, |i| crate::icons::tool_icon(i.icon)) };
-    crate::icons::paint(ui, glyph, Rect::from_center_size(rect.center(), vec2(19.0, 19.0)), if on { t.icon_on } else { t.icon });
+    let size = if glyph == "tw-section-line" { ICON_SECTION } else { ICON };
+    let icon_rect = Rect::from_center_size(rect.center(), vec2(size, size));
+    crate::icons::paint(ui, glyph, icon_rect, if on { t.icon_on } else { t.icon });
+    if glyph == "tw-section-line" {
+        section_marks(ui, icon_rect, t);
+    }
     if let Some(sc) = crate::shortcut_editor::tool_shortcut(shown) {
-        text(ui, rect.right_bottom() - vec2(2.0, 1.0), Align2::RIGHT_BOTTOM, sc, mono(8.0), if on { t.icon_on } else { t.text_disabled });
+        text(ui, rect.right_bottom() - vec2(2.0, 1.0), Align2::RIGHT_BOTTOM, sc, mono(9.0), if on { t.icon_on } else { t.text_disabled });
     }
     // A right press or a long one opens the slot's other tools; a slot torn off into its own strip
     // comes to the front instead.
@@ -235,7 +227,13 @@ fn slot(app: &mut VectorcraftApp, ui: &Ui, tools: &[&'static str], icon: &str, s
         }
     }
     let held = ui.data(|d| d.get_temp::<egui::Id>(held_id())) == Some(resp.id);
-    let tip = info.map(crate::toolbar::tip).unwrap_or_default();
+    let tip = match arch_tip(shown) {
+        Some((name, what)) => {
+            let sc = crate::shortcut_editor::tool_shortcut(shown).map(|k| format!(" ({k})")).unwrap_or_default();
+            format!("{name}{sc}\n{what}")
+        }
+        None => info.map(crate::toolbar::tip).unwrap_or_default(),
+    };
     // Its other tools, for those who don't know to look.
     let tip = if tools.len() > 1 { format!("{tip}\n{}", tw!("Press and hold for more tools")) } else { tip };
     let resp = resp.on_hover_text(tip);
@@ -248,5 +246,15 @@ fn slot(app: &mut VectorcraftApp, ui: &Ui, tools: &[&'static str], icon: &str, s
         Some(Pick::Tool(shown.to_string()))
     } else {
         None
+    }
+}
+
+/// The Section Line icon's two marks in the section marks' red (the mockup's `#i-secline`), over
+/// the icon drawn at `r` (24 units across).
+fn section_marks(ui: &Ui, r: Rect, t: &Tokens) {
+    let unit = r.width() / 24.0;
+    for left in [2.5, 17.5] {
+        let mark = Rect::from_min_size(r.min + vec2(left, 10.0) * unit, vec2(4.0, 4.0) * unit);
+        ui.painter().rect_filled(mark, CornerRadius::ZERO, t.section_mark);
     }
 }

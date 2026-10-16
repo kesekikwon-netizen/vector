@@ -83,6 +83,12 @@ pub fn open_tool_dialog(app: &mut VectorcraftApp, kind: &str, p: Value) {
             }
             return;
         }
+        // The tool column's Level Lines and Spot Height: the height box; their clicks on nothing:
+        // what to click.
+        vectorcraft_tools::trowel::ASK_LEVEL | vectorcraft_tools::trowel::ASK_SPOT | vectorcraft_tools::trowel::HINT => {
+            crate::trowel::ask::open(app, kind, &p);
+            return;
+        }
         _ => return,
     };
     app.ui.dialog = Some(d);

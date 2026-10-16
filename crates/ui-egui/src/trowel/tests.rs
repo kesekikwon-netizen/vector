@@ -14,8 +14,8 @@ use crate::theme::Tokens;
 /// The ribbon's tiles, left to right (design 3.0 §5 ③: nine in four groups).
 const TILES: [&str; 9] = ["new", "open", "save", "underlay", "align", "scale", "legend", "plate", "export"];
 
-/// The tool column's slots, top to bottom, by their first tool.
-const SLOTS: [&str; 14] = [
+/// The tool column's slots, top to bottom, by their first tool (design 3.0 §5 ④).
+const SLOTS: [&str; 18] = [
     "selection",
     "directSelection",
     "pen",
@@ -28,13 +28,16 @@ const SLOTS: [&str; 14] = [
     "scissors",
     "livePaintBucket",
     "eyedropper",
+    "sectionCut",
+    "levelLines",
+    "spotHeight",
+    "strataLine",
     "hand",
     "zoom",
 ];
 
-/// The archaeology tools under them (Find Number and Posthole Depth left with design 3.0 D1: the
-/// engine has no commands for them).
-const ARCH: [&str; 2] = ["spot-height", "hachure"];
+/// The archaeology tools' slots under 「고고학」, keys 1–4 (design 3.0 D4).
+const ARCH: [&str; 4] = ["sectionCut", "levelLines", "spotHeight", "strataLine"];
 
 /// Text painted in the last frame: what it says, where and in what colour, and the part of it
 /// that shows (inside its clip).
@@ -113,6 +116,18 @@ impl Harness {
             })
             .collect();
         self.shapes = out.shapes;
+    }
+
+    /// Where the document point (`x`, `y`) shows on the canvas.
+    fn on_screen(&self, x: f64, y: f64) -> Pos2 {
+        let xf = crate::canvas::Xf::new(self.app.canvas_rect.unwrap(), self.app.view().unwrap());
+        xf.to_screen(vectorcraft_geom::Point::new(x, y))
+    }
+
+    /// What the text field `id` holds.
+    fn field_text(&self, id: egui::Id) -> Option<String> {
+        let _ = self.rect(id)?;
+        self.app.ui.trowel_ask.as_ref().and_then(|a| a.text.clone())
     }
 
     /// A few frames with nothing new, so what the last one changed is laid out and seen.
@@ -395,21 +410,22 @@ fn regions_match_the_mockup_at_1600_by_988() {
         (MENU, r(0.0, 32.0, 1600.0, 60.0)),
         (RIBBON, r(0.0, 60.0, 1600.0, 146.0)),
         (STATUS, r(0.0, 960.0, 1600.0, 988.0)),
-        (TOOLS, r(0.0, 146.0, 56.0, 960.0)),
-        (SET, r(56.0, 146.0, 272.0, 960.0)),
+        (TOOLS, r(0.0, 146.0, 50.0, 960.0)),
+        (SET, r(50.0, 146.0, 266.0, 960.0)),
         (RIGHT, r(1296.0, 146.0, 1600.0, 960.0)),
     ];
     for (id, rect) in want {
         assert!(close(h.panel(id), rect), "{id}: {:?}, the mockup {rect:?}", h.panel(id));
     }
     assert!(egui::PanelState::load(&h.ctx, egui::Id::new("trowel-control")).is_none(), "no Control bar");
-    // The canvas region is 1024 × 814 under the 34-point tabs; the rulers take 16 points of it.
+    // The canvas region is 1030 × 814 under the 34-point tabs (the tool column is 50, the drawing
+    // set keeps its 216 until D5); the rulers take 16 points of it.
     let canvas = h.app.canvas_rect.unwrap();
-    assert!(close(canvas, r(288.0, 196.0, 1296.0, 960.0)), "{canvas:?}");
+    assert!(close(canvas, r(282.0, 196.0, 1296.0, 960.0)), "{canvas:?}");
     // Full screen with menu bar off: no caption, menu or ribbon.
     h.app.ui.screen_mode = 2;
     h.settle();
-    assert!(close(h.app.canvas_rect.unwrap(), r(288.0, 50.0, 1296.0, 960.0)), "{:?}", h.app.canvas_rect);
+    assert!(close(h.app.canvas_rect.unwrap(), r(282.0, 50.0, 1296.0, 960.0)), "{:?}", h.app.canvas_rect);
     // Full screen: the canvas alone.
     h.app.ui.screen_mode = 3;
     h.settle();
@@ -610,10 +626,10 @@ fn the_control_bar_is_gone_in_trowel() {
     assert_eq!(crate::menus::checked(&h.app, "window.control", &json!({})), Some(h.app.ui.control_bar));
 }
 
-/// Smaller windows keep every tile and tool and the fill and stroke in reach: a 1920 × 1080 screen
-/// at 125 % less the task bar, a 1440 × 900 laptop's, a 1366 × 768 one's, the smallest window. The
-/// ribbon's nine tiles fit them all, Find a Command folding to its magnifier in the smallest; the
-/// tool column tightens, then scrolls above the fill and stroke, which stay at its foot.
+/// Smaller windows keep every tile and tool in reach: a 1920 × 1080 screen at 125 % less the task
+/// bar, a 1440 × 900 laptop's, a 1366 × 768 one's, the smallest window. The ribbon's nine tiles fit
+/// them all, Find a Command folding to its magnifier in the smallest; the tool column tightens,
+/// then scrolls.
 #[test]
 fn small_windows_keep_every_tile_and_tool_in_reach() {
     for (w, height) in [(1536.0, 816.0), (1440.0, 900.0), (1366.0, 728.0), (800.0, 500.0)] {
@@ -629,25 +645,22 @@ fn small_windows_keep_every_tile_and_tool_in_reach() {
         };
         let hidden: Vec<_> = TILES.iter().filter(|k| !tile_shown(&h, k)).collect();
         assert!(hidden.is_empty(), "{w}: tiles cut off {hidden:?}");
-        // The fill and stroke stay at the foot of the column, the tools above them.
-        let fill = h.rect(wid("proxy", ()).with("fill-proxy")).unwrap_or_else(|| panic!("{w}: the fill and stroke"));
-        assert!(column.contains_rect(fill), "{w}: {fill:?} in {column:?}");
-        let tool_shown = |h: &Harness, id: egui::Id| {
-            let r = h.rect(id).unwrap_or_else(|| panic!("{w}: no {id:?}"));
-            column.contains_rect(r) && r.bottom() <= fill.top()
-        };
-        let all: Vec<egui::Id> = SLOTS.iter().map(|k| wid("tool", k)).chain(ARCH.iter().map(|k| wid("arch", k))).collect();
-        // From 1366 × 728 the whole column fits, tightened (two tools fewer since design 3.0 D1):
-        // its 500 points less the fill and stroke leave 428, and 14 slots, 4 lines and 2
-        // archaeology tools at 22 points take 418 (464 with four).
+        // No fill and stroke at the column's foot (design 3.0 §5 ④: they are the pen's).
+        assert!(h.rect(wid("proxy", ()).with("fill-proxy")).is_none() && h.rect(wid("proxy-none", ())).is_none(), "{w}");
+        let tool_shown = |h: &Harness, id: egui::Id| column.contains_rect(h.rect(id).unwrap_or_else(|| panic!("{w}: no {id:?}")));
+        let all: Vec<egui::Id> = SLOTS.iter().map(|k| wid("tool", k)).collect();
+        // The mockup's 687 points fit 1440 × 900's 726. From 1366 × 728 the whole column fits
+        // tightened: 18 slots at 22 points, 4 lines and the caption take 507 of its 554.
+        let sizes: Vec<f32> = all.iter().filter_map(|id| h.rect(*id)).map(|r| r.height()).collect();
+        assert!(sizes.iter().all(|s| *s == if height >= 900.0 { 32.0 } else { 22.0 }), "{w}: {sizes:?}");
         if height >= 728.0 {
             let hidden: Vec<_> = all.iter().filter(|id| !tool_shown(&h, **id)).collect();
             assert!(hidden.is_empty(), "{w}: tools cut off {hidden:?}");
         } else {
-            let last = wid("arch", "hachure");
+            let last = wid("tool", "zoom");
             assert!(tool_shown(&h, wid("tool", "selection")) && !tool_shown(&h, last), "{w}: the column scrolls");
             h.wheel(h.rect(wid("tool", "selection")).unwrap().center(), vec2(0.0, -4000.0));
-            assert!(tool_shown(&h, last) && tool_shown(&h, wid("tool", "zoom")), "{w}: the wheel brings the last tools in");
+            assert!(tool_shown(&h, last) && tool_shown(&h, wid("tool", "strataLine")), "{w}: the wheel brings the last tools in");
         }
         // Find a Command still opens the command palette.
         h.click(wid("find", ()));
@@ -755,23 +768,47 @@ fn the_tabs_never_overlap() {
     }
 }
 
+/// The tool column as in the mockup (design 3.0 §4 `.a-tools`, §5 ④): 50 wide, buttons 38 × 32
+/// two apart, a line 4 above and under between groups, 「고고학」 over the archaeology tools 1–4,
+/// the keys at the buttons' bottom right; no fill and stroke at its foot.
 #[test]
 fn tool_column_has_the_mockup_groups() {
     let mut h = Harness::new();
-    let primaries = SLOTS;
     let column = h.panel(TOOLS);
-    let rects: Vec<Rect> = primaries.iter().map(|p| h.rect(wid("tool", p)).unwrap_or_else(|| panic!("no tool {p}"))).collect();
-    for (p, rect) in primaries.iter().zip(&rects) {
-        assert_eq!(rect.size(), vec2(40.0, 27.0), "{p}");
-        assert!(column.contains_rect(*rect), "{p} in the column");
+    assert_eq!(column.width(), 50.0);
+    let rects: Vec<Rect> = SLOTS.iter().map(|p| h.rect(wid("tool", p)).unwrap_or_else(|| panic!("no tool {p}"))).collect();
+    // The buttons' tops below the column's, measured in the mockup at 1600 × 988.
+    let tops = [8.0, 42.0, 87.0, 121.0, 155.0, 189.0, 223.0, 268.0, 302.0, 336.0, 370.0, 404.0, 466.0, 500.0, 534.0, 568.0, 613.0, 647.0];
+    for ((p, rect), top) in SLOTS.iter().zip(&rects).zip(tops) {
+        assert_eq!(rect.size(), vec2(38.0, 32.0), "{p}");
+        assert_eq!((rect.left() - column.left(), rect.top() - column.top()), (5.5, top), "{p}");
     }
-    assert!(rects.windows(2).all(|w| w[0].bottom() <= w[1].top()), "top to bottom as in the mockup");
-    // The groups part after V A, after T, after C and after I.
-    let gap = |a: usize| rects[a + 1].top() - rects[a].bottom();
-    for a in [1, 6, 9, 11] {
-        assert!(gap(a) > 4.0, "a separator after {}", primaries[a]);
+    // The lines between the groups: after V A, after T, after I and after 4.
+    let lines: Vec<f32> = h
+        .segments_in(column)
+        .iter()
+        .filter(|(p, _)| (p[0].y - p[1].y).abs() < 0.1 && (p[1].x - p[0].x).abs() > 20.0)
+        .map(|(p, _)| p[0].y - column.top())
+        .collect();
+    assert_eq!(lines, [80.5, 261.5, 442.5, 606.5], "{lines:?}");
+    // 「고고학」 over the archaeology tools; their keys 1–4, as the other tools' letters.
+    let caption = h.texts.iter().find(|p| p.text == "Archaeology" && column.contains_rect(p.rect)).expect("the caption");
+    assert!(caption.rect.top() > rects[11].bottom() && caption.rect.bottom() < rects[12].top(), "{:?}", caption.rect);
+    // 10 points; English's longer word smaller, to fit the 50 points.
+    assert!(caption.font.size <= 10.0 && caption.font.size >= 7.0, "{:?}", caption.font);
+    for (tool, key) in ARCH.iter().zip(["1", "2", "3", "4"]).chain([(&"pen", "P"), (&"zoom", "Z")]) {
+        let r = h.rect(wid("tool", tool)).unwrap();
+        assert_eq!(h.texts_in(r), [key], "{tool}");
+        assert_eq!(h.font_of(key, r), Some(mono(9.0)), "{tool}");
     }
-    assert!(gap(0) < 2.0 && gap(3) < 2.0);
+    // The Section Line's two marks in the section marks' red.
+    let t = h.tokens();
+    let marks = h.rects_in(rects[12]).into_iter().filter(|(_, fill, _)| *fill == t.section_mark).count();
+    assert_eq!(marks, 2);
+    // No fill and stroke, no Clear button (the pen has the colours).
+    assert!(h.rect(wid("proxy", ()).with("fill-proxy")).is_none() && h.rect(wid("proxy-none", ())).is_none());
+    assert!(h.rect(wid("arch", "spot-height")).is_none() && h.rect(wid("arch", "hachure")).is_none(), "the old buttons left");
+
     h.click(wid("tool", "pen"));
     assert_eq!(h.app.session.tool_id(), "pen");
     // The Pen slot keeps the tool last used in it.
@@ -781,25 +818,26 @@ fn tool_column_has_the_mockup_groups() {
     assert_eq!(h.app.session.tool_id(), "selection");
     h.click(wid("tool", "pen"));
     assert_eq!(h.app.session.tool_id(), "curvature");
-    // A right click opens the slot's flyout.
+    // A right click opens the slot's flyout; the Section Line's has Slope Hachure.
     let at = h.rect(wid("tool", "pen")).unwrap().center();
     h.press(at, PointerButton::Secondary);
     assert!(h.app.ui.flyout.is_some(), "the Pen slot's flyout");
-    // The archaeology tools under them.
-    for a in ARCH {
-        let rect = h.rect(wid("arch", a)).unwrap_or_else(|| panic!("no {a}"));
-        assert!(column.contains_rect(rect) && rect.top() > rects[13].bottom(), "{a} under the tools");
-    }
-    for gone in ["find-number", "posthole"] {
-        assert!(h.rect(wid("arch", gone)).is_none(), "{gone}: no command for it yet (design 3.0 D1)");
-    }
-    // Spot Height puts one near the middle of the view and hands over the Selection tool to move
-    // it, as the set's one-click elements do (it sent `x`, `y` without `at` and drew nothing).
     h.app.ui.flyout = None;
-    let before = h.app.session.active().unwrap().doc.node_count();
-    h.click(wid("arch", "spot-height"));
-    assert!(h.app.session.active().unwrap().doc.node_count() > before, "a spot height: {}", h.app.ui.status);
-    assert_eq!(h.app.session.tool_id(), "selection");
+    h.settle();
+    h.press(rects[12].center(), PointerButton::Secondary);
+    let flyout = h.ctx.data(|d| d.get_temp::<Vec<String>>(egui::Id::new("flyout-tools")));
+    assert_eq!(flyout, Some(vec!["sectionCut".to_string(), "slopeHachure".to_string()]));
+    h.app.ui.flyout = None;
+    h.settle();
+    // The archaeology tools are tools: a click picks one, and the slot shows it chosen.
+    for tool in ARCH {
+        h.click(wid("tool", tool));
+        assert_eq!(h.app.session.tool_id(), tool);
+        assert_eq!(h.fill_at(h.rect(wid("tool", tool)).unwrap()), Some(t.tool_active), "{tool}");
+    }
+    // Their tooltips say what they do.
+    h.rest_at(rects[13].center());
+    assert!(h.texts.iter().any(|p| p.text.starts_with("Level Lines (2)\nClick the ground line")), "the tooltip");
 }
 
 #[test]
@@ -4286,18 +4324,147 @@ fn every_one_click_button_draws_without_error() {
     h.app.session.active().unwrap().doc.walk(|n| datums.extend(n.elevation.as_ref().map(|e| e.datum_m)));
     assert!(datums.contains(&95.5), "level lines at the datum: {datums:?}");
 
-    // The tool column: Spot Height at the elevation the drawing set's field set; Slope Hachure along
-    // the selected top line.
+    // The tool column's Spot Height and Slope Hachure are tools now (design 3.0 D4): a click on the
+    // canvas, its height box starting at the elevation the drawing set's field set; a click on a
+    // line.
+    h.click(wid("tool", "spotHeight"));
+    h.click_at(h.on_screen(200.0, 60.0));
+    assert_eq!(h.field_text(wid("ask-field", ())), Some("95.5".to_string()), "the last height");
     let (before, seq) = (h.node_count(), h.app.ui.status_seq);
-    h.click(wid("arch", "spot-height"));
+    h.key(egui::Key::Enter);
     check(&mut h, "spot height", before, seq);
     let st = h.app.session.active().unwrap();
     let spot = st.selection.objects.first().and_then(|id| st.doc.node(*id)).map(|n| n.display_name());
-    assert!(spot.as_deref().is_some_and(|n| n.contains("95.50")), "{spot:?}");
+    assert!(spot.as_deref().is_some_and(|n| n.contains("95.5")), "{spot:?}");
     let top = h.app.run("shape.line", json!({ "x1": 50.0, "y1": 50.0, "x2": 250.0, "y2": 80.0 })).unwrap();
-    h.app.run("select.set", json!({ "ids": [top["id"]] })).unwrap();
+    h.app.run("select.none", json!({})).unwrap();
+    h.app.select_tool("slopeHachure");
     h.settle();
     let (before, seq) = (h.node_count(), h.app.ui.status_seq);
-    h.click(wid("arch", "hachure"));
+    h.click_at(h.on_screen(150.0, 65.0));
     check(&mut h, "slope hachure", before, seq);
+    assert!(top["id"].as_u64().is_some());
+}
+
+/// The names the drawing's objects have, in document order.
+fn object_names(h: &Harness) -> Vec<String> {
+    let mut v = vec![];
+    h.app.session.active().unwrap().doc.walk(|n| v.extend(n.name.clone()));
+    v
+}
+
+/// Keys 1–4 pick the archaeology tools in Trowel's window and the classic window's digits pick
+/// none (design 3.0 §5 ④, D4 criterion 6); the pen bar shows for the Section Line and the Strata
+/// Line as for the Pen.
+#[test]
+fn digits_pick_the_archaeology_tools_in_trowel_only() {
+    let mut h = Harness::new();
+    let digit = |h: &mut Harness, d: &str, key: egui::Key| {
+        let modifiers = egui::Modifiers::default();
+        h.frame(vec![Event::Key { key, physical_key: Some(key), pressed: true, repeat: false, modifiers }, Event::Text(d.into())]);
+        h.frame(vec![Event::Key { key, physical_key: Some(key), pressed: false, repeat: false, modifiers }]);
+        h.settle();
+    };
+    use egui::Key::{Num1, Num2, Num3, Num4};
+    for (d, key, tool, penbar) in
+        [("1", Num1, "sectionCut", true), ("2", Num2, "levelLines", false), ("3", Num3, "spotHeight", false), ("4", Num4, "strataLine", true)]
+    {
+        digit(&mut h, d, key);
+        assert_eq!(h.app.session.tool_id(), tool, "{d}");
+        assert_eq!(canvas_penbar::is_visible(&h.app), penbar, "{tool}");
+    }
+    // The classic window: a digit is no tool's key.
+    h.app.ui.trowel = false;
+    h.app.select_tool("selection");
+    h.settle();
+    digit(&mut h, "1", Num1);
+    assert_eq!(h.app.session.tool_id(), "selection");
+}
+
+/// Design 3.0 §8 steps 5, 7 and 8 with the tool column alone (D4 criterion 7): A–A′ across the
+/// plan with the Section Line, level lines from a click on the ground line at 32.5 m with their
+/// datum tick, three layer boundaries ended with Enter, a double-click and the pen bar, with their
+/// numbers and description lines, and a spot height. Each is one undo step.
+#[test]
+fn the_archaeology_tools_draw_the_eighth_chapter() {
+    let mut h = Harness::new();
+    // 5: two clicks, the preview with the letter between them.
+    h.click(wid("tool", "sectionCut"));
+    h.click_at(h.on_screen(40.0, 150.0));
+    h.frame(vec![Event::PointerMoved(h.on_screen(360.0, 150.0))]);
+    h.settle();
+    assert!(h.texts.iter().any(|p| p.text == "A–A′"), "the preview's letter");
+    h.click_at(h.on_screen(360.0, 150.0));
+    assert!(object_names(&h).iter().any(|n| n == "단면 기호 A–A′"), "{:?}", object_names(&h));
+
+    // 7: the ground line (drawn with the legend's section line row), then Level Lines on it.
+    let anchors = json!([{"x": 20, "y": 200}, {"x": 120, "y": 200}, {"x": 200, "y": 260}, {"x": 280, "y": 200}, {"x": 380, "y": 200}]);
+    h.app.run("path.create", json!({ "anchors": anchors })).unwrap();
+    h.app.run("select.none", json!({})).unwrap();
+    h.click(wid("tool", "levelLines"));
+    h.click_at(h.on_screen(200.0, 100.0));
+    assert_eq!((h.app.ui.status.as_str(), h.app.ui.trowel_ask.is_none()), ("Click the ground line", true), "a click on nothing");
+    h.click_at(h.on_screen(160.0, 230.0));
+    assert!(h.rect(wid("ask-field", ())).is_some(), "the height box");
+    assert!(h.texts.iter().any(|p| p.text == "Height here"), "its title");
+    let before = h.node_count();
+    h.type_into(wid("ask-field", ()), "32.5");
+    assert!(h.app.ui.trowel_ask.is_none(), "{}", h.app.ui.status);
+    assert!(object_names(&h).iter().any(|n| n == "단면 해발 눈금 (32.5m)"), "the datum tick: {:?}", object_names(&h));
+    let mut levels = vec![];
+    h.app.session.active().unwrap().doc.walk(|n| levels.extend(n.elevation.as_ref().map(|e| e.datum_m)));
+    assert_eq!(levels.len(), 1, "level lines");
+    h.app.run("edit.undo", json!({})).unwrap();
+    assert_eq!(h.node_count(), before, "one undo step");
+    h.app.run("edit.redo", json!({})).unwrap();
+
+    // 8: three boundaries.
+    h.click(wid("tool", "strataLine"));
+    for (x, y) in [(20.0, 215.0), (200.0, 240.0), (380.0, 215.0)] {
+        h.click_at(h.on_screen(x, y));
+    }
+    h.key(egui::Key::Enter);
+    h.click_at(h.on_screen(60.0, 230.0));
+    let end = h.on_screen(340.0, 230.0);
+    h.click_at(end);
+    h.click_at(end);
+    h.click_at(h.on_screen(100.0, 245.0));
+    h.click_at(h.on_screen(300.0, 245.0));
+    h.click(wid("penbar", "finish"));
+    let names = object_names(&h);
+    for n in ["토층선 Ⅰ", "토층선 Ⅱ", "토층선 Ⅲ", "층위 번호 Ⅰ", "층위 번호 Ⅲ", "토층설명 7p"] {
+        assert!(names.iter().any(|m| m == n), "{n}: {names:?}");
+    }
+    let st = h.app.session.active().unwrap();
+    let mut notes = vec![];
+    st.doc.walk(|n| {
+        if let (Some(name), vectorcraft_doc::NodeKind::Text(t)) = (&n.name, &n.kind)
+            && name.starts_with("토층설명 ")
+        {
+            notes.push(t.plain_text());
+        }
+    });
+    assert_eq!(notes, ["Ⅰ층 : ", "Ⅱ층 : ", "Ⅲ층 : "]);
+    assert_eq!(st.doc.stratigraphy_tables.first().map(|t| t.layers.len()), Some(3));
+
+    // 3: a spot height, its box starting at the last height.
+    h.click(wid("tool", "spotHeight"));
+    h.click_at(h.on_screen(300.0, 120.0));
+    assert_eq!(h.field_text(wid("ask-field", ())), Some("32.5".to_string()));
+    h.key(egui::Key::Enter);
+    let mut spot = None;
+    h.app.session.active().unwrap().doc.walk(|n| {
+        if let vectorcraft_doc::NodeKind::Text(t) = &n.kind
+            && t.plain_text() == "32.5m"
+        {
+            spot = Some(n.id);
+        }
+    });
+    assert!(spot.is_some(), "▽ 32.5m: {}", h.app.ui.status);
+    // Undo: the spot height, then the third boundary with its number, line and row.
+    h.app.run("edit.undo", json!({})).unwrap();
+    h.app.run("edit.undo", json!({})).unwrap();
+    let names = object_names(&h);
+    assert!(names.iter().any(|m| m == "토층선 Ⅱ") && !names.iter().any(|m| m.ends_with('Ⅲ')), "{names:?}");
+    assert_eq!(h.app.session.active().unwrap().doc.stratigraphy_tables.first().map(|t| t.layers.len()), Some(2));
 }

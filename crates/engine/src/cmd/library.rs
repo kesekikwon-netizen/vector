@@ -904,7 +904,7 @@ fn use_item(s: &mut Session, p: &Value) -> Result<Value> {
 
 /// Run `f`'s commands as one undo step (undone together when it fails), unless an undo group is
 /// already open (its own step then holds them).
-fn in_one_step<T>(s: &mut Session, f: impl FnOnce(&mut Session) -> Result<T>) -> Result<T> {
+pub(crate) fn in_one_step<T>(s: &mut Session, f: impl FnOnce(&mut Session) -> Result<T>) -> Result<T> {
     let open = s.active().is_some_and(|st| st.undo_group.is_some());
     if !open {
         s.begin_undo_group();

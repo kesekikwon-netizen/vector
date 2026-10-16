@@ -508,7 +508,9 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context) {
             let _ = app.run(id, json!({}));
             continue;
         }
-        if let Some(t) = lookup(crate::shortcut_editor::tool_for_key) {
+        // Trowel's archaeology tools (1–4) in Trowel's window only.
+        let trowel = app.ui.trowel.then(|| lookup(crate::shortcut_editor::trowel_tool_for_key)).flatten();
+        if let Some(t) = lookup(crate::shortcut_editor::tool_for_key).or(trowel) {
             if t == "zoom" && app.spring_zoom.is_some() {
                 continue;
             }
