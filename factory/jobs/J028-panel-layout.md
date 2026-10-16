@@ -85,14 +85,15 @@
   - `crates/ui-egui/src/trowel/layers.rs`: 레이어 띠(⑪). 기존 명령만 쓴다: `legend.pick`, `layer.setCurrent`, `layer.selectAll`, `layer.setProps`, `layer.move`, `layer.newSublayer`, 범례의 「이 레이어만 보기」. **새 엔진 명령 없음.**
 - 바꾼 파일: `trowel/mod.rs`(오른쪽 열 코드를 layout.rs로), `drawings.rs`(Panel 대신 받은 사각형에 그림, 서랍 216 → 236), `legend.rs`(범례 카드가 열이 왼쪽에 있으면 오른쪽으로 뜸), `palette.rs`·`props.rs`(최소 높이 상수만), `state.rs`(`UiState.trowel_layout`), `workspaces.rs`(작업 공간에 배치, 「필수 재설정」도 처음 배치), `prefs_dialog.rs`(환경설정 재설정이 배치도), `menus.rs`(창 메뉴 맨 위 「배치 처음대로」와 칸 다섯 개 ✓, 클래식 창에서는 숨김, 빈 가름줄 정리), `i18n/ko.tsv`.
 - 22:22Z 요청 반영: 창이 좁아지면 열은 사라지지 않고 먼저 최소 너비까지 좁아진다(띠 → 서랍 → 오른쪽 열 순서). 그래도 캔버스가 480보다 좁으면 띠, 그다음 서랍이 접힌다. 손으로 편 열은 저절로 접지 않는다. 배치는 설정 파일에 저장되어 다음 실행에도 그대로 열린다.
+- 열의 최소 너비는 그 안의 가장 넓은 칸이 정한다(`Panel::least_width`): 펜 274(색 줄 여덟 칸과 ⋯), 범례·속성 220, 도면집 140, 레이어 띠 112. 그래서 오른쪽 열은 펜이 있는 한 274보다 좁아지지 않고, 펜을 서랍 열이나 띠 열로 옮기면 그 열이 274로 넓어진다. 칸이 나가면 사용자가 정한 너비로 돌아간다. 새로 띄운 앱에서 펜을 서랍 열(236)로 옮겼을 때 흰 색 칸과 「일점쇄선」이 잘리던 것을 이렇게 고쳤다(J028 이전에도 오른쪽 열을 손으로 220까지 줄이면 같은 일이 있었다).
 - 만들면서 찾아 고친 결함: 펜 칸의 「세 단추가 생기거나 사라질 때 펜 위치 고정」 상태를 펜이 없는 다른 열이 매 프레임 지웠다. 그래서 고고학 단추를 누를 때 펜 칸이 움직였다(기존 시험 3개 실패로 드러남). 이제 펜이 있는 열만 그 상태를 다루고, 칸 경계를 끄는 동안에는 고정하지 않는다.
 
 ### 기대값을 바꾼 기존 시험과 근거
 - `regions_match_the_mockup_at_1600_by_988`: 서랍 216 → 236, 오른쪽 열이 띠(132)만큼 왼쪽으로, 띠 열 1468–1600, 캔버스 302–1164. 근거: 디자인 3.1 13장 막대(사용자 승인 22:18:54Z).
-- `the_tabs_never_overlap`: 800 × 500에서 긴 이름이 이제 잘리지 않는다. 서랍과 띠가 접혀 캔버스가 넓어졌기 때문이다(9장 규칙). 잘리는 경우는 서랍과 띠를 손으로 편 800 × 500 사례를 더해 계속 시험한다.
-- `the_pen_bar_keeps_clear_of_the_zoom_buttons`: 800 × 500에서 이제 공간이 있어 단축키 글자가 보이고 확대 단추 옆에 놓인다. 손으로 편 800 × 500(가장 좁은 데스크톱 캔버스 262)은 글자를 빼고 옆에, 웹에서만 가능한 750 폭(캔버스 212)은 확대 단추 위에 놓이는지 시험한다.
+- `the_tabs_never_overlap`: 기대값은 그대로(800 × 500에서 긴 이름이 잘림). 서랍과 띠를 손으로 편 800 × 500 사례를 더했다.
+- `the_pen_bar_keeps_clear_of_the_zoom_buttons`: 800 × 500에서 이제 공간이 있어 단축키 글자가 보이고 확대 단추 옆 가운데에 놓인다. 서랍과 띠가 접혀 캔버스가 404로 넓어졌기 때문이다(9장 규칙, 이전에는 약 208). 「확대 단추 위, 글자 뺌」은 서랍과 띠를 손으로 편 800 × 500(캔버스 208) 사례로 계속 시험한다.
 
 ### 새 시험
-- 모델: `the_first_layout_is_the_mockups`, `a_narrow_canvas_narrows_the_columns_then_folds_the_strip_then_the_drawer`, `panels_move_hide_and_come_back_where_they_were`, `a_saved_layout_reads_leniently`, `the_layout_is_kept_with_the_preferences`.
+- 모델: `the_first_layout_is_the_mockups`, `a_narrow_canvas_narrows_the_columns_then_folds_the_strip_then_the_drawer`, `a_column_is_as_wide_as_its_widest_panel_needs`, `panels_move_hide_and_come_back_where_they_were`, `a_saved_layout_reads_leniently`, `the_layout_is_kept_with_the_preferences`.
 - 화면: `the_first_layout_is_sheet_13_in_each_window`(1440 × 880, 1366 × 768, 1280 × 720, 1100 × 700), `the_layer_strip_lists_what_is_drawn_and_folds_the_empty_layers`, `the_strip_picks_shows_and_locks_as_the_legend_does`, `the_strip_renames_and_reorders_its_rows`, `a_panel_moves_by_its_head_within_the_side_columns`, `columns_and_panels_size_by_their_edges`, `either_reset_brings_back_the_first_layout`, `the_window_menu_lists_the_panels_only_in_trowel`.
 

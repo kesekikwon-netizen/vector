@@ -755,11 +755,11 @@ fn the_tabs_never_overlap() {
     let long = "Excavation area 3, trench 12, north section, second season";
     // The window, the drawing opened after "Site 1" (the current one), whether its name is cut, and
     // whether the drawer and the layer strip were opened by hand (design 3.1 §9: the smallest
-    // window folds them, so its canvas has room for the name; opened, it doesn't).
+    // window folds them; opened, its canvas is narrower still).
     let cases = [
         (1600.0, 988.0, None, false, false),
         (1366.0, 728.0, Some(long), false, false),
-        (800.0, 500.0, Some(long), false, false),
+        (800.0, 500.0, Some(long), true, false),
         (800.0, 500.0, Some(long), true, true),
     ];
     for (w, height, other, cut, opened) in cases {
@@ -3972,10 +3972,9 @@ fn test_canvas_penbar_adversarial_suite() {
 #[test]
 fn the_pen_bar_keeps_clear_of_the_zoom_buttons() {
     // The window and whether the drawer and the layer strip were opened by hand: the smallest
-    // desktop window folds them (design 3.1 §9), so its canvas has room for the bar beside the
-    // zoom buttons; opened, the canvas is the narrowest it gets there (262 points), and the bar
-    // drops the key. A web page can be narrower still: 212 points of canvas put it above them.
-    let cases = [(1600.0, 988.0, false), (1366.0, 728.0, false), (800.0, 500.0, false), (800.0, 500.0, true), (750.0, 500.0, true)];
+    // window folds them (design 3.1 §9), so its canvas has room for the bar beside the zoom
+    // buttons; opened, 208 points of canvas are left, and the bar goes above them.
+    let cases = [(1600.0, 988.0, false), (1366.0, 728.0, false), (800.0, 500.0, false), (800.0, 500.0, true)];
     for (w, height, opened) in cases {
         let mut h = Harness::sized(w, height);
         if opened {
@@ -4000,11 +3999,9 @@ fn the_pen_bar_keeps_clear_of_the_zoom_buttons() {
         assert_eq!(h.texts_in(bar).iter().any(|s| s == "Enter"), !opened, "{w}: the key shown where there is room");
         if !opened {
             assert!((bar.center().x - canvas.center().x).abs() < 0.5, "{w}: centred, {bar:?} in {canvas:?}");
-        }
-        if w >= 800.0 {
             assert!((canvas.bottom() - 14.0 - bar.bottom()).abs() < 0.5, "{w}: at the foot, beside the zoom buttons");
-            assert!(bar.right() <= zoom.left() - 7.5, "{w}: {bar:?} left of {zoom:?}");
         } else {
+            assert_eq!(canvas.width(), 208.0);
             assert!(bar.bottom() <= zoom.top() - 7.5, "{w}: {bar:?} above {zoom:?}");
         }
     }

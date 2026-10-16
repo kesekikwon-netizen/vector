@@ -46,6 +46,18 @@ impl Panel {
         matches!(self, Panel::Set | Panel::Legend | Panel::Layers)
     }
 
+    /// The least width it shows whole at: the pen its colour row (eight swatches and ⋯ after its
+    /// label), the legend and the properties the right column's least, the drawing set and the
+    /// layer strip their own column's. A column holding it is at least this wide.
+    pub fn least_width(self) -> f32 {
+        match self {
+            Panel::Set => 140.0,
+            Panel::Legend | Panel::Props => 220.0,
+            Panel::Pen => 274.0,
+            Panel::Layers => 112.0,
+        }
+    }
+
     /// The column it goes back to when a layout has lost it.
     fn home(self) -> Column {
         match self {
@@ -206,10 +218,31 @@ impl Layout {
         }
     }
 
-    /// Set column `c`'s width, kept in its [`Column::range`].
-    pub fn set_width(&mut self, c: Column, w: f32) {
+    /// The widths column `c` can have with what it holds now: its [`Column::range`], widened to the
+    /// [`Panel::least_width`] of each panel in it (the pen moved into the drawer's column makes it
+    /// at least 274 wide).
+    pub fn range(&self, c: Column) -> (f32, f32) {
         let r = c.range();
-        let w = if w.is_finite() { w.clamp(*r.start(), *r.end()) } else { c.default_width() };
+        let least = self.panels(c).iter().map(|p| p.least_width()).fold(*r.start(), f32::max);
+        (least, r.end().max(least))
+    }
+
+    /// Column `c`'s width as it shows: the one kept, in its [`Layout::range`]. The one kept stays,
+    /// so the column goes back to it when the wide panel leaves.
+    pub fn shown_width(&self, c: Column) -> f32 {
+        let (lo, hi) = self.range(c);
+        self.width(c).clamp(lo, hi)
+    }
+
+    /// Set column `c`'s width, kept in its [`Layout::range`].
+    pub fn set_width(&mut self, c: Column, w: f32) {
+        let (lo, hi) = self.range(c);
+        self.keep_width(c, w, lo, hi);
+    }
+
+    /// Keep `w` as column `c`'s width, within `lo`–`hi` (not a number: its first width).
+    fn keep_width(&mut self, c: Column, w: f32, lo: f32, hi: f32) {
+        let w = if w.is_finite() { w.clamp(lo, hi) } else { c.default_width() };
         match c {
             Column::Left => self.left_width = w,
             Column::Right => self.right_width = w,
@@ -308,7 +341,7 @@ impl Layout {
             let mut out = Column::ALL.map(|c| {
                 let i = column_index(c);
                 let f = folded.get(i).copied().unwrap_or(false);
-                (!self.panels(c).is_empty()).then(|| Shown { width: if f { FOLDED_W } else { self.width(c) }, folded: f })
+                (!self.panels(c).is_empty()).then(|| Shown { width: if f { FOLDED_W } else { self.shown_width(c) }, folded: f })
             });
             let mut over = out.iter().flatten().map(|s| s.width).sum::<f32>() - room;
             for c in [Column::Edge, Column::Left, Column::Right] {
@@ -316,7 +349,7 @@ impl Layout {
                     break;
                 }
                 if let Some(s) = out.get_mut(column_index(c)).and_then(Option::as_mut).filter(|s| !s.folded) {
-                    let give = over.min(s.width - c.range().start()).max(0.0);
+                    let give = over.min(s.width - self.range(c).0).max(0.0);
                     s.width -= give;
                     over -= give;
                 }
@@ -353,7 +386,8 @@ impl Layout {
             }
         }
         for c in Column::ALL {
-            self.set_width(c, self.width(c));
+            let r = c.range();
+            self.keep_width(c, self.width(c), *r.start(), *r.end());
         }
         let mut sized = std::collections::BTreeSet::new();
         self.heights.retain(|h| h.height.is_finite() && h.height > 0.0 && sized.insert(h.panel));
@@ -472,17 +506,35 @@ mod tests {
         l.set_folded(Column::Edge, Some(false));
         assert_eq!(widths(l.shown(1300.0, 50.0)), [Some((140.0, false)), Some((518.0, false)), Some((112.0, false))]);
         l.set_folded(Column::Edge, None);
-        // 1250 with the right column at its least: 450 + 220 + 28 = 698 fits 720.
+        // 1250 with the right column at its least, 274 for the pen's colour row (not 220): 720 for
+        // 450 + 274 + 28, the drawer gives 32.
         l.set_width(Column::Right, 220.0);
-        assert_eq!(widths(l.shown(1250.0, 50.0)), [Some((450.0, false)), Some((220.0, false)), Some((FOLDED_W, true))]);
+        assert_eq!(l.right_width, 274.0);
+        assert_eq!(widths(l.shown(1250.0, 50.0)), [Some((418.0, false)), Some((274.0, false)), Some((FOLDED_W, true))]);
         l.set_width(Column::Right, 560.0);
         // Too little room even with every column at its least (a 600-point tool column): the strip
         // folds first, then the drawer, and the right column narrows.
         assert_eq!(widths(l.shown(1450.0, 600.0)), [Some((FOLDED_W, true)), Some((314.0, false)), Some((FOLDED_W, true))]);
         // 800, under every rule: rails, and the right column at its least.
-        assert_eq!(widths(l.shown(800.0, 50.0)), [Some((FOLDED_W, true)), Some((220.0, false)), Some((FOLDED_W, true))]);
+        assert_eq!(widths(l.shown(800.0, 50.0)), [Some((FOLDED_W, true)), Some((274.0, false)), Some((FOLDED_W, true))]);
         // The widths kept are the user's.
         assert_eq!((l.left_width, l.right_width, l.edge_width), (450.0, 560.0, 240.0));
+    }
+
+    #[test]
+    fn a_column_is_as_wide_as_its_widest_panel_needs() {
+        let mut l = Layout::default();
+        assert_eq!(l.range(Column::Left), (140.0, 450.0));
+        assert_eq!(l.range(Column::Right), (274.0, 560.0), "the pen's colour row");
+        // The pen in the drawer's column widens it to 274, and in the strip's past its 240.
+        l.move_panel(Panel::Pen, Column::Left, 1);
+        assert_eq!(l.range(Column::Right), (220.0, 560.0));
+        assert_eq!(l.shown(1440.0, 50.0)[0], Some(Shown { width: 274.0, folded: false }));
+        l.move_panel(Panel::Pen, Column::Edge, 0);
+        assert_eq!(l.range(Column::Edge), (274.0, 274.0));
+        // The width kept comes back when it leaves.
+        l.move_panel(Panel::Pen, Column::Right, 1);
+        assert_eq!(l.shown(1440.0, 50.0).map(|s| s.map(|s| s.width)), [Some(236.0), Some(304.0), Some(132.0)]);
     }
 
     #[test]
