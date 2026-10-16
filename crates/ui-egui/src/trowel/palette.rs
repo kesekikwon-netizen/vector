@@ -4,6 +4,9 @@
 //! Once (draw on with it, the lines set apart), Update the Legend (the row takes it) and Back to
 //! the Legend (the row's look again).
 
+use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
+
 use serde_json::{Value, json};
 use vectorcraft_doc::legend::{SAME, is_line, lines, stroke_of};
 use vectorcraft_doc::{LineType, Node, NodeId};
@@ -14,9 +17,11 @@ use super::*;
 /// Above the head, and the head (the mockup's `.pen .ph`).
 const TOP: f32 = 2.0;
 const HEAD_H: f32 = 34.0;
-/// The weight row (chips 30 tall and 3 either side) and the other rows.
+/// The weight row (chips 30 tall and 3 either side), the line and hatch rows (a 26 choice and 3
+/// either side) and the colour row (20 swatches and 3 either side): the mockup's 6 between them.
 const WEIGHT_ROW: f32 = 36.0;
 const ROW: f32 = 32.0;
+const COLOUR_ROW: f32 = 26.0;
 /// The same-or-not line, the three buttons under it when they show, and the room at the foot.
 const STATE_H: f32 = 22.0;
 const BUTTONS_H: f32 = 6.0 + 24.0 + 10.0;
@@ -28,28 +33,36 @@ const LABEL_W: f32 = 36.0;
 const CHIP_W: f32 = 24.0;
 const CHIP_H: f32 = 30.0;
 const CHIP_GAP: f32 = 2.0;
-/// How thick a weight's sample is drawn (points → pixels), as the mockup's chips.
-const SAMPLE_PX: [(f64, f32); 9] = [(0.1, 0.5), (0.15, 0.7), (0.2, 0.9), (0.3, 1.2), (0.4, 1.5), (0.5, 1.8), (0.6, 2.2), (0.8, 2.8), (1.0, 3.4)];
+/// How thick each weight of the one list ([`LADDER`]) is drawn in a sample (pixels), as the
+/// mockup's chips.
+const SAMPLE_PX: [f32; LADDER.len()] = [0.5, 0.7, 0.9, 1.2, 1.5, 1.8, 2.2, 2.8, 3.4];
 
 /// The pen's height: taller by the three buttons while they show.
 pub(super) fn height(app: &VectorcraftApp, ctx: &egui::Context) -> f32 {
-    let base = TOP + HEAD_H + WEIGHT_ROW + 3.0 * ROW + STATE_H + BOTTOM;
-    if buttons_show(app, ctx, &against(app)) { base + BUTTONS_H } else { base }
+    let base = TOP + HEAD_H + WEIGHT_ROW + 2.0 * ROW + COLOUR_ROW + STATE_H + BOTTOM;
+    if buttons_show(app, ctx, &against(app, ctx)) { base + BUTTONS_H } else { base }
 }
 
-/// The colours the pen offers (design 3.0 §5 ⑧): key, name and colour. The colours are what the
-/// drawing gets, as the palette has always put down.
+/// The colours the pen offers (design 3.0 §5 ⑧): key, name and the colour the drawing gets, the
+/// mockup's swatches with black the pen's own (#000000, so a new drawing's pen shows it chosen).
+/// They are paint for the drawing, not the theme's colours: a dark theme doesn't change what goes
+/// on the paper.
 fn swatches() -> [(&'static str, &'static str, [u8; 3]); 8] {
     [
-        ("black", tw!("Black"), [20, 20, 20]),
-        ("red", tw!("Red"), [210, 35, 35]),
-        ("blue", tw!("Blue"), [30, 95, 195]),
-        ("darkbrown", tw!("Dark brown"), [75, 52, 38]),
-        ("brown", tw!("Brown"), [130, 84, 48]),
-        ("ochre", tw!("Yellow brown"), [190, 142, 74]),
-        ("gray", tw!("Grey"), [140, 140, 140]),
-        ("white", tw!("White"), [250, 248, 242]),
+        ("black", tw!("Black"), [0x00, 0x00, 0x00]),
+        ("red", tw!("Red"), [0xE8, 0x33, 0x4F]),
+        ("blue", tw!("Blue"), [0x2B, 0x5F, 0xB8]),
+        ("darkbrown", tw!("Dark brown"), [0x4A, 0x34, 0x26]),
+        ("brown", tw!("Brown"), [0x7A, 0x52, 0x35]),
+        ("ochre", tw!("Yellow brown"), [0xB0, 0x8A, 0x52]),
+        ("gray", tw!("Grey"), [0x8C, 0x8C, 0x8C]),
+        ("white", tw!("White"), [0xFF, 0xFF, 0xFF]),
     ]
+}
+
+/// A swatch's colour as the paint commands take it: "#e8334f" (an `[r, g, b]` list is read 0–1).
+fn hex(rgb: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2])
 }
 
 /// A legend row: its id, name and look.
@@ -60,6 +73,10 @@ type Look = (f64, LineType);
 /// The pen against its legend row.
 #[derive(Clone, Default, PartialEq)]
 struct Against {
+    /// The drawing's `uid`: what Just This Once was pressed for stays with its drawing.
+    uid: u64,
+    /// Which objects are selected (a hash of their ids).
+    picked: u64,
     /// The row the next line goes on, or the row of the first selected line set apart (else of the
     /// first selected line); none when it has no look.
     row: Option<RowLook>,
@@ -92,7 +109,7 @@ impl Against {
     fn key(&self) -> String {
         let row = self.row.as_ref().map(|(id, _, w, t)| format!("{}:{w}:{t:?}", id.0)).unwrap_or_default();
         let shown = self.shown.as_ref().map(|(w, t)| format!("{w}:{t:?}")).unwrap_or_default();
-        format!("{row}|{shown}")
+        format!("{}|{row}|{shown}", self.uid)
     }
 }
 
@@ -106,37 +123,74 @@ fn lines_of(n: &Node) -> Vec<&Node> {
     if is_line(n) { vec![n] } else { lines(n) }
 }
 
-fn against(app: &VectorcraftApp) -> Against {
+/// A row's look, when it has one.
+fn row_look(layer: &Node) -> Option<RowLook> {
+    let (w, t) = layer.legend()?.look()?;
+    Some((layer.id, layer.display_name(), w, t.clone()))
+}
+
+/// What [`against`] is worked out from: the drawing and its revision, the current layer and the
+/// pen's weight and line type.
+type AgainstKey = (u64, u64, Option<u64>, u64, String);
+
+/// The pen against its row, worked out again only when the drawing, its selection or the pen
+/// changes: the pen and its height ask every frame, and a selection can hold thousands of lines.
+fn against(app: &VectorcraftApp, ctx: &egui::Context) -> Against {
     let Some(st) = app.session.active() else { return Against::default() };
+    let pen = app.session.new_art_stroke();
+    let pen_look = (pen.width, LineType::of(&pen));
+    let key: AgainstKey = (st.uid, st.revision, st.current_layer().map(|l| l.0), pen_look.0.to_bits(), format!("{:?}", pen_look.1));
+    let cache = wid("pen-against", ());
+    if let Some((was, a)) = ctx.data(|d| d.get_temp::<(AgainstKey, Against)>(cache))
+        && was == key
+    {
+        return a;
+    }
+    let a = against_now(st, pen_look);
+    ctx.data_mut(|d| d.insert_temp(cache, (key, a.clone())));
+    a
+}
+
+fn against_now(st: &vectorcraft_engine::DocState, pen: Look) -> Against {
     let doc = &st.doc;
-    let row_of = |id: NodeId| {
-        let layer = doc.node(doc.layer_of(id)?)?;
-        let (w, t) = layer.legend()?.look()?;
-        Some((layer.id, layer.display_name(), w, t.clone()))
-    };
-    let selected: Vec<&Node> = st.selection.objects.iter().filter_map(|id| doc.node(*id)).flat_map(lines_of).collect();
+    let mut hasher = DefaultHasher::new();
+    st.selection.objects.hash(&mut hasher);
+    let (uid, picked) = (st.uid, hasher.finish());
+    // Each selected line with its row (a group's lines are in its row), each row's look once.
+    let mut rows: HashMap<NodeId, (Option<RowLook>, String)> = HashMap::new();
+    let mut selected: Vec<(NodeId, Option<Look>)> = vec![];
+    for (n, layer) in super::selected_in_rows(doc, &st.selection.objects) {
+        rows.entry(layer.id).or_insert_with(|| (row_look(layer), layer.display_name()));
+        selected.extend(lines_of(n).into_iter().map(|l| (layer.id, stroke_of(l).map(|s| (s.width, LineType::of(s))))));
+    }
     if selected.is_empty() {
-        let row = st.current_layer().and_then(row_of);
-        let name = st.current_layer().and_then(|id| doc.node(id)).map(|l| l.display_name());
-        let pen = app.session.new_art_stroke();
-        let shown = (pen.width, LineType::of(&pen));
-        let differs = row.as_ref().is_some_and(|(_, _, w, t)| (w - shown.0).abs() > SAME || !t.same(&shown.1));
-        return Against { row, shown: Some(shown), name, selected: 0, differs };
+        let layer = st.current_layer().and_then(|id| doc.layers.iter().find(|l| l.id == id));
+        let row = layer.and_then(|l| row_look(l));
+        let name = layer.map(|l| l.display_name());
+        let differs = row.as_ref().is_some_and(|(_, _, w, t)| (w - pen.0).abs() > SAME || !t.same(&pen.1));
+        return Against { uid, picked, row, shown: Some(pen), name, selected: 0, differs };
     }
     // The first selected line set apart from its row, else the first one.
-    let looks: Vec<(Option<RowLook>, Option<Look>)> =
-        selected.iter().map(|l| (row_of(l.id), stroke_of(l).map(|s| (s.width, LineType::of(s))))).collect();
-    let apart = |(row, shown): &(Option<RowLook>, Option<Look>)| match (row, shown) {
+    let apart = |(row, shown): &(NodeId, Option<Look>)| match (rows.get(row).and_then(|r| r.0.as_ref()), shown) {
         (Some((_, _, rw, rt)), Some((w, t))) => (rw - w).abs() > SAME || !rt.same(t),
         _ => false,
     };
-    let at = looks.iter().position(apart).unwrap_or(0);
-    let first = looks.get(at).cloned().unwrap_or_default();
-    let name = selected.get(at).and_then(|l| doc.node(doc.layer_of(l.id)?)).map(|l| l.display_name());
-    Against { row: first.0, shown: first.1, name, selected: selected.len(), differs: looks.iter().any(apart) }
+    let at = selected.iter().position(apart).unwrap_or(0);
+    let differs = selected.iter().any(apart);
+    let (row, name) = selected.get(at).and_then(|(r, _)| rows.get(r)).cloned().unwrap_or_default();
+    let shown = selected.get(at).and_then(|(_, look)| look.clone());
+    Against { uid, picked, row, shown, name: Some(name), selected: selected.len(), differs }
 }
 
-/// Where Just This Once keeps the look it was pressed for, by drawing.
+/// Just This Once, pressed or drawn on: the look it was for ([`Against::key`]) and, pressed with
+/// lines selected, which were ([`Against::picked`]).
+#[derive(Clone)]
+struct Once {
+    key: String,
+    picked: Option<u64>,
+}
+
+/// Where Just This Once is kept.
 fn once_id() -> egui::Id {
     wid("pen-once", ())
 }
@@ -162,24 +216,26 @@ fn drawn_once(app: &VectorcraftApp, ctx: &egui::Context, a: &Against) {
                 d.insert_temp(pen_key_id(), a.key());
             } else {
                 d.remove::<String>(pen_key_id());
-                d.remove::<String>(once_id());
+                d.remove::<Once>(once_id());
             }
         });
         return;
     }
     let pen = ctx.data(|d| d.get_temp::<String>(pen_key_id()));
     if drawing_tool(app) && buttons_show(app, ctx, a) && pen.is_some_and(|k| k == a.key()) {
-        ctx.data_mut(|d| d.insert_temp(once_id(), a.key()));
+        ctx.data_mut(|d| d.insert_temp(once_id(), Once { key: a.key(), picked: None }));
         // The pen was laid out with its buttons: once more without them.
         ctx.request_repaint();
     }
 }
 
-/// Whether the three buttons show: the look differs, and Just This Once wasn't pressed for it (or
-/// the lines in it were picked out with a selection tool: they may be for the legend now).
+/// Whether the three buttons show: the look differs, and Just This Once wasn't pressed or drawn on
+/// for it. Lines in a look Just This Once was for, picked out later with a selection tool, show
+/// them again (they may be for the legend now), unless it was pressed for those very lines.
 fn buttons_show(app: &VectorcraftApp, ctx: &egui::Context, a: &Against) -> bool {
-    let once = ctx.data(|d| d.get_temp::<String>(once_id())).is_some_and(|k| k == a.key());
-    a.differs && a.row.is_some() && !(once && (a.selected == 0 || drawing_tool(app)))
+    let once = ctx.data(|d| d.get_temp::<Once>(once_id())).filter(|o| o.key == a.key());
+    let folded = once.is_some_and(|o| a.selected == 0 || drawing_tool(app) || o.picked == Some(a.picked));
+    a.differs && a.row.is_some() && !folded
 }
 
 /// Where whether the weight is being typed is kept.
@@ -191,13 +247,13 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let t = Tokens::get(ui.ctx());
     line_above(ui, r, t.border);
     let ctx = ui.ctx().clone();
-    let a = against(app);
+    let a = against(app, &ctx);
     drawn_once(app, &ctx, &a);
     let open = app.session.active().is_some();
     // The head: "Pen", the row and what it draws.
     let head = Rect::from_min_size(r.min + vec2(0.0, TOP), vec2(r.width(), HEAD_H));
     let what =
-        if a.selected > 0 { crate::i18n::fmt(tw!("{n} selected lines"), &[("n", &a.selected.to_string())]) } else { tw!("Next line").to_string() };
+        if a.selected > 0 { super::count(a.selected, tw!("{n} selected line"), tw!("{n} selected lines")) } else { tw!("Next line").to_string() };
     let sub = match &a.name {
         Some(name) => format!("{name} · {what}"),
         None => what,
@@ -267,7 +323,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     }
 
     // Colour: a click the line's, Alt and a click the fill's.
-    let cy = head.bottom() + WEIGHT_ROW + ROW + ROW / 2.0;
+    let cy = head.bottom() + WEIGHT_ROW + ROW + COLOUR_ROW / 2.0;
     label(ui, cy, tw!("Colour"));
     let line_colour = stroke.as_ref().and_then(|s| match &s.paint {
         vectorcraft_color::Paint::Solid { color, .. } => Some(crate::panels::c32(color)),
@@ -288,7 +344,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         let resp = resp.on_hover_text(crate::i18n::fmt(tw!("{name} · click: the line's colour · Alt+click: the fill's"), &[("name", name)]));
         if resp.clicked() && open {
             let cmd = if alt { "paint.setFill" } else { "paint.setStroke" };
-            if let Err(e) = app.run(cmd, json!({ "color": rgb })) {
+            if let Err(e) = app.run(cmd, json!({ "color": hex(rgb) })) {
                 app.status_error(e);
             }
         }
@@ -305,7 +361,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     }
 
     // Hatch: on the selected closed shapes, or the next ones; Alternate again flips it.
-    let cy = head.bottom() + WEIGHT_ROW + 2.0 * ROW + ROW / 2.0;
+    let cy = head.bottom() + WEIGHT_ROW + ROW + COLOUR_ROW + ROW / 2.0;
     label(ui, cy, tw!("Hatch"));
     let hatch = if open { app.session.execute("hatch.get", &json!({})).ok() } else { None };
     let dir = hatch.as_ref().and_then(|v| v["direction"].as_str()).unwrap_or("none").to_string();
@@ -326,7 +382,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     }
 
     // Same as the legend, or not, and the three buttons.
-    let cy = head.bottom() + WEIGHT_ROW + 3.0 * ROW + 6.0 + 8.0;
+    let cy = head.bottom() + WEIGHT_ROW + 2.0 * ROW + COLOUR_ROW + 6.0 + 8.0;
     let x = r.left() + PAD;
     match (&a.row, a.differs) {
         (None, _) => {
@@ -379,7 +435,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     }
     let done = match asked {
         Some("once") => {
-            ctx.data_mut(|d| d.insert_temp(once_id(), a.key()));
+            ctx.data_mut(|d| d.insert_temp(once_id(), Once { key: a.key(), picked: (a.selected > 0).then_some(a.picked) }));
             Ok(())
         }
         Some("update") => update_legend(app, &a),
@@ -411,11 +467,11 @@ fn line_param(t: &LineType) -> Value {
     }
 }
 
-/// Put the selected lines back to their row's look; with nothing selected the next line takes the
-/// current row's look.
+/// Put the selected lines back to their row's look, and the pen to the current row's (with
+/// nothing selected, only the pen).
 fn back_to_legend(app: &mut VectorcraftApp) -> Result<(), String> {
     if app.session.active().is_some_and(|st| !st.selection.objects.is_empty()) {
-        return super::legend::revert(app, json!({}));
+        return super::legend::revert(app, json!({ "pen": true }));
     }
     app.run("legend.revert", json!({}))?;
     let row = app.session.active().and_then(|st| st.doc.node(st.current_layer().and_then(|l| st.doc.layer_of(l))?));
@@ -455,8 +511,9 @@ pub(super) fn sample_px(w: f64) -> f32 {
     if !w.is_finite() {
         return 1.0;
     }
+    let table: Vec<(f64, f32)> = LADDER.into_iter().zip(SAMPLE_PX).collect();
     let mut seg = None;
-    for pair in SAMPLE_PX.windows(2) {
+    for pair in table.windows(2) {
         if let [a, b] = pair {
             seg = Some((*a, *b));
             if w <= b.0 {

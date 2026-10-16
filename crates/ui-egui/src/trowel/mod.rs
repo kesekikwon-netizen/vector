@@ -180,25 +180,31 @@ fn right_parts(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect, (pen_h, props_h):
     let mut top = r.bottom() - props_h - pen_h;
     if hold {
         let pointer = ui.ctx().pointer_hover_pos();
-        let over = |t: f32| pointer.is_some_and(|p| Rect::from_min_size(pos2(r.left(), t), vec2(r.width(), pen_h)).contains(p));
+        let over = |t: f32, h: f32| pointer.is_some_and(|p| Rect::from_min_size(pos2(r.left(), t), vec2(r.width(), h)).contains(p));
         // Where the pen was, how tall, and whether it is held: from when its height changed under
-        // the pointer until the pointer leaves it. The properties opening or folding move it.
+        // the pointer until the pointer leaves it, as tall as it was at its tallest meanwhile (the
+        // buttons gone from under the pointer leave it over the pen still). The properties opening
+        // or folding move it.
+        let mut h = pen_h;
         let mut held = false;
         if let Some((was, was_h, was_held)) = ui.data(|d| d.get_temp::<(f32, f32, bool)>(pen_top_id()))
-            && over(was)
+            && over(was, was_h.max(pen_h))
             && (was_held || was_h != pen_h)
         {
             top = was.max(r.top() + legend::MIN_HEIGHT);
+            h = was_h.max(pen_h);
             held = true;
         }
-        let keep = over(top);
+        let keep = over(top, h);
         ui.data_mut(|d| {
             if keep {
-                d.insert_temp(pen_top_id(), (top, pen_h, held));
+                d.insert_temp(pen_top_id(), (top, h, held));
             } else {
                 d.remove::<(f32, f32, bool)>(pen_top_id());
             }
         });
+    } else {
+        ui.data_mut(|d| d.remove::<(f32, f32, bool)>(pen_top_id()));
     }
     let pen = Rect::from_min_size(pos2(r.left(), top), vec2(r.width(), pen_h));
     let props = Rect::from_min_size(pos2(r.left(), pen.bottom().max(r.bottom() - props_h)), vec2(r.width(), props_h));
@@ -276,30 +282,86 @@ fn panel_head(ui: &Ui, r: Rect, title: &str, sub: &str, buttons: usize, t: &Toke
 fn column_head(ui: &Ui, r: Rect, title: &str, sub: &str, buttons: usize, t: &Tokens) -> f32 {
     let end = text(ui, pos2(r.left() + 10.0, r.center().y), Align2::LEFT_CENTER, title, bold(13.5), t.text).right();
     if !sub.is_empty() {
-        let right = r.right() - 12.0 - 24.0 * buttons as f32 - 4.0;
+        let right = match buttons.checked_sub(1) {
+            Some(more) => column_slot(r, more).left() - 4.0,
+            None => r.right() - 10.0,
+        };
         text_to(ui, pos2(end + 6.0, r.center().y), right, sub, font(12.0), t.text_dim);
     }
     end
+}
+
+/// Where a right-column head's button `slot` places from the right goes (0: the last one): a
+/// 24-point square whose mark sits where the mockup's `.ph .r` glyphs do, 16 in from the right.
+fn column_slot(head: Rect, slot: usize) -> Rect {
+    Rect::from_center_size(pos2(head.right() - 16.0 - 24.0 * slot as f32, head.center().y), vec2(24.0, 24.0))
 }
 
 /// A panel head's button `slot` places from the right (0: the last one): `icon` in a 24-point
 /// square.
 fn head_button(ui: &Ui, id: egui::Id, head: Rect, slot: usize, icon: &str, tip: &str, t: &Tokens) -> egui::Response {
     let r = Rect::from_center_size(pos2(head.right() - 12.0 - 12.0 - 24.0 * slot as f32, head.center().y), vec2(24.0, 24.0));
+    icon_button(ui, id, r, tip, t, |ui, r| crate::icons::paint(ui, icon, r.shrink(5.0), t.text))
+}
+
+/// A right-column head's button `slot` places from the right ([`column_slot`]), drawn by `mark`.
+fn column_button(ui: &Ui, id: egui::Id, head: Rect, slot: usize, tip: &str, t: &Tokens, mark: impl FnOnce(&Ui, Rect)) -> egui::Response {
+    icon_button(ui, id, column_slot(head, slot), tip, t, mark)
+}
+
+/// A button in `r` drawn by `mark`, the wash under it on hover.
+fn icon_button(ui: &Ui, id: egui::Id, r: Rect, tip: &str, t: &Tokens, mark: impl FnOnce(&Ui, Rect)) -> egui::Response {
     let resp = ui.interact(r, id, Sense::click());
     if resp.hovered() {
         ui.painter().rect_filled(r, CornerRadius::same(6), t.hover);
     }
-    crate::icons::paint(ui, icon, r.shrink(5.0), t.text);
+    mark(ui, r);
     resp.on_hover_text(tip)
 }
 
-/// The ⋯ button of a head that pops a panel out beside the right column, or puts it away
-/// ([`head_button`]). A press on it doesn't count as one away from the popped-out panel.
+/// The ⋯ button of a right-column head that pops a panel out beside the column, or puts it away
+/// ([`column_button`]). A press on it doesn't count as one away from the popped-out panel.
 fn more_button(ui: &Ui, id: egui::Id, head: Rect, slot: usize, tip: &str, t: &Tokens) -> egui::Response {
-    let resp = head_button(ui, id, head, slot, "ellipsis", tip, t);
+    let resp = column_button(ui, id, head, slot, tip, t, |ui, r| crate::icons::paint(ui, "ellipsis", r.shrink(5.0), t.text));
     ui.data_mut(|d| d.get_temp_mut_or_default::<Vec<Rect>>(keep_id()).push(resp.rect));
     resp
+}
+
+/// `n` of something as said: `one` for one, else `other` (each with `{n}` where the count goes).
+fn count(n: usize, one: &str, other: &str) -> String {
+    crate::i18n::fmt(if n == 1 { one } else { other }, &[("n", &n.to_string())])
+}
+
+/// The selected objects `ids`, in their order, each with the top-level layer it is in, found in
+/// one walk of the drawing that stops once all are found (`Document::node` and `layer_of` walk it
+/// for each id, which a selection of thousands can't afford).
+fn selected_in_rows<'a>(
+    doc: &'a vectorcraft_doc::Document,
+    ids: &[vectorcraft_doc::NodeId],
+) -> Vec<(&'a vectorcraft_doc::Node, &'a vectorcraft_doc::Node)> {
+    use std::collections::{HashMap, HashSet};
+    use vectorcraft_doc::{Node, NodeId};
+    type Found<'a> = HashMap<NodeId, (&'a Node, &'a Node)>;
+    fn walk<'a>(n: &'a Node, row: &'a Node, wanted: &HashSet<NodeId>, found: &mut Found<'a>) {
+        if wanted.contains(&n.id) {
+            found.insert(n.id, (n, row));
+        }
+        for child in n.children().into_iter().flatten() {
+            if found.len() == wanted.len() {
+                return;
+            }
+            walk(child, row, wanted, found);
+        }
+    }
+    let wanted: HashSet<NodeId> = ids.iter().copied().collect();
+    let mut found = Found::with_capacity(wanted.len());
+    for layer in &doc.layers {
+        if found.len() == wanted.len() {
+            break;
+        }
+        walk(layer, layer, &wanted, &mut found);
+    }
+    ids.iter().filter_map(|id| found.get(id).copied()).collect()
 }
 
 /// Where the ⋯ buttons of the right column are kept while it is drawn.

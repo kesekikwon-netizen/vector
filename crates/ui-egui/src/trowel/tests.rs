@@ -977,8 +977,13 @@ fn legend_rows_show_hide_lock_and_pick_the_layer() {
     assert!(!layer(&h, first).visible);
     h.click(wid("legend-eye", first.0));
     assert!(layer(&h, first).visible);
+    let t = h.tokens();
+    let lock_col = h.rect(wid("legend-lock", first.0)).unwrap();
+    let filled = |h: &Harness| h.rects_in(lock_col).iter().any(|(_, fill, _)| *fill == t.icon);
+    assert!(!filled(&h), "open: an outline padlock");
     h.click(wid("legend-lock", first.0));
     assert!(layer(&h, first).locked);
+    assert!(filled(&h), "locked: a filled padlock (design 3.0 §7)");
     h.click(wid("legend-lock", first.0));
     assert!(!layer(&h, first).locked);
     // Alt and the eye: this row alone, then every row again.
@@ -1208,11 +1213,22 @@ fn the_properties_fold_and_show_real_sizes() {
     h.app.run("select.set", json!({ "ids": [a] })).unwrap();
     h.settle();
     let right = h.panel(RIGHT);
-    assert_eq!(line_of(&h, "Properties", right), ["Properties", "1 lines · Layer 1"]);
+    assert_eq!(line_of(&h, "Properties", right), ["Properties", "1 line · Layer 1"]);
     assert_eq!(line_of(&h, "Size", right), ["Size", "0.90 × 1.80 m"]);
     assert_eq!(line_of(&h, "Area", right), ["Area", "1.62 ㎡ · perimeter 5.40 m"]);
-    let position = line_of(&h, "Position", right);
-    assert!(position.len() == 2 && position[1].starts_with("X ") && position[1].contains(" · Y "), "{position:?}");
+    // Where it is: its centre in TM metres, in the drawing's axis order, grouped as the status bar.
+    let tm = |h: &Harness| {
+        let st = h.app.session.active().unwrap();
+        let b = st.doc.bounds_of(&st.selection.objects, true).unwrap();
+        st.doc.scale.as_ref().unwrap().canvas_to_world(b.center())
+    };
+    let (east, north) = tm(&h);
+    let said = |x: f64, y: f64| format!("X {} · Y {} m", super::status::grouped(x, 2), super::status::grouped(y, 2));
+    assert_eq!(line_of(&h, "Position", right), ["Position", said(east, north).as_str()]);
+    h.app.run("doc.setScale", json!({"scale": 30.0, "epsg": 5186, "order": "northeast"})).unwrap();
+    h.settle();
+    let (east, north) = tm(&h);
+    assert_eq!(line_of(&h, "Position", right), ["Position", said(north, east).as_str()], "north first, as the drawing reads");
     assert!(h.rect(wid("props-align", "left")).is_none(), "one selected: nothing to align");
     // Two selected: no area, the align buttons.
     let b = h.app.run("shape.rectangle", json!({"x": 200, "y": 40, "width": 20, "height": 20})).unwrap()["id"].clone();
@@ -1761,7 +1777,8 @@ fn the_legend_follows_the_mockup() {
     assert_eq!(h.font_of("Legend", head).map(|f| f.size), Some(13.5));
     for (id, slot) in [("legend-more", 0.0), ("legend-new", 1.0)] {
         let b = h.rect(wid(id, ())).unwrap();
-        assert!((b.center().y - head.center().y).abs() < 0.5 && (b.center().x - (right.right() - 24.0 - 24.0 * slot)).abs() < 0.5, "{id}: {b:?}");
+        // Where the mockup's ＋ and ⋯ glyphs are: the last 16 in from the right, 24 apart.
+        assert!((b.center().y - head.center().y).abs() < 0.5 && (b.center().x - (right.right() - 16.0 - 24.0 * slot)).abs() < 0.5, "{id}: {b:?}");
     }
     let order = |h: &Harness, captions: [&str; 6]| -> Vec<f32> {
         captions
@@ -1786,9 +1803,10 @@ fn the_legend_follows_the_mockup() {
         assert_eq!(r.height(), 27.0);
         assert!(tops[i] < r.top() && tops.get(i + 1).is_none_or(|next| r.bottom() <= *next + 0.5), "{} under {}", i, captions[i]);
     }
-    // The underlay: its name faint, a pale box for its sample.
+    // The underlay: its name in ink (as the mockup's 「실측 사진」; only a hidden row's is faint), a
+    // pale box for its sample.
     let sr = h.rect(wid("legend-row", scan.0)).unwrap();
-    assert_eq!(h.color_of("Scan", sr), Some(t.text_disabled));
+    assert_eq!(h.color_of("Scan", sr), Some(t.text));
     assert!(h.rects_in(sr).iter().any(|(_, fill, _)| *fill == t.border), "{:?}", h.rects_in(sr));
     // Finds first.
     h.click(wid("legend-group", ()));
@@ -2274,9 +2292,127 @@ fn the_three_buttons_do_what_they_say() {
     // Back to the Legend with a selection: the selected lines take the row's look.
     h.app.run("stroke.set", json!({ "weight": 0.2 })).unwrap();
     h.settle();
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.click(wid("weight", "1.0"));
+    h.app.run("select.set", json!({ "ids": [apart.0] })).unwrap();
+    h.settle();
     h.click(wid("pen-state", "back"));
     assert_eq!(weight_of(&h, apart), 0.6);
     assert!(h.status_line().contains("Lines back to the legend: 1"), "{}", h.status_line());
+    // ... and the pen the current row's look (design 3.0 §7: the pen and the selected lines).
+    assert_eq!(h.app.session.new_art_stroke().width, 0.6, "the pen too");
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.settle();
+    assert!(button(&h, "once").is_none(), "nothing differs after");
+}
+
+/// Just This Once pressed for lines picked out with the Selection tool folds the buttons too (the
+/// lines keep their look, set apart); other lines in that look, picked out later, show them again.
+#[test]
+fn just_this_once_folds_for_selected_lines_too() {
+    let mut h = Harness::new();
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.app.run("legend.pick", json!({ "id": pits.0 })).unwrap();
+    let (a, b) = (draw_rect(&mut h, 10.0), draw_rect(&mut h, 40.0));
+    h.app.select_tool("selection");
+    h.app.run("select.set", json!({ "ids": [a.0] })).unwrap();
+    h.app.run("stroke.set", json!({ "weight": 0.6 })).unwrap();
+    h.settle();
+    let buttons = |h: &Harness| h.rect(wid("pen-state", "once")).is_some();
+    assert!(buttons(&h), "a line not as its row");
+    h.click(wid("pen-state", "once"));
+    assert!(!buttons(&h), "folded");
+    h.frame(vec![Event::PointerMoved(h.app.canvas_rect.unwrap().center())]);
+    h.settle();
+    assert!(!buttons(&h), "and stay folded");
+    assert_eq!(weight_of(&h, a), 0.6, "the line keeps its look");
+    // Another line in that look, picked out: they show again.
+    h.app.run("select.set", json!({ "ids": [b.0] })).unwrap();
+    h.app.run("stroke.set", json!({ "weight": 0.6 })).unwrap();
+    h.settle();
+    assert!(buttons(&h), "other lines may be for the legend");
+}
+
+/// The pen's colours (design 3.0 §5 ⑧): each swatch paints its own colour, the line's on a click
+/// and the fill's on Alt and a click, on the selected lines or for the next ones; black is the
+/// pen's own, so a new drawing's pen shows it ringed as the mockup does.
+#[test]
+fn the_swatches_paint_their_colours() {
+    let mut h = Harness::new();
+    let t = h.tokens();
+    let ring = |h: &Harness, key: &str| {
+        let sw = h.rect(wid("pal-swatch", key)).unwrap();
+        h.rects_in(sw.expand(4.0)).iter().any(|(r, _, stroke)| stroke.color == t.text && r.width() > sw.width() + 4.0)
+    };
+    assert!(ring(&h, "black") && !ring(&h, "red"), "the pen's black ringed");
+    let colour = |paint: &vectorcraft_color::Paint| match paint {
+        vectorcraft_color::Paint::Solid { color, .. } => crate::panels::c32(color),
+        other => panic!("{other:?}"),
+    };
+    let hex = |s: &str| crate::panels::c32(&vectorcraft_color::Color::from_hex(s).unwrap());
+    let line = draw_rect(&mut h, 10.0);
+    h.app.run("select.set", json!({ "ids": [line.0] })).unwrap();
+    h.settle();
+    let node = |h: &Harness| h.app.session.active().unwrap().doc.node(line).unwrap().clone();
+    let stroke = |h: &Harness| colour(&vectorcraft_doc::legend::stroke_of(&node(h)).unwrap().paint);
+    for (key, want) in [("red", "#E8334F"), ("blue", "#2B5FB8"), ("ochre", "#B08A52"), ("white", "#FFFFFF"), ("black", "#000000")] {
+        h.click(wid("pal-swatch", key));
+        assert_eq!(stroke(&h), hex(want), "{key}");
+    }
+    h.alt_click(wid("pal-swatch", "brown"));
+    let fill = node(&h).appearance.fill_paint();
+    assert_eq!(colour(&fill), hex("#7A5235"), "Alt: the fill");
+    assert_eq!(stroke(&h), hex("#000000"), "the line's as it was");
+    // Nothing selected: the next line's.
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.settle();
+    h.click(wid("pal-swatch", "blue"));
+    assert_eq!(colour(&h.app.session.new_art_stroke().paint), hex("#2B5FB8"));
+    assert!(ring(&h, "blue"));
+}
+
+/// The pen's top stays put while the pointer is on it as its three buttons go too (design 3.0
+/// §5 ⑧): a press on Update the Legend leaves nothing else under the pointer to press next.
+#[test]
+fn the_pen_stays_put_as_its_buttons_go() {
+    let mut h = Harness::new();
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.6}));
+    h.app.run("legend.pick", json!({ "id": pits.0 })).unwrap();
+    h.settle();
+    h.click(wid("weight", "0.8"));
+    // The pointer away first: the pen laid out with its buttons, up over the legend.
+    h.frame(vec![Event::PointerMoved(h.app.canvas_rect.unwrap().center())]);
+    h.settle();
+    let top = h.rect(wid("palette-more", ())).unwrap().top();
+    let at = h.rect(wid("pen-state", "update")).unwrap().center();
+    h.click_at(at);
+    assert_eq!(row_weight(&h, pits), Some(0.8));
+    assert!(h.rect(wid("pen-state", "update")).is_none(), "the buttons went");
+    assert_eq!(h.rect(wid("palette-more", ())).unwrap().top(), top, "the pen's top stays");
+    for key in ["none", "45", "135", "alt"] {
+        assert!(!h.rect(wid("hatch", key)).unwrap().contains(at), "{key} not under the pointer");
+    }
+    // The pointer away: the pen down to the properties again.
+    h.frame(vec![Event::PointerMoved(h.app.canvas_rect.unwrap().center())]);
+    h.settle();
+    assert!((h.rect(wid("palette-more", ())).unwrap().top() - top - 40.0).abs() < 0.5, "{top}");
+}
+
+/// The selected objects with their rows, in one walk: in the selection's order, a group's line in
+/// the group's row, an id not in the drawing left out.
+#[test]
+fn selected_objects_are_found_with_their_rows() {
+    let mut h = Harness::new();
+    let first = h.layer_ids()[0];
+    let a = draw_rect(&mut h, 10.0);
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    h.app.run("legend.pick", json!({ "id": pits.0 })).unwrap();
+    let (b, c) = (draw_rect(&mut h, 40.0), draw_rect(&mut h, 70.0));
+    h.app.run("select.set", json!({ "ids": [b.0, c.0] })).unwrap();
+    let group = NodeId(h.app.run("object.group", json!({})).unwrap()["id"].as_u64().unwrap());
+    let doc = &h.app.session.active().unwrap().doc;
+    let found: Vec<(NodeId, NodeId)> = super::selected_in_rows(doc, &[c, a, NodeId(9999), group]).iter().map(|(n, row)| (n.id, row.id)).collect();
+    assert_eq!(found, [(c, pits), (a, first), (group, pits)]);
 }
 
 /// Drawing on without pressing anything counts as Just This Once (design 3.0 §7): the line drawn
@@ -2372,7 +2508,7 @@ fn the_pen_says_when_it_differs_from_the_legend() {
     let line = draw_rect(&mut h, 10.0);
     h.app.run("select.set", json!({ "ids": [line.0] })).unwrap();
     h.settle();
-    assert!(has(&h, "Pits · 1 selected lines") && has(&h, "Same as the legend"), "{}", h.line_in(pen_area(&h)));
+    assert!(has(&h, "Pits · 1 selected line") && has(&h, "Same as the legend"), "{}", h.line_in(pen_area(&h)));
     h.app.run("stroke.set", json!({ "weight": 1.0 })).unwrap();
     h.settle();
     assert!(has(&h, "Not as the legend · Weight 0.6 → 1.0"), "{}", h.line_in(pen_area(&h)));
@@ -2451,7 +2587,7 @@ fn the_right_column_is_legend_pen_properties() {
         "the properties folded at the foot: {props:?} {fold:?} in {right:?}"
     );
     let pen_top = |h: &Harness| h.rect(wid("palette-more", ())).unwrap().top() - 7.0;
-    assert!((pen_top(&h) - (right.bottom() - 34.0 - 198.0)).abs() < 0.5, "{}", pen_top(&h));
+    assert!((pen_top(&h) - (right.bottom() - 34.0 - 192.0)).abs() < 0.5, "{}", pen_top(&h));
     assert!(legend.bottom() < pen.top() && pen.bottom() < props.top());
     assert!(!h.texts.iter().any(|p| p.text == "Legend · Layers"));
     // Something selected: the properties open (its size and where it is), the pen over them.
@@ -2459,7 +2595,7 @@ fn the_right_column_is_legend_pen_properties() {
     h.settle();
     let props_top = h.rect(wid("props-fold", ())).unwrap().top() - 5.0;
     assert!((props_top - (right.bottom() - 96.0)).abs() < 0.5, "{props_top}");
-    assert!((pen_top(&h) - (props_top - 198.0)).abs() < 0.5, "{}", pen_top(&h));
+    assert!((pen_top(&h) - (props_top - 192.0)).abs() < 0.5, "{}", pen_top(&h));
 }
 
 /// One list of weights everywhere (design 3.0 §2, §5 ⑧): 0.1 · 0.15 · 0.2 · 0.3 · 0.4 · 0.5 · 0.6 ·
@@ -2469,7 +2605,7 @@ fn one_weight_list_everywhere() {
     use vectorcraft_engine::cmd::legend::LADDER;
     assert_eq!(LADDER, [0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0]);
     let mut h = Harness::new();
-    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.4}));
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.5}));
     h.settle();
     let keys: Vec<String> = LADDER.iter().map(|w| super::legend::pt(*w)).collect();
     for k in &keys {
@@ -2486,7 +2622,8 @@ fn one_weight_list_everywhere() {
         let doc = &h.app.session.active().unwrap().doc;
         vectorcraft_engine::cmd::legend::plan_weights(doc, &json!({"how": "step", "step": dir})).unwrap().rows[0].to
     };
-    assert_eq!((step(&h, 1.0), step(&h, -1.0)), (0.5, 0.3));
+    // From 0.5 the old list of six went to 0.8 and 0.3.
+    assert_eq!((step(&h, 1.0), step(&h, -1.0)), (0.6, 0.4));
 }
 
 /// The Drawing menu's first two items run (criterion 20): Change Weights at Once… opens its card,

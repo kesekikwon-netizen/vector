@@ -53,7 +53,7 @@ struct Row<'a> {
     name: String,
     visible: bool,
     locked: bool,
-    /// Hidden, or an underlay (a template layer): its name shows faint.
+    /// Hidden: its name shows faint.
     dim: bool,
     underlay: bool,
     colour: Color32,
@@ -188,9 +188,12 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let open = app.session.active().is_some();
     let title_end = column_head(ui, head, tw!("Legend"), "", 2, &t);
     let first = group_button(app, ui, head, title_end, &t);
-    let new_row = head_button(ui, wid("legend-new", ()), head, 1, "plus", tw!("New row with the pen's look: the selected lines move into it"), &t)
+    let new_row =
+        column_button(ui, wid("legend-new", ()), head, 1, tw!("New row with the pen's look: the selected lines move into it"), &t, |ui, r| {
+            crate::icons::paint(ui, "plus", r.shrink(5.0), t.text);
+        })
         .clicked()
-        && open;
+            && open;
     let more = more_menu(ui, head, open, &t);
     let apart = app.session.active().map(|st| apart(ui, st)).unwrap_or_default();
     let area = Rect::from_min_max(pos2(r.left(), head.bottom() + LIST_PAD), pos2(r.right(), (r.bottom() - LIST_PAD).max(head.bottom())));
@@ -229,7 +232,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
 }
 
 /// Why row `id` isn't drawn with: its layer is hidden or locked.
-pub(super) fn refused(st: &vectorcraft_engine::DocState, id: NodeId) -> Option<String> {
+fn refused(st: &vectorcraft_engine::DocState, id: NodeId) -> Option<String> {
     let layer = st.doc.node(id)?;
     let why = if !layer.visible {
         tw!("{row} is hidden: show it to draw with it")
@@ -450,12 +453,10 @@ fn run_more(app: &mut VectorcraftApp, ctx: &egui::Context, more: More) -> Result
     }
 }
 
-/// The lines set apart from their row's look, counted again when the drawing changes.
+/// The lines set apart from their row's look, counted by row again when the drawing changes.
 #[derive(Default)]
 pub(super) struct Apart {
-    /// How many, by row.
     rows: HashMap<NodeId, usize>,
-    pub(super) lines: HashSet<NodeId>,
 }
 
 pub(super) fn apart(ui: &Ui, st: &vectorcraft_engine::DocState) -> Arc<Apart> {
@@ -471,7 +472,6 @@ pub(super) fn apart(ui: &Ui, st: &vectorcraft_engine::DocState) -> Arc<Apart> {
         let Some(legend) = layer.legend() else { continue };
         for line in lines(layer) {
             if stroke_of(line).is_some_and(|s| legend.differs(s)) {
-                apart.lines.insert(line.id);
                 *apart.rows.entry(layer.id).or_default() += 1;
             }
         }
@@ -649,7 +649,7 @@ fn clicked(ui: &Ui, area: Rect) -> Option<Click> {
 /// The drawing's layers in the legend's sections, top first: ★ Used Often, the legend groups with
 /// `first` first, Underlays (template layers) and the other rows, each in the layers' order. An
 /// underlay goes under Underlays, starred or not; a section without rows is left out.
-pub(super) fn sections(doc: &Document, first: LegendGroup) -> Vec<(&'static str, Vec<&Arc<Node>>)> {
+fn sections(doc: &Document, first: LegendGroup) -> Vec<(&'static str, Vec<&Arc<Node>>)> {
     let groups: Vec<LegendGroup> = std::iter::once(first).chain(LegendGroup::ALL.into_iter().filter(|g| *g != first)).collect();
     let mut favourites = vec![];
     let mut by_group: Vec<Vec<&Arc<Node>>> = vec![vec![]; groups.len()];
@@ -691,7 +691,7 @@ fn items<'a>(app: &'a VectorcraftApp, ctx: &egui::Context, apart: &Apart) -> Vec
                 name: l.display_name(),
                 visible: l.visible,
                 locked: l.locked,
-                dim: !l.visible || l.is_template(),
+                dim: !l.visible,
                 underlay: l.is_template(),
                 colour: crate::panels::layers::layer_colour(&st.doc, l.id),
                 current: Some(l.id) == current,
@@ -730,7 +730,12 @@ fn layer_row(ui: &Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
     let icon =
         |name: &str, cx: f32, size: f32, color: Color32| crate::icons::paint(ui, name, Rect::from_center_size(pos2(cx, cy), vec2(size, size)), color);
     icon(if row.visible { "eye" } else { "eye-off" }, x0 + ICON_W / 2.0, 14.0, if row.visible { t.icon } else { t.ring });
-    icon(if row.locked { "lock" } else { "lock-open" }, x0 + ICON_W + GAP + ICON_W / 2.0, 13.0, if row.locked { t.icon } else { t.ring });
+    let lock_at = Rect::from_center_size(pos2(x0 + ICON_W + GAP + ICON_W / 2.0, cy), vec2(13.0, 13.0));
+    if row.locked {
+        padlock(ui, lock_at, t.icon);
+    } else {
+        crate::icons::paint(ui, "lock-open", lock_at, t.ring);
+    }
     let slot = Rect::from_min_size(pos2(x0 + 2.0 * (ICON_W + GAP), cy - SAMPLE.y / 2.0), SAMPLE);
     match row.legend {
         _ if row.underlay => {
@@ -824,6 +829,22 @@ fn layer_row(ui: &Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
     }
 }
 
+/// A shut padlock filling `r` (the mockup's `#i-lock` on 24: a body 14 × 9 at 5, 11 in ink and its
+/// shackle 1.8 wide above it), drawn rather than an outline icon (design 3.0 §7: locked is filled).
+fn padlock(ui: &Ui, r: Rect, color: Color32) {
+    let k = r.width() / 24.0;
+    let p = |x: f32, y: f32| r.min + vec2(x * k, y * k);
+    ui.painter().rect_filled(Rect::from_min_max(p(5.0, 11.0), p(19.0, 20.0)), CornerRadius::same(1), color);
+    let arc: Vec<Pos2> = (0..=12)
+        .map(|i| {
+            let a = std::f32::consts::PI * i as f32 / 12.0;
+            p(12.0 - 4.0 * a.cos(), 8.0 - 4.0 * a.sin())
+        })
+        .collect();
+    let shackle: Vec<Pos2> = std::iter::once(p(8.0, 11.0)).chain(arc).chain(std::iter::once(p(16.0, 11.0))).collect();
+    ui.painter().add(egui::Shape::line(shackle, Stroke::new(1.8 * k, color)));
+}
+
 /// The mockup's `.fx` badge: `label` in white on clay, from `at` (its left centre). Returns where
 /// it is.
 pub(super) fn badge(ui: &Ui, at: Pos2, label: &str, t: &Tokens) -> Rect {
@@ -858,7 +879,7 @@ fn dash_px(pattern: &[f64]) -> Option<(Vec<f32>, Vec<f32>)> {
 /// A legend row's sample in `r` (design 3.0 §7): its line drawn at its weight (as the pen's chips,
 /// [`super::palette::sample_px`]) in its dashes, an area row's too, or its mark; without a look, a
 /// thin faint line.
-pub(super) fn sample(ui: &Ui, r: Rect, legend: &Legend, t: &Tokens) {
+fn sample(ui: &Ui, r: Rect, legend: &Legend, t: &Tokens) {
     let look = legend.look();
     let stroke = match look {
         Some((w, _)) => Stroke::new(super::palette::sample_px(w), t.text),

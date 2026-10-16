@@ -23,8 +23,10 @@ const BUTTON: f32 = 24.0;
 const BUTTON_GAP: f32 = 2.0;
 
 /// What the properties show.
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Facts {
+    /// The drawing's `uid`: a fold or open pressed by hand stays with its drawing.
+    uid: u64,
     selected: usize,
     /// "3 lines · 평면외곽선".
     head: String,
@@ -47,19 +49,19 @@ pub(super) fn height(app: &mut VectorcraftApp, ctx: &egui::Context) -> f32 {
     if open(ctx, &facts) { HEAD_H + TOP + facts.rows() as f32 * ROW + BOTTOM } else { HEAD_H }
 }
 
-/// Where a fold or open pressed by hand is kept, with whether anything was selected then: it holds
-/// until that changes, when the properties follow the selection again.
+/// Where a fold or open pressed by hand is kept, with its drawing and whether anything was
+/// selected then: it holds until that changes, when the properties follow the selection again.
 fn open_id() -> egui::Id {
     wid("props-open", ())
 }
 
 fn open(ctx: &egui::Context, facts: &Facts) -> bool {
     let any = facts.selected > 0;
-    match ctx.data(|d| d.get_temp::<(bool, bool)>(open_id())) {
-        Some((then, open)) if then == any => open,
+    match ctx.data(|d| d.get_temp::<(u64, bool, bool)>(open_id())) {
+        Some((uid, then, open)) if uid == facts.uid && then == any => open,
         Some(_) => {
-            // The selection came or went since: the properties follow it again.
-            ctx.data_mut(|d| d.remove::<(bool, bool)>(open_id()));
+            // Another drawing, or the selection came or went since: the properties follow it again.
+            ctx.data_mut(|d| d.remove::<(u64, bool, bool)>(open_id()));
             any
         }
         None => any,
@@ -74,9 +76,10 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     line_above(ui, r, t.border);
     let head = Rect::from_min_size(r.min, vec2(r.width(), HEAD_H));
     column_head(ui, head, tw!("Properties"), &facts.head, 1, &t);
-    let (icon, tip) = if is_open { ("chevron-down", tw!("Fold the properties")) } else { ("chevron-right", tw!("Show the properties")) };
-    if head_button(ui, wid("props-fold", ()), head, 0, icon, tip, &t).clicked() {
-        ctx.data_mut(|d| d.insert_temp(open_id(), (facts.selected > 0, !is_open)));
+    // The mockup's ▸, and ▾ when open: small and grey, as its `.ph .r` glyphs.
+    let tip = if is_open { tw!("Fold the properties") } else { tw!("Show the properties") };
+    if column_button(ui, wid("props-fold", ()), head, 0, tip, &t, |ui, r| triangle(ui, r.center(), 7.0, is_open, t.text_dim)).clicked() {
+        ctx.data_mut(|d| d.insert_temp(open_id(), (facts.uid, facts.selected > 0, !is_open)));
     }
     if !is_open {
         return;
@@ -133,30 +136,48 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     }
 }
 
-/// What is selected, on which rows, how big and where.
+/// What [`facts`] are worked out from: the drawing, its revision and its scale.
+type FactsKey = (u64, u64, Option<vectorcraft_doc::scale::ScaleConfig>);
+
+/// What is selected, on which rows, how big and where, worked out again only when the drawing or
+/// its selection changes (the properties and their height ask every frame).
 fn facts(app: &mut VectorcraftApp, ctx: &egui::Context) -> Facts {
+    // The scale too: `doc.setScale` changes it without a new revision.
+    let Some(key) = app.session.active().map(|st| (st.uid, st.revision, st.doc.scale.clone())) else { return Facts::default() };
+    let cache = wid("props-facts", ());
+    if let Some((was, facts)) = ctx.data(|d| d.get_temp::<(FactsKey, Facts)>(cache))
+        && was == key
+    {
+        return facts;
+    }
+    let facts = facts_now(app, ctx);
+    ctx.data_mut(|d| d.insert_temp(cache, (key, facts.clone())));
+    facts
+}
+
+fn facts_now(app: &mut VectorcraftApp, ctx: &egui::Context) -> Facts {
     let size_box = app.selection_box();
     let bounds = app.selection_bounds();
     let area = area(app, ctx);
     let Some(st) = app.session.active() else { return Facts::default() };
+    let uid = st.uid;
     let ids = &st.selection.objects;
     if ids.is_empty() {
-        return Facts { head: tw!("No selection").to_string(), ..Facts::default() };
+        return Facts { uid, head: tw!("No selection").to_string(), ..Facts::default() };
     }
-    let nodes: Vec<&vectorcraft_doc::Node> = ids.iter().filter_map(|id| st.doc.node(*id)).collect();
-    let n = ids.len().to_string();
-    let what = if !nodes.is_empty() && nodes.iter().all(|n| vectorcraft_doc::legend::is_line(n)) {
-        crate::i18n::fmt(tw!("{n} lines"), &[("n", &n)])
+    let picked = super::selected_in_rows(&st.doc, ids);
+    let what = if !picked.is_empty() && picked.iter().all(|(n, _)| vectorcraft_doc::legend::is_line(n)) {
+        super::count(ids.len(), tw!("{n} line"), tw!("{n} lines"))
     } else {
-        crate::i18n::fmt(tw!("{n} objects"), &[("n", &n)])
+        super::count(ids.len(), tw!("{n} object"), tw!("{n} objects"))
     };
-    let mut rows: Vec<vectorcraft_doc::NodeId> = ids.iter().filter_map(|id| st.doc.layer_of(*id)).collect();
-    rows.sort_unstable_by_key(|id| id.0);
-    rows.dedup();
+    let mut rows: Vec<&vectorcraft_doc::Node> = picked.iter().map(|(_, row)| *row).collect();
+    rows.sort_unstable_by_key(|l| l.id.0);
+    rows.dedup_by_key(|l| l.id);
     let on = match rows.as_slice() {
-        [one] => st.doc.node(*one).map(|l| l.display_name()).unwrap_or_default(),
+        [one] => one.display_name(),
         [] => String::new(),
-        many => crate::i18n::fmt(tw!("{n} rows"), &[("n", &many.len().to_string())]),
+        many => super::count(many.len(), tw!("{n} row"), tw!("{n} rows")),
     };
     let head = if on.is_empty() { what } else { format!("{what} · {on}") };
     let scale = st.doc.scale.as_ref();
@@ -177,12 +198,12 @@ fn facts(app: &mut VectorcraftApp, ctx: &egui::Context) -> Facts {
                     CoordOrder::EastNorth => (east, north),
                     CoordOrder::NorthEast => (north, east),
                 };
-                format!("X {} · Y {}", super::status::grouped(x, 2), super::status::grouped(y, 2))
+                format!("X {} · Y {} m", super::status::grouped(x, 2), super::status::grouped(y, 2))
             }
             None => format!("X {} · Y {} mm", super::status::grouped(mm.from_pt(c.x), 1), super::status::grouped(mm.from_pt(c.y), 1)),
         }
     });
-    Facts { selected: ids.len(), head, size, area, position }
+    Facts { uid, selected: ids.len(), head, size, area, position }
 }
 
 /// Paper millimetres to a tenth, without ".0": "10", "12.5".
@@ -191,16 +212,17 @@ fn trim(v: f64) -> String {
     s.strip_suffix(".0").unwrap_or(&s).to_string()
 }
 
-/// A single closed shape's area and perimeter at the drawing's scale, worked out once per revision.
+/// A single closed shape's area and perimeter at the drawing's scale, worked out once per revision
+/// and scale.
 fn area(app: &mut VectorcraftApp, ctx: &egui::Context) -> Option<String> {
     let st = app.session.active()?;
     st.doc.scale.as_ref()?;
     let [id] = st.selection.objects.as_slice() else { return None };
     let id = *id;
     st.doc.node(id)?.path_data().filter(|p| p.is_closed())?;
-    let key = (st.uid, st.revision, id.0);
+    let key = ((st.uid, st.revision, st.doc.scale.clone()), id.0);
     let cache = wid("props-area", ());
-    if let Some((was, said)) = ctx.data(|d| d.get_temp::<((u64, u64, u64), Option<String>)>(cache))
+    if let Some((was, said)) = ctx.data(|d| d.get_temp::<((FactsKey, u64), Option<String>)>(cache))
         && was == key
     {
         return said;

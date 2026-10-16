@@ -392,6 +392,15 @@ fn revert_brings_overrides_back() {
     run(&mut s, "legend.revert", json!({}));
     assert_eq!((s.new_art_stroke().width, LineType::of(&s.new_art_stroke())), (0.2, LineType::DashDot));
     assert_eq!((doc_json(&s), depth(&s)), before, "the pen is not the document");
+    // With `pen`, the selected lines and the pen both take it.
+    run(&mut s, "stroke.set", json!({"weight": 3, "dash": null}));
+    set_weight(&mut s, &[a], 0.5);
+    run(&mut s, "select.set", json!({"ids": [a.0]}));
+    run(&mut s, "layer.setCurrent", json!({"id": row.0}));
+    let r = run(&mut s, "legend.revert", json!({"pen": true}));
+    assert_eq!(r["lines"], json!(1));
+    assert_eq!(weight(&s, a), 0.2);
+    assert_eq!((s.new_art_stroke().width, LineType::of(&s.new_art_stroke())), (0.2, LineType::DashDot));
     // Nothing to revert: no undo step.
     let before = depth(&s);
     run(&mut s, "legend.revert", json!({"all": true}));

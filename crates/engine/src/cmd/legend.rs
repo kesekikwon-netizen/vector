@@ -45,7 +45,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Revert to the Legend",
             [],
             None,
-            "{ids?: [id…], all?: bool} lines set apart go back to their row's look (weight and dashes): the lines in `ids` (groups and layers: the lines in them), with `all` every line of the drawing, else the selection's. Lines of rows without a look are left, locked ones are skipped and counted; one undo step. With nothing selected and no ids, the pen takes the current row's look → {lines, skipped}",
+            "{ids?: [id…], all?: bool, pen?: bool} lines set apart go back to their row's look (weight and dashes): the lines in `ids` (groups and layers: the lines in them), with `all` every line of the drawing, else the selection's. Lines of rows without a look are left, locked ones are skipped and counted; one undo step. With nothing selected and no ids, or with `pen`, the pen takes the current row's look too → {lines, skipped}",
             has_doc,
             revert
         ),
@@ -354,6 +354,7 @@ fn pick(s: &mut Session, p: &Value) -> Result<Value> {
 fn revert(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "legend.revert";
     let all = flag(p, "all", C)?.unwrap_or(false);
+    let pen = flag(p, "pen", C)?.unwrap_or(false);
     let ids = match p.get("ids") {
         None | Some(Value::Null) => None,
         Some(_) => {
@@ -369,10 +370,10 @@ fn revert(s: &mut Session, p: &Value) -> Result<Value> {
         (false, Some(ids)) => ids,
         (false, None) => super::edit::selected_roots(s)?,
     };
+    let pen_look = st.current_layer().and_then(|l| d.layer_of(l)).and_then(|r| d.node(r)).and_then(look_of);
     if !all && p.get("ids").is_none_or(Value::is_null) && starts.is_empty() {
         // Nothing to revert: the pen takes the current row's look.
-        let look = st.current_layer().and_then(|l| d.layer_of(l)).and_then(|r| d.node(r)).and_then(look_of);
-        if let Some((w, t)) = look {
+        if let Some((w, t)) = pen_look {
             set_pen(s, w, &t);
         }
         return Ok(json!({ "lines": 0, "skipped": 0 }));
@@ -401,6 +402,9 @@ fn revert(s: &mut Session, p: &Value) -> Result<Value> {
             }
             Ok(())
         })?;
+    }
+    if pen && let Some((w, t)) = pen_look {
+        set_pen(s, w, &t);
     }
     Ok(json!({ "lines": todo.len(), "skipped": skipped }))
 }
@@ -737,20 +741,21 @@ fn add(s: &mut Session, p: &Value) -> Result<Value> {
 /// 평면외곽선 0.6pt, 내선(바닥) 0.3pt, 이중굴광시-가운데선 0.4pt 파선,
 /// 석곽-평면외곽선 0.5pt, 석곽-내선 0.2pt, 석곽-유물 토기외곽·금속 0.3pt,
 /// 석곽-유물 내선 0.2pt, 석곽-유물 깨진면 0.15pt, 단면선 0.8pt, 단면빗금 0.2pt,
-/// 해발선 0.3pt, 해발선 0.5단위 0.5pt.
+/// 해발선 0.3pt, 해발선 0.5단위 0.5pt. ★ (used often): 평면외곽선, 내선(바닥) and 단면선, as
+/// Trowel design 3.0 §7's table.
 const FIELD_PRESETS: [(&str, LegendGroup, f64, LineType, Show, bool); 12] = [
     ("평면외곽선", LegendGroup::Plan, 0.6, LineType::Solid, Show::Area, true),
     ("내선(바닥)", LegendGroup::Plan, 0.3, LineType::Solid, Show::Area, true),
     ("이중굴광시-가운데선", LegendGroup::Plan, 0.4, LineType::Dashed, Show::Line, false),
-    ("석곽-평면외곽선", LegendGroup::Plan, 0.5, LineType::Solid, Show::Area, true),
+    ("석곽-평면외곽선", LegendGroup::Plan, 0.5, LineType::Solid, Show::Area, false),
     ("석곽-내선", LegendGroup::Plan, 0.2, LineType::Solid, Show::Line, false),
-    ("석곽-유물 토기외곽·금속", LegendGroup::Finds, 0.3, LineType::Solid, Show::Line, true),
+    ("석곽-유물 토기외곽·금속", LegendGroup::Finds, 0.3, LineType::Solid, Show::Line, false),
     ("석곽-유물 내선", LegendGroup::Finds, 0.2, LineType::Solid, Show::Line, false),
     ("석곽-유물 깨진면", LegendGroup::Finds, 0.15, LineType::Solid, Show::Line, false),
     ("단면선", LegendGroup::Section, 0.8, LineType::Solid, Show::Line, true),
     ("단면빗금", LegendGroup::Section, 0.2, LineType::Solid, Show::Area, false),
     ("해발선", LegendGroup::Section, 0.3, LineType::Solid, Show::Line, false),
-    ("해발선 0.5단위", LegendGroup::Section, 0.5, LineType::Solid, Show::Line, true),
+    ("해발선 0.5단위", LegendGroup::Section, 0.5, LineType::Solid, Show::Line, false),
 ];
 
 /// Returns the 12 real-world Korean excavation report field standard rules.

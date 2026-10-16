@@ -4224,6 +4224,7 @@ trowel	{layer} is hidden: drawing on {target}	{layer} 숨김: {target}에 그립
 trowel	{layer} is hidden: no layer to draw on	{layer} 숨김: 그릴 수 있는 레이어가 없습니다
 trowel	{layer} is locked: drawing on {target}	{layer} 잠김: {target}에 그립니다
 trowel	{layer} is locked: no layer to draw on	{layer} 잠김: 그릴 수 있는 레이어가 없습니다
+trowel	{n} object	객체 {n}개
 trowel	{n} objects	객체 {n}개
 trowel	{row} is hidden: show it to draw with it	「{row}」 줄이 숨겨져 있습니다: 보이게 해야 이 줄로 그립니다
 trowel	{row} is locked: unlock it to draw with it	「{row}」 줄이 잠겨 있습니다: 잠금을 풀어야 이 줄로 그립니다
@@ -4285,6 +4286,7 @@ trowel	Selected: {n}	{n}개를 골랐습니다
 trowel	Unused rows removed: {n}	쓰지 않는 줄 {n}개를 정리했습니다
 trowel	The 12 field standard rows are all there	현장 표준 12종이 모두 있습니다
 trowel	Next line	다음에 그릴 선
+trowel	{n} selected line	고른 선 {n}개
 trowel	{n} selected lines	고른 선 {n}개
 trowel	Black	검정
 trowel	Red	적색
@@ -4309,7 +4311,9 @@ trowel	The row takes this look, and its lines that follow it	줄이 이 모양�
 trowel	The pen and the selected lines take the row's look again	펜과 고른 선을 줄의 모양으로 되돌립니다
 trowel	{row} takes the pen's look · lines: {n}	「{row}」 줄에 펜 모양을 반영했습니다 · 선 {n}개
 trowel	No selection	고른 것 없음
+trowel	{n} line	선 {n}개
 trowel	{n} lines	선 {n}개
+trowel	{n} row	줄 {n}개
 trowel	{n} rows	줄 {n}개
 trowel	Select something to see its size and where it is	고르면 크기와 위치가 보입니다
 trowel	Area	면적

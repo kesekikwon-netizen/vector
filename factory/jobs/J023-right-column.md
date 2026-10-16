@@ -1,4 +1,4 @@
-상태: review
+상태: verify (재작업 1)
 
 # J023 (디자인 3.0 D3): 오른쪽 칸 — 범례 → 펜 → 속성
 
@@ -46,6 +46,8 @@
 
 ### 변경 범위
 - `crates/ui-egui/src/trowel/{mod,palette,legend,props,rowedit,weights,tests}.rs`
+- 명세 고침(구현 중): `crates/ui-egui/src/theme.rs`에 `ok` 색 하나(「✓ 범례와 같음」의 초록, 시안 HTML `#3F6B31`). trowel 화면 색은 토큰에서만 온다는 규칙 때문.
+- 명세 고침(재작업 1): `engine/cmd/legend.rs`의 `legend.revert`에 `pen` 인자(고른 선과 함께 펜도 되돌림), 현장 표준 12종의 ★를 7장 표대로 3줄로.
 - `crates/engine/src/cmd/legend.rs`: `LADDER` 6개 → 9개와 명령 설명, 엔진 범례 시험
 - `i18n/*.tsv`: 새 `tw!` 글자열 번역, 쓰이지 않게 된 줄 정리
 
@@ -75,6 +77,7 @@
 - 지움: `object_rows_show_overrides_and_revert`(개체 목록 없앰), `the_group_menu_adds_a_legend_group`·`a_group_added_from_the_menu_draws_with_its_first_favourite`(머리의 묶음 넣기 목록 없앰, 엔진 `legend.addGroup` 시험은 그대로), `the_chosen_line_type_chip_keeps_its_border`(시안 `.seg`에 먹색 테두리 없음), `double_clicking_a_row_moves_nothing_when_its_first_click_shifts_the_rows`(줄이 열리지 않아 첫 클릭에 줄이 움직이지 않음; 두 번 클릭이 아무것도 옮기지 않는 것은 `double_clicking_a_row_with_lines_selected_moves_nothing`이 그대로 확인).
 - 바꿔 씀: 짧은 창 스크롤, 범례 목록이 펜 위에 머묾, 긴 범례는 보이는 줄만, 패널 띄우기(⋯ → 획), 속성(실제 크기), 줄 모양, 칸 순서, ★ 칸, ⋯ 메뉴, 도면 없을 때, 선 종류, ＋, 두 번 탭, 표시 견본 자리(왼쪽 56, 34×10), 굵기 한 번에를 ⋯에서 엶, 늘 보이는 팔레트(0.4 파선·색 대상·색 없음 확인 뺌), 카드 크기(아래 줄 단추 확인 뺌), 흐린 단추 설명(굵기 한 번에 반쪽 뺌).
 - ◆ `weights_card_value_and_step_modes`의 한 단계 기대값: 내림 (0.3, 0.5, 0.8) → (0.3, 0.6, 0.8), 올림 (0.5, 0.8, 1.0) → (0.4, 0.8, 1.0). 9단계 목록 때문(위험 ◆).
+- 이름으로 짝: `a_big_open_layer_lays_out_only_the_rows_in_view` → `a_long_legend_lays_out_only_the_rows_in_view`, `palette_legend_buttons_add_and_revert` → `the_legend_plus_makes_a_row_of_the_pens_look`와 `the_three_buttons_do_what_they_say`(펜의 「범례에 더하기」 「범례대로」 버튼 없앰), `properties_summarise_the_selection` → `the_properties_fold_and_show_real_sizes`, `the_weights_button_waits_for_a_drawing` → `the_legend_more_items_wait_for_a_drawing`(아래 줄 없앰, ⋯로 옮김), `the_legend_list_stays_above_its_footer` → `the_legend_list_stays_above_the_pen`, `the_footer_opens_the_weights_card_and_reverts_all_overrides` → 지움(아래 줄 없앰; 굵기 한 번에는 `the_legend_more_menu_runs_its_items`, 모두 되돌리기는 `drawing_menu_opens_the_weights_card_and_reverts`가 확인), `strata_rows_have_their_own_section` → 지움(Strata 칸 나눔 없앰, 완료 기준 4).
 - 새로: `the_right_column_is_legend_pen_properties`, `one_weight_list_everywhere`, `the_pen_follows_the_mockup`, `the_pen_says_when_it_differs_from_the_legend`, `the_three_buttons_do_what_they_say`, `drawing_on_counts_as_just_this_once`, `a_double_click_on_a_chip_types_a_weight_as_the_buttons_come`, `the_legend_follows_the_mockup`, `legend_rows_menu_and_count_work`, `the_legend_more_menu_runs_its_items`, `the_legend_more_items_wait_for_a_drawing`, `the_legend_plus_makes_a_row_of_the_pens_look`, `the_properties_fold_and_show_real_sizes`.
 
 ## 검증 (verify, 클라우드 컨테이너, Linux)
@@ -98,3 +101,63 @@
   5. 줄을 끌어 순서 바꾸기가 없다(오른쪽 클릭 위로·아래로로 대신).
   6. 「따로」 표는 범례와 다른 선이 있을 때 붙는다. 펜만 다르고 아직 그리지 않았을 때는 펜의 상태 줄이 알린다(7장 표의 「펜이 범례와 다르면 이름 뒤에 따로 표」를 이렇게 읽음).
   7. 밑그림 줄의 잠긴 자물쇠는 먹색 채움 아이콘이 아니라 선 아이콘이다(이번 장면에 밑그림 없음, 시험으로만 확인).
+
+## 검토 (review) 1차 — 2026-10-16, 기준 6684b51
+- 코드 검토(code-reviewer): **수정 필요**. 막는 것 2, 고칠 것 2, 사소한 것 6.
+  1. (막는 것) 선택 도구로 고른 선에서 「이번만 이렇게」를 눌러도 버튼이 접히지 않음(`buttons_show`가 선택 도구면 눌림을 보지 않음). 앱을 띄워 재현.
+  2. (막는 것) 펜·속성이 프레임마다 고른 것 수 × 문서 크기만큼 계산(`layer_of`·`node`가 매번 트리를 훑음, 프레임마다 두 번). 묶은 선 8,000개를 고르면 한 프레임 651 ms(실측, dev 빌드).
+  3. (고칠 것) 고른 선이 있을 때 「범례대로」가 펜을 되돌리지 않음(7장 「펜과 고른 선을」).
+  4. (고칠 것) 시험이 느슨함: 굵기 단계 시험이 옛 6단계와 구별 못 함(0.4 → 0.5/0.3), 속성 위치가 형식만 봄, 1·3번 시험 없음.
+  - 사소한 것: 읽지 않는 `Apart.lines`, 모듈 밖에서 안 쓰는 `pub(super)`, 「이번만 이렇게」·속성 접힘 값에 도면 uid 없음, 스크롤 배치에서 펜 고정 값이 안 지워짐, 속성 위치에 「m」 없음, 영어 복수형(「1 lines」), `even_segments`와 `segments` 비슷함·`SAMPLE_PX`가 굵기 목록을 다시 적음, 기록(시험 이름 짝, `theme.rs` 명세 고침 줄, backlog 상태, 10장 ⑧ 「색 견본은 theme 토큰으로」).
+  - CLAUDE.md 금지 사항(패닉·인덱싱·색 토큰·명령) 문제 없음. clippy·fmt·시험 1,058·엔진 범례 29·trowel_e2e 225 통과 확인.
+- 화면 검토(ui-reviewer): **남은 차이 있음**. 칸 순서·폭 304·머리 36·줄 27·칩 24×30·견본 20×20·버튼 24는 시안과 같음.
+  1. (막는 것) 색 견본을 누르면 선이 흰색이 됨: 0–255 정수 `[210,35,35]`를 보내는데 엔진은 `[r,g,b]`를 0–1로 읽음. D3 전 팔레트부터 있던 버그.
+  2. (막는 것) 코드 검토 1번과 같음.
+  3. (막는 것) 세 버튼이 포인터 밑에서 없어질 때 펜 윗변이 40 내려가 포인터가 빗금 「45°」 위로 감(완료 기준 1).
+  4. (고칠 것) ★ 자주 씀이 12종에서 6줄(시안·7장 표는 평면외곽선·내선(바닥)·단면선 3줄).
+  5. (고칠 것) 펜 높이 198(시안 190): 색 줄 32(시안 26).
+  6. (고칠 것) 머리 오른쪽 버튼이 시안보다 7–9 왼쪽.
+  7. (고칠 것) 속성 ▸/▾ 대신 꺾쇠. 8. 잠긴 자물쇠가 선 아이콘(시안 먹색 채움). 9. 밑그림 줄 이름이 흐림(시안 먹색). 10. 속성 위치에 m 없음.
+  - 사용자 결정·기록: 견본 색값이 시안과 다름, 이 환경에 굵은 한글 글꼴 없음(J022와 같음), 글꼴이 섞여 숫자가 작아 보임, 속성 접힘 34(글)와 시안 그림 36, 1–3 px 차이(흐린 글자 토큰, 견본 선 길이, 자물쇠 크기, 따로 표 높이, 버튼 사이), 포인터가 펜 위에 있을 때 속성이 잠시 밀려남, ⋯ 첫 항목 이름 「줄 편집…」(5장 ⑦은 「범례 편집」).
+  - 구현자 남은 차이 7개: 1·2·5·6은 맞고 받아들일 수 있음, 3은 근거가 부정확(견본값은 앞으로 누를 색만 바꿈, 게다가 지금은 흰색이 칠해짐), 4·7은 고칠 것.
+
+## 재작업 1 (rework 1) — 2026-10-16
+- 색 견본(화면 막는 것 1): 엔진이 읽는 `"#rrggbb"`로 보냄. 지금까지 어떤 견본도 제 색을 칠한 적이 없어 지킬 기존 색이 없으므로 시안 색을 씀: 검정 `#000000`(기본 펜 색과 같아 새 도면에서 시안처럼 고리가 보임; 시안 그림은 `#141413`), 적색 `#E8334F`, 청색 `#2B5FB8`, 흑갈 `#4A3426`, 암갈 `#7A5235`, 황갈 `#B08A52`, 회색 `#8C8C8C`, 백색 `#FFFFFF`. 견본 색은 도면에 칠하는 색이라 theme 토큰이 아닌 상수로 둠(어두운 테마가 종이 위 색을 바꾸면 안 됨): 10장 ⑧ 「theme 토큰으로」를 따르지 않은 이유.
+- 「이번만 이렇게」(막는 것 2): 누른 것이 고른 선이 있을 때였으면 그 고른 것(id 해시)을 함께 기억해, 도구와 상관없이 그 선들에서는 접힘. 그려서 생긴 것이나 고른 것 없이 누른 것은 전처럼 선택 도구로 나중에 고르면 다시 나옴. 기억에 도면 uid를 넣음.
+- 펜 윗변(막는 것 3): 붙잡는 동안 펜을 가장 컸던 높이로 보고 포인터가 그 안에 있으면 그대로 둠. 버튼이 사라진 자리는 빈칸이고 속성은 아래에 그대로. 스크롤 배치에서는 붙잡은 값을 지움.
+- 속도(막는 것 2): 펜의 비교 결과를 (도면 uid, 판, 지금 레이어, 펜 굵기·선 종류)로, 속성을 (uid, 판, 축척)으로 기억해 바뀔 때만 다시 셈. 고른 것과 그 레이어는 한 번 훑어 찾음(`selected_in_rows`, 다 찾으면 멈춤), 레이어 모양은 레이어마다 한 번.
+- 범례대로(고칠 것 3): 엔진 `legend.revert`에 `pen` 인자. 고른 선이 있으면 선과 펜을 함께 지금 줄 모양으로. 엔진 시험 더함.
+- ★(화면 4): 현장 표준 12종의 ★를 평면외곽선·내선(바닥)·단면선 3줄로(7장 표). 이미 만든 도면의 줄은 그대로(새로 넣을 때만).
+- 펜 높이(화면 5): 색 줄 26, 펜 192(버튼이 있으면 232).
+- 머리 버튼(화면 6): 오른쪽 칸 머리의 버튼을 오른쪽 끝에서 16(시안 ⋯ 자리), 24 간격. 다른 패널 머리는 그대로.
+- 속성 ▸/▾(화면 7): 채운 삼각형. 잠긴 자물쇠(화면 8): 시안 `#i-lock`대로 채운 몸통과 고리를 그림(모든 잠긴 줄). 밑그림 이름(화면 9): 숨긴 줄만 흐리게. 위치 단위(화면 10, 코드 사소한 것): 「X … · Y … m」.
+- 사소한 것: `Apart.lines` 지움, `sections`·`refused`·`sample`을 모듈 안으로(`badge`는 줄 편집 카드가 씀), 속성 접힘 기억에 uid, 영어 단수형 4줄(「1 line」 등, 한국어 번역 4줄 더함), `SAMPLE_PX`는 굵기 목록 길이에 묶인 픽셀 값만 둠.
+- 따르지 않은 것: `even_segments`와 `segments`를 합치는 것. 앞은 칸을 똑같이 나누고 고른 칸은 oat 바탕만(시안 펜 `.seg`), 뒤는 글자 폭대로 나누고 고른 칸에 먹색 테두리(리본·상태줄)라 모양이 달라 둘로 둠.
+- 새로 찾은 것(범위 밖, 기록): 엔진 `doc.setScale`은 문서를 바꾸면서 판(revision)을 올리지 않고 되돌리기 단계도 남기지 않음. 그래서 속성의 기억에 축척을 함께 넣음. 좌표계 명령이라 고치려면 사람 검토가 필요해 이번에 손대지 않음.
+- 기대값 바꿈과 근거: 펜 높이 198 → 192(화면 5), 범례 머리 버튼 자리 오른쪽에서 24 → 16(화면 6), 밑그림 이름 색 흐림 → 먹색(화면 9, 시안), 「1 lines」 → 「1 line」, 굵기 단계 시험 0.4 → (0.5, 0.3)을 0.5 → (0.6, 0.4)로(9단계를 가리게, 코드 4).
+- 새 시험: `just_this_once_folds_for_selected_lines_too`, `the_swatches_paint_their_colours`, `the_pen_stays_put_as_its_buttons_go`, `selected_objects_are_found_with_their_rows`; 더한 확인: 범례대로가 펜도(`the_three_buttons_do_what_they_say`), 위치 TM 값과 북·동 순서(`the_properties_fold_and_show_real_sizes`), 잠긴 자물쇠 채움, 엔진 `revert_brings_overrides_back`의 `pen`.
+
+## 검증 (재작업 1 뒤, 클라우드 컨테이너, Linux)
+| 명령 | 종료 코드 | 결과 | 기록 |
+|---|---|---|---|
+| `cargo fmt --all -- --check` | 0 | 통과 | scratchpad `factory/J023/rework1-verify.log` |
+| `cargo clippy -p vectorcraft-ui-egui -p vectorcraft-engine --all-targets -- -D warnings` | 0 | 경고 없음 | 같은 파일 |
+| `cargo test -p vectorcraft-ui-egui` | 0 | 1,056 + 6 통과 · 0 실패 | 같은 파일 |
+| `cargo test -p vectorcraft-engine --lib -- legend` | 0 | 29 통과 | 같은 파일 |
+| `cargo test -p vectorcraft-engine --test trowel_e2e` | 0 | 225 통과 | 같은 파일 |
+| `twmissing.py` / `twunused.py` | 0 | 글자열 240개 중 번역 빠짐 0 / 안 쓰는 줄 7개(D3 전부터) | 터미널 |
+| 속성 ▸ 크기·색만 바꾼 뒤 `cargo test -p vectorcraft-ui-egui --lib -- trowel i18n`, `cargo fmt --all -- --check` | 0, 0 | 140 통과 · 0 실패 | 터미널 |
+| GitHub 「Trowel CI」 | - | 재작업 1 커밋 push 뒤 확인 | - |
+
+## 화면 비교 (재작업 1 뒤, 새로 띄운 앱 1440×880, Xvfb + llvmpipe)
+- 그림: scratchpad `shots/d3r1-compare-right.png`(시안 · 새로 띄운 앱 · 현장 표준 12종으로 바꾸고 밑그림 「실측 사진」을 더한 장면 · 그 장면에서 선을 고르고 0.8), `shots/d3r1-compare-differs.png`(7장 그림 · 앱), `shots/d3r1-pen-2x.png`(펜과 속성 머리 2배). 장면 스크립트 `shots/scene_d3r1.py`(★를 따로 켜지 않음: 12종 자체의 ★ 3줄).
+- 이번에 맞춘 것: 검정 견본에 고른 고리(새 도면), 펜 높이 192(색 줄 26), 머리 ＋·⋯·▸ 자리, 속성 ▸ 작은 회색 삼각형, ★ 자주 씀 3줄, 「위치 X … · Y … m」.
+- 남은 차이:
+  1. 새 도면은 범례 줄 1개(★ 굴광선 (유구 면))로 시작한다. 시안은 현장 표준 12종(범위 밖: 9장 새 도면 대화상자).
+  2. 「단면빗금」 견본이 빗금 상자가 아니라 선이다. 12종 자료에서 단면빗금과 평면외곽선이 모두 「면」 표시라 가릴 수 없다(줄 자료에 빗금 표시를 더하는 것은 파일 형식 변경이라 사람 결정).
+  3. ★ 줄 순서가 레이어 순서를 따른다(평면외곽선 · 내선(바닥) · 단면선). 시안 그림은 평면외곽선 · 단면선 · 내선(바닥).
+  4. 줄을 끌어 순서 바꾸기가 없다(오른쪽 클릭 위로·아래로로 대신, 명세 범위 밖).
+  5. 「따로」 표는 범례와 다른 선이 있을 때 붙는다. 펜만 다르고 아직 그리지 않았을 때는 펜의 상태 줄이 알린다.
+  6. 이 컨테이너에는 굵은 한글 글꼴이 없어 「범례」「펜」「속성」 머리와 고른 칸 「실선」「없음」이 굵게 보이지 않는다(J022와 같음, 사용자 PC에서 따로 확인).
+  7. 1–3 px 차이: 흐린 글자 토큰(#73726C, 시안 #9A988F, J001 색), 「따로」 표 높이 16(시안 약 13), 세 버튼 사이 4 대신 약 6, 견본 테두리 색.
+  8. 견본 색은 시안 색이지만 검정은 시안 그림의 #141413이 아닌 #000000(기본 펜 색, 고리가 보이게).
