@@ -239,7 +239,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         Ok(())
     };
     if let Err(e) = done {
-        app.status(e);
+        app.status_error(e);
     }
 }
 

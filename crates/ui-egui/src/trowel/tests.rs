@@ -53,6 +53,8 @@ struct Harness {
     time: f64,
     texts: Vec<Painted>,
     shapes: Vec<egui::epaint::ClippedShape>,
+    /// What went to the system clipboard, oldest first.
+    copied: Vec<String>,
 }
 
 impl Harness {
@@ -68,7 +70,7 @@ impl Harness {
         let lang = app.ui_language();
         crate::workspaces::start_trowel(&mut app.ui, lang);
         app.run("file.new", json!({"name": "Site 1", "width": 400, "height": 300})).unwrap();
-        let mut h = Harness { app, ctx: egui::Context::default(), screen: vec2(w, h), time: 0.0, texts: vec![], shapes: vec![] };
+        let mut h = Harness { app, ctx: egui::Context::default(), screen: vec2(w, h), time: 0.0, texts: vec![], shapes: vec![], copied: vec![] };
         // The first frame installs the fonts, the second lays the window out, the third sees it.
         for _ in 0..3 {
             h.frame(vec![]);
@@ -86,6 +88,11 @@ impl Harness {
             app.ui(ui);
         });
         out.textures_delta.clear();
+        for c in &out.platform_output.commands {
+            if let egui::OutputCommand::CopyText(t) = c {
+                self.copied.push(t.clone());
+            }
+        }
         self.texts = out
             .shapes
             .iter()
@@ -428,17 +435,25 @@ fn drawing_menu_sits_before_view_and_waits_for_its_jobs() {
     h.click_at(at(&h, "Drawing"));
     let items = h.popup_buttons();
     assert_eq!(items.len(), 10, "the Drawing menu's items: {items:?}");
-    // The first 6 run since J012/J018/J019; the others wait for their jobs.
-    assert!(items.iter().skip(6).all(|(_, enabled)| !enabled), "they wait for their jobs");
+    // The first 7 run (Scale and Coordinate System… since J022); the others wait for their jobs.
+    assert!(items.iter().take(7).all(|(_, enabled)| *enabled), "they run");
+    assert!(items.iter().skip(7).all(|(_, enabled)| !enabled), "they wait for their jobs");
     let shown: String = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join("|");
-    for item in ["Weights at Once…", "Make Level Lines", "Scale and Coordinate System…", "Strata GeoPackage"] {
+    for item in ["Weights at Once…", "Make Level Lines", "Scale and Coordinate System…", "Insert Legend Table", "Strata GeoPackage"] {
         assert!(shown.contains(item), "{item} in {shown}");
     }
+    assert!(!shown.contains("캔버스 범례표 삽입"), "renamed as in design 3.0 §5 ②: {shown}");
     // A second click puts the menu away; View, after it, is the app's own View menu.
     h.click_at(at(&h, "Drawing"));
     assert!(h.popup_buttons().is_empty(), "the Drawing menu closed");
     h.click_at(at(&h, "View"));
     assert!(h.popup_buttons().iter().any(|(_, enabled)| *enabled), "View's items run");
+    h.key(egui::Key::Escape);
+    // Scale and Coordinate System… opens the ribbon tile's dialog.
+    h.click_at(at(&h, "Drawing"));
+    let items = h.popup_buttons();
+    h.click_at(items[2].0.center());
+    assert!(h.rect(wid("scale-chip", 20u32)).is_some(), "the scale dialog");
 }
 
 /// The ribbon of design 3.0 (§4, §5 ③): nine tiles in four groups, each doing one thing to the
@@ -475,11 +490,23 @@ fn ribbon_follows_the_mockup_and_runs_commands() {
     h.app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 50, "height": 40})).unwrap();
     h.settle();
     assert_eq!(well(&h, "save"), Some(t.action));
-    // New Drawing: the tile opens the New dialog, its ▾ the four kinds of drawing.
+    // New Drawing: the tile, its label too, opens the New dialog; its ▾ alone the four kinds.
     h.click(wid("tile", "new"));
     assert!(h.app.ui.dialog.is_some(), "the New dialog");
     h.app.ui.dialog = None;
-    h.click(wid("tile-more", "new"));
+    h.click_text("New Drawing", ribbon);
+    assert!(h.app.ui.dialog.is_some(), "the label opens the New dialog");
+    assert!(!egui::Popup::is_id_open(&h.ctx, wid("tile-list", "new")), "not the list");
+    h.app.ui.dialog = None;
+    let more = h.rect(wid("tile-more", "new")).unwrap();
+    assert!(more.width() <= 14.0, "the ▾ only: {more:?}");
+    // "New Drawing ▾" is wider than its tile in English (not in Korean, 「새 도면 ▾」): its ▾'s
+    // left, clear of the Open tile.
+    let at = pos2(more.left() + 1.0, more.center().y);
+    assert!(!h.rect(wid("tile", "open")).unwrap().contains(at));
+    h.rest_at(at);
+    assert!(h.texts.iter().any(|p| p.text == "Plan, section, finds or plate at once"), "the ▾ says what it lists");
+    h.click_at(at);
     let items = h.popup_buttons();
     assert_eq!(items.len(), 4, "plan, section, finds, plate: {items:?}");
     assert!(items.iter().all(|(_, enabled)| *enabled));
@@ -494,11 +521,13 @@ fn ribbon_follows_the_mockup_and_runs_commands() {
     assert_eq!(h.app.session.documents().len(), docs);
     assert!(h.app.ui.dialog.is_none());
     assert!(h.status_line().contains("Align: coming soon (J008)"), "{}", h.status_line());
-    // Scale · CRS: the scale and coordinate system in a dialog, with the drawing's own.
+    // Scale · CRS: Trowel's own dialog on the drawing's scale and coordinate system, not the
+    // generic one (no "Epsg" field).
     h.click(wid("tile", "scale"));
-    let d = h.app.ui.dialog.take().expect("the scale dialog");
-    assert_eq!(d.fields.get("__command"), Some(&json!("doc.setScale")));
-    assert_eq!((d.fields.get("scale"), d.fields.get("epsg")), (Some(&json!(20.0)), Some(&json!(5186))));
+    assert!(h.app.ui.dialog.is_none(), "not the generic parameter dialog");
+    assert!(h.rect(wid("scale-chip", 20u32)).is_some() && h.rect(wid("crs-chip", 5186u32)).is_some(), "the scale dialog");
+    h.click(wid("scale-dialog", "cancel"));
+    assert!(h.rect(wid("scale-chip", 20u32)).is_none(), "put away");
     // Legend Table: a table of the rows in use, near the middle of the view.
     let (before, seq) = (h.node_count(), h.app.ui.status_seq);
     h.click(wid("tile", "legend"));
@@ -515,7 +544,15 @@ fn ribbon_follows_the_mockup_and_runs_commands() {
     for item in ["PDF…", "DXF (keeps coordinates)…", "SVG…", "Strata Survey Data…"] {
         assert!(shown.contains(item), "{item} in {shown}");
     }
+    // Strata Survey Data… opens its browser, and opens it again rather than putting it away.
+    let strata = super::gpkg_browser::gpkg_dialog_open_id();
+    for _ in 0..2 {
+        h.click_at(items[3].0.center());
+        assert_eq!(h.ctx.data(|d| d.get_temp::<bool>(strata)), Some(true));
+        h.click(wid("tile", "export"));
+    }
     h.key(egui::Key::Escape);
+    h.ctx.data_mut(|d| d.insert_temp(strata, false));
     // Find a command opens the command palette; its shortcut shows at its right.
     let find = h.rect(wid("find", ())).unwrap();
     assert_eq!(find.size(), vec2(210.0, 32.0));
@@ -529,8 +566,9 @@ fn ribbon_follows_the_mockup_and_runs_commands() {
 }
 
 /// The Control bar under the ribbon is gone from Trowel's window (design 3.0 §5): Window › Control
-/// is off there. What it held has one place each: the layer and the next line's look in the legend
-/// and the drawing palette, Snap in the status bar. The classic window keeps its Control bar.
+/// is off there, and run another way it leaves the classic window's setting as it is. What it held
+/// has one place each: the layer and the next line's look in the legend and the drawing palette,
+/// Snap in the status bar. The classic window keeps its Control bar.
 #[test]
 fn the_control_bar_is_gone_in_trowel() {
     let mut h = Harness::new();
@@ -542,6 +580,10 @@ fn the_control_bar_is_gone_in_trowel() {
     }
     assert!(!crate::menus::enabled(&h.app, "window.control"));
     assert_eq!(crate::menus::checked(&h.app, "window.control", &json!({})), Some(false));
+    let classic = h.app.ui.control_bar;
+    crate::menus::invoke(&mut h.app, "window.control", json!({}));
+    assert_eq!(h.app.run("window.control", json!({})), Ok(json!(false)), "off in Trowel");
+    assert_eq!(h.app.ui.control_bar, classic, "the classic window's Control bar stays as it was");
     let snap = h.app.ui.view.snap_to_point;
     h.click(wid("status", "snap"));
     assert_eq!(h.app.ui.view.snap_to_point, !snap, "Snap in the status bar");
@@ -1144,6 +1186,7 @@ fn properties_summarise_the_selection() {
 
 /// The status bar of design 3.0 (§5 ⑩): at the right the grid, Snap, where the pointer is, the
 /// scale and coordinate system and the zoom; no tool name and no count of drawings not saved.
+/// Without a coordinate system the position is millimetres on paper; a click copies it.
 #[test]
 fn status_bar_shows_grid_snap_position_scale_and_zoom() {
     let mut h = Harness::new();
@@ -1159,22 +1202,89 @@ fn status_bar_shows_grid_snap_position_scale_and_zoom() {
     let cells: Vec<f32> = ["grid", "snap", "position", "scale", "zoom"].iter().map(|k| h.rect(wid("status", k)).unwrap().left()).collect();
     assert!(cells.windows(2).all(|w| w[0] < w[1]), "grid, snap, position, scale, zoom: {cells:?}");
     h.app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 50, "height": 40})).unwrap();
-    // The pointer over the canvas: its position in the document; it stays when the pointer leaves.
+    // The pointer over the canvas: its position on paper; it stays when the pointer leaves.
     let at = h.app.canvas_rect.unwrap().center();
     h.frame(vec![Event::PointerMoved(at)]);
     h.settle();
     let p = h.app.hover_doc.expect("over the canvas");
-    let u = h.app.session.general_unit();
+    let mm = vectorcraft_doc::Unit::Millimeters;
+    let (x, y) = (mm.from_pt(p.x), mm.from_pt(p.y));
     let line = h.line_in(bar);
     assert!(!line.contains("Pen") && !line.contains("not saved"), "{line}");
-    assert!(line.contains(&u.readout(p.x)) && line.contains(&u.readout(p.y)), "{line}");
+    let shown = format!("X {} · Y {} mm", super::status::grouped(x, 1), super::status::grouped(y, 1));
+    assert!(line.contains(&shown), "{shown} in {line}");
     h.click(wid("status", "position"));
     assert!(h.status_line().contains("Coordinates copied"), "{}", h.status_line());
-    assert!(h.status_line().contains(&u.readout(p.x)), "{}", h.status_line());
+    assert_eq!(h.copied.last(), Some(&format!("{x:.1}, {y:.1}")), "the numbers, ready to paste");
+}
+
+/// The grid's and the zoom's cells (design 3.0 §5 ⑩): a click on the grid shows or hides it, its ▾
+/// lists 10, 20 and 50 mm and the colours with their swatches, what the grid has now marked; the
+/// zoom lists 50 to 400 % and Fit.
+#[test]
+fn the_grid_and_zoom_lists_show_and_set_what_they_offer() {
+    let mut h = Harness::new();
+    h.settle();
+    let screen = Rect::from_min_size(Pos2::ZERO, h.screen);
+    let grid = h.app.ui.view.grid;
+    h.click(wid("status", "grid"));
+    assert_eq!(h.app.ui.view.grid, !grid);
+    h.click(wid("status", "grid"));
+    assert_eq!(h.app.ui.view.grid, grid);
+    if h.app.ui.view.grid {
+        h.click(wid("status", "grid"));
+    }
+    // A new install's grid: every 72 points (25.4 mm) in #C8C8C8, neither on the list, so both
+    // show as what it is now, not to be pressed.
+    h.click(wid("status-more", "grid"));
+    let items = h.popup_buttons();
+    assert_eq!(items.len(), 10, "three spacings, five colours and the two it has now: {items:?}");
+    assert_eq!(items.iter().filter(|(_, enabled)| !enabled).count(), 2, "{items:?}");
+    let shown = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join("|");
+    for want in ["10 mm", "20 mm", "50 mm", "Current 25.4 mm", "Light grey", "Ochre", "Sky", "Graph green", "Dark grey", "Current"] {
+        assert!(shown.contains(want), "{want} in {shown}");
+    }
+    let swatches =
+        h.rects_in(screen).into_iter().filter(|(r, ..)| r.width() == 12.0 && r.height() == 12.0).map(|(_, fill, _)| fill).collect::<Vec<_>>();
+    for c in [0xcc_cc_cc, 0xc8_bf_a8, 0x6b_ae_d6, 0x74_c4_76, 0x77_77_77, 0xc8_c8_c8] {
+        let [_, r, g, b] = u32::to_be_bytes(c);
+        assert!(swatches.contains(&egui::Color32::from_rgb(r, g, b)), "{c:06x} in {swatches:?}");
+    }
+    // A spacing picked: set, the grid shown, and marked on the list; Current goes.
+    h.click_text("20 mm", screen);
+    assert!((h.app.session.prefs.gridline_every - 20.0 * 72.0 / 25.4).abs() < 1e-6, "{}", h.app.session.prefs.gridline_every);
+    assert!(h.app.ui.view.grid, "a grid set up is a grid to see");
+    h.click(wid("status-more", "grid"));
+    assert_eq!(h.popup_buttons().len(), 9);
+    h.click_text("Sky", screen);
+    assert_eq!(h.app.session.prefs.grid_color.to_uppercase(), "#6BAED6");
+    assert!(h.app.ui.view.grid, "still shown: a second pick doesn't hide it");
+    h.click(wid("status-more", "grid"));
+    let items = h.popup_buttons();
+    assert_eq!(items.len(), 8, "{items:?}");
+    assert!(items.iter().all(|(_, enabled)| *enabled));
+    h.key(egui::Key::Escape);
+    // The zoom: 50, 100, 200 and 400 %, then Fit.
+    let zoom = |h: &Harness| h.app.view().unwrap().zoom;
+    for (i, z) in [0.5, 1.0, 2.0, 4.0].into_iter().enumerate() {
+        h.click(wid("status", "zoom"));
+        let items = h.popup_buttons();
+        assert_eq!(items.len(), 5, "{items:?}");
+        h.click_at(items[i].0.center());
+        assert!((zoom(&h) - z).abs() < 1e-6, "{z}: {}", zoom(&h));
+        assert!(h.status_line().contains(&super::status::percent(z)), "{}", h.status_line());
+    }
+    h.click(wid("status", "zoom"));
+    let items = h.popup_buttons();
+    h.click_at(items[4].0.center());
+    let fitted = zoom(&h);
+    h.app.run("view.fitArtboard", json!({})).unwrap();
+    assert!((zoom(&h) - fitted).abs() < 1e-6 && (fitted - 4.0).abs() > 1e-6, "Fit: {fitted}");
 }
 
 /// With a scale and coordinate system the status bar shows them ("1:20 · EPSG:5186") and TM
-/// coordinates; its ▾ lists the scales (the coordinate system stays) and the dialog.
+/// coordinates in metres, grouped in threes, in the drawing's axis order; its ▾ lists the scales
+/// (the coordinate system and axis order stay) and the dialog. A click copies the two numbers.
 #[test]
 fn status_bar_shows_scale_and_tm_coordinates() {
     let mut h = Harness::new();
@@ -1182,37 +1292,205 @@ fn status_bar_shows_scale_and_tm_coordinates() {
     let bar = h.panel(STATUS);
     assert!(h.line_in(bar).contains("Scale not set"));
 
-    // Set scale 1:20 and bind origin to CP1 (152840.123, 512340.456)
-    h.app.run("doc.setScale", json!({"scale": "1:20", "epsg": 5186})).unwrap();
+    // Set scale 1:20, north first, and bind origin to CP1 (152840.123, 512340.456)
+    h.app.run("doc.setScale", json!({"scale": "1:20", "epsg": 5186, "order": "northeast"})).unwrap();
     h.app.run("doc.setOrigin", json!({ "canvas": [100.0, 100.0], "world": [152840.123, 512340.456] })).unwrap();
     h.settle();
     let line = h.line_in(bar);
     assert!(line.contains("1:20 · EPSG:5186"), "{line}");
 
-    // Hover over canvas -> live TM coordinates readout
+    // Hover over canvas -> live TM coordinates readout, north first
     let at = h.app.canvas_rect.unwrap().center();
     h.frame(vec![Event::PointerMoved(at)]);
     h.settle();
     let p = h.app.hover_doc.expect("over the canvas");
-    let cfg = h.app.session.active().unwrap().doc.scale.as_ref().unwrap();
-    let (exp_x, exp_y) = cfg.format_coords(p);
+    let cfg = h.app.session.active().unwrap().doc.scale.clone().unwrap();
+    let (east, north) = cfg.canvas_to_world(p);
+    let shown = format!("X {} · Y {} m", super::status::grouped(north, 2), super::status::grouped(east, 2));
+    assert!(shown.contains("512 3") && shown.contains("152 8"), "{shown}");
     let line = h.line_in(bar);
-    assert!(line.contains(&exp_x) && line.contains(&exp_y), "{line}");
+    assert!(line.contains(&shown), "{shown} in {line}");
+    h.click(wid("status", "position"));
+    assert_eq!(h.copied.last(), Some(&format!("{north:.2}, {east:.2}")));
 
-    // Pick 1:50 from the list: the coordinate system stays.
+    // Pick 1:50 from the list: the coordinate system and axis order stay.
     h.click(wid("status", "scale"));
     let items = h.popup_buttons();
     assert_eq!(items.len(), 10, "nine scales and the dialog: {items:?}");
     h.click_text("1:50", Rect::from_min_size(Pos2::ZERO, h.screen));
     let cfg = h.app.session.active().unwrap().doc.scale.clone().unwrap();
-    assert_eq!((cfg.scale.denom, cfg.crs.epsg), (50.0, 5186));
+    assert_eq!((cfg.scale.denom, cfg.crs.epsg, cfg.crs.order), (50.0, 5186, vectorcraft_doc::scale::CoordOrder::NorthEast));
     assert!(h.line_in(bar).contains("1:50 · EPSG:5186"), "{}", h.line_in(bar));
-    // The last item opens the dialog.
+    // The last item opens the dialog, on 1:50.
     h.click(wid("status", "scale"));
     let items = h.popup_buttons();
     h.click_at(items[9].0.center());
-    let d = h.app.ui.dialog.as_ref().expect("the scale dialog");
-    assert_eq!(d.fields.get("scale"), Some(&json!(50.0)));
+    let t = h.tokens();
+    let chip = h.rect(wid("scale-chip", 50u32)).expect("the scale dialog");
+    assert_eq!(h.fill_at(chip), Some(t.text), "1:50 chosen");
+}
+
+/// Trowel's scale and coordinate system dialog (design 3.0 §5 ③, §9's chips): the nine scales or
+/// one's own, the TM belts; nothing changes until OK, which keeps the axis order; Cancel leaves
+/// the drawing as it was. A system not on the list stays on offer. Its words are Korean.
+#[test]
+fn the_scale_dialog_sets_scale_and_coordinate_system() {
+    use vectorcraft_doc::scale::CoordOrder;
+    let mut h = Harness::new();
+    h.app.run("doc.setScale", json!({"scale": 20, "epsg": 5186, "order": "northeast"})).unwrap();
+    h.settle();
+    h.click(wid("tile", "scale"));
+    let t = h.tokens();
+    let on = |h: &Harness, id: egui::Id| h.fill_at(h.rect(id).unwrap_or_else(|| panic!("{id:?}"))) == Some(t.text);
+    for d in [10_u32, 20, 30, 40, 50, 60, 80, 100, 200] {
+        assert_eq!(on(&h, wid("scale-chip", d)), d == 20, "1:{d}");
+    }
+    for c in [5186_u32, 5185, 5187] {
+        assert_eq!(on(&h, wid("crs-chip", c)), c == 5186, "{c}");
+    }
+    let shown = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join("|");
+    for want in
+        ["Scale and Coordinate System", "Scale", "Other", "Coordinate system", "EPSG:5186 Central Belt", "5185 West", "5187 East", "OK", "Cancel"]
+    {
+        assert!(shown.contains(want), "{want} in {shown}");
+    }
+    assert!(!shown.contains("Epsg"), "{shown}");
+    let ko = crate::i18n::Lang::from_code("ko").unwrap();
+    for (en, kr) in [
+        ("Scale", "축척"),
+        ("Other", "직접"),
+        ("Coordinate system", "좌표계"),
+        ("Central Belt", "중부원점"),
+        ("West", "서부"),
+        ("East", "동부"),
+        ("Cancel", "그만두기"),
+        ("OK", "확인"),
+    ] {
+        assert_eq!(crate::i18n::tr_ctx(ko, "trowel", en), kr);
+    }
+    // Chips picked: nothing set until OK.
+    h.click(wid("scale-chip", 30_u32));
+    h.click(wid("crs-chip", 5187_u32));
+    assert!(on(&h, wid("scale-chip", 30_u32)) && on(&h, wid("crs-chip", 5187_u32)) && !on(&h, wid("scale-chip", 20_u32)));
+    let cfg = |h: &Harness| h.app.session.active().unwrap().doc.scale.clone().unwrap();
+    assert_eq!((cfg(&h).scale.denom, cfg(&h).crs.epsg), (20.0, 5186));
+    h.click(wid("scale-dialog", "ok"));
+    assert_eq!((cfg(&h).scale.denom, cfg(&h).crs.epsg, cfg(&h).crs.order), (30.0, 5187, CoordOrder::NorthEast));
+    assert!(h.rect(wid("scale-chip", 30_u32)).is_none(), "put away");
+    assert!(h.status_line().contains("1:30 · EPSG:5187"), "{}", h.status_line());
+    // Cancel: as it was.
+    h.click(wid("tile", "scale"));
+    h.click(wid("scale-chip", 100_u32));
+    h.click(wid("scale-dialog", "cancel"));
+    assert_eq!(cfg(&h).scale.denom, 30.0);
+    // One's own scale, typed: 1:25.4 is taken as 1:25.
+    h.click(wid("tile", "scale"));
+    let window = h.ctx.memory(|m| m.area_rect(wid("scale-dialog-window", ()))).expect("the dialog's window");
+    let field = h.texts.iter().find(|p| p.text == "30" && window.contains_rect(p.rect)).map(|p| p.rect.center()).expect("the scale field");
+    h.click_at(field);
+    let all = egui::Modifiers::COMMAND;
+    h.frame(vec![Event::Key { key: egui::Key::A, physical_key: None, pressed: true, repeat: false, modifiers: all }]);
+    h.frame(vec![Event::Text("25.4".into())]);
+    h.key(egui::Key::Enter);
+    assert!(!on(&h, wid("scale-chip", 30_u32)), "no chip for 1:25");
+    h.click(wid("scale-dialog", "ok"));
+    assert_eq!(cfg(&h).scale.denom, 25.0);
+    // A system not on the list (the East Sea belt) stays on offer, chosen.
+    h.app.run("doc.setScale", json!({"scale": 25, "epsg": 5188, "order": "northeast"})).unwrap();
+    h.click(wid("tile", "scale"));
+    assert!(on(&h, wid("crs-chip", 5188_u32)), "EPSG:5188 on offer");
+    // The chip that is on reads in the panel's colour on ink (in every theme).
+    let window = h.ctx.memory(|m| m.area_rect(wid("scale-dialog-window", ()))).expect("the dialog's window");
+    assert_eq!(h.color_of("1:25", window), None, "1:25 is typed, no chip");
+    assert_eq!(h.color_of("EPSG:5188", window), Some(t.panel));
+    // OK with nothing changed: no undo step.
+    let undo = |h: &Harness| h.app.session.active().unwrap().history.undo.len();
+    let steps = undo(&h);
+    h.click(wid("scale-dialog", "ok"));
+    assert_eq!((cfg(&h).crs.epsg, undo(&h)), (5188, steps));
+    // A scale outside 1 to 5000 (a 1:10 000 map) stays when only the coordinate system changes.
+    h.app.run("doc.setScale", json!({"scale": 10000, "epsg": 5186, "order": "northeast"})).unwrap();
+    h.click(wid("tile", "scale"));
+    h.click(wid("crs-chip", 5185_u32));
+    h.click(wid("scale-dialog", "ok"));
+    assert_eq!((cfg(&h).scale.denom, cfg(&h).crs.epsg), (10000.0, 5185));
+    // Another drawing put in front closes it: OK would set that one's.
+    h.click(wid("tile", "scale"));
+    h.click(wid("scale-chip", 50_u32));
+    h.app.run("file.new", json!({"name": "Site 2", "width": 400, "height": 300})).unwrap();
+    h.settle();
+    assert!(h.rect(wid("scale-dialog", "ok")).is_none(), "closed with its drawing behind");
+    assert!(h.app.session.active().unwrap().doc.scale.is_none(), "Site 2 untouched");
+}
+
+/// An error shows in red for five seconds (design 3.0 §5 ⑩); another message in ink for six.
+#[test]
+fn the_status_bar_shows_errors_in_red_for_five_seconds() {
+    let mut h = Harness::new();
+    let t = h.tokens();
+    let status = h.panel(STATUS);
+    h.app.status_error("Could not place it");
+    h.settle();
+    assert_eq!(h.color_of("Could not place it", status), Some(t.error));
+    h.later(4.5);
+    assert!(h.status_line().contains("Could not place it"), "{}", h.status_line());
+    h.later(1.0);
+    assert!(!h.status_line().contains("Could not place it"), "gone after five seconds: {}", h.status_line());
+    h.app.status("Lines changed: 3");
+    h.settle();
+    assert_eq!(h.color_of("Lines changed: 3", status), Some(t.text));
+    h.later(5.5);
+    assert!(h.status_line().contains("Lines changed: 3"), "{}", h.status_line());
+    h.later(1.0);
+    assert!(!h.status_line().contains("Lines changed: 3"), "{}", h.status_line());
+    // A command that fails, from the menus or the ribbon, is an error.
+    crate::menus::invoke(&mut h.app, "no.such.command", json!({}));
+    assert!(h.app.ui.status_error, "{}", h.app.ui.status);
+}
+
+/// The coordinates' cell keeps its width as the pointer moves, and the last place it showed is
+/// that drawing's only.
+#[test]
+fn the_position_cell_keeps_its_width_and_its_drawing() {
+    let mut h = Harness::new();
+    let canvas = h.app.canvas_rect.unwrap();
+    let width = |h: &Harness| h.rect(wid("status", "position")).unwrap().width();
+    let values = |h: &Harness| {
+        let cell = h.rect(wid("status", "position")).unwrap();
+        h.texts_in(cell)
+    };
+    h.frame(vec![Event::PointerMoved(canvas.left_top() + vec2(4.0, 4.0))]);
+    h.settle();
+    let (w1, v1) = (width(&h), values(&h));
+    h.frame(vec![Event::PointerMoved(canvas.right_bottom() - vec2(40.0, 40.0))]);
+    h.settle();
+    let (w2, v2) = (width(&h), values(&h));
+    assert_ne!(v1, v2, "two places");
+    assert!(v1.iter().zip(&v2).any(|(a, b)| a.len() != b.len()), "values of other lengths: {v1:?} {v2:?}");
+    assert!((w1 - w2).abs() < 0.5, "{w1} = {w2}");
+    // Off the canvas it keeps the last place; another drawing in front has none.
+    let off = h.panel(STATUS).center();
+    h.frame(vec![Event::PointerMoved(off)]);
+    h.settle();
+    assert_eq!(values(&h), v2);
+    h.app.run("file.new", json!({"name": "Site 2", "width": 400, "height": 300})).unwrap();
+    h.settle();
+    assert_eq!(values(&h).iter().filter(|s| *s == "–").count(), 2, "{:?}", values(&h));
+}
+
+/// The status bar's numbers: centimetres, a space between thousands, no "-0.00".
+#[test]
+fn coordinates_read_in_groups_of_three() {
+    use super::status::grouped;
+    assert_eq!(grouped(205_431.2, 2), "205 431.20");
+    assert_eq!(grouped(451_822.746, 2), "451 822.75");
+    assert_eq!(grouped(999.999, 2), "1 000.00");
+    assert_eq!(grouped(12.0, 1), "12.0");
+    assert_eq!(grouped(1_234.0, 0), "1 234");
+    assert_eq!(grouped(-1_234.5, 1), "-1 234.5");
+    assert_eq!(grouped(-0.001, 2), "0.00");
+    assert_eq!(grouped(f64::NAN, 2), "–");
+    assert_eq!(grouped(f64::INFINITY, 2), "–");
 }
 
 /// Trowel's colours come from the theme tokens, as everywhere in the app.
@@ -1924,7 +2202,8 @@ fn drawing_menu_opens_the_weights_card_and_reverts() {
     };
     let items = open(&mut h);
     let enabled: Vec<bool> = items.iter().map(|(_, e)| *e).collect();
-    assert_eq!(enabled, [true, true, true, true, true, true, false, false, false, false]);
+    // Seven run (Scale and Coordinate System… since J022), three wait for their jobs.
+    assert_eq!(enabled, [true, true, true, true, true, true, true, false, false, false]);
     h.click_at(h.texts.iter().find(|p| p.text == "Drawing" && bar.contains_rect(p.rect)).unwrap().rect.center());
     h.app.run("select.set", json!({ "ids": [b.0] })).unwrap();
     h.settle();
@@ -3168,7 +3447,7 @@ fn test_canvas_penbar_adversarial_suite() {
     assert_eq!(delay, 0.5, "CanvasPenBar must configure egui max_double_click_delay to 0.5s");
 
     // 3. Three buttons only (design 3.0 §5 ⑥, §9): Undo, Finish Line (Enter) and Close; redo and
-    // the zoom buttons are the menu's and the canvas corner's.
+    // the zoom buttons are the menu's and the canvas corner's. Words only, as in the mockup.
     let shown: Vec<String> = out
         .shapes
         .iter()
@@ -3183,7 +3462,45 @@ fn test_canvas_penbar_adversarial_suite() {
     for gone in ["Redo", "Zoom In", "Zoom Out", "Fit"] {
         assert!(!shown.iter().any(|s| s == gone), "{gone} left the pen bar: {shown:?}");
     }
+    assert!(!out.shapes.iter().any(|c| matches!(c.shape, egui::Shape::LineSegment { .. })), "no drawn icons");
+    // Korean reads 되돌리기 (design 3.0 §9), not the menu's 실행 취소.
+    let ko = crate::i18n::Lang::from_code("ko").unwrap();
+    assert_eq!(crate::i18n::tr_ctx(ko, "trowel", "Undo"), "되돌리기");
     crate::menus::invoke(&mut h.app, "edit.undo", json!({}));
+}
+
+/// The pen bar in the window: centred at the foot of the canvas as in the mockup (clay Finish Line,
+/// the others on the tab wash), clear of the zoom buttons; in the smallest window above them, every
+/// button whole.
+#[test]
+fn the_pen_bar_keeps_clear_of_the_zoom_buttons() {
+    for (w, height) in [(1600.0, 988.0), (1366.0, 728.0), (800.0, 500.0)] {
+        let mut h = Harness::sized(w, height);
+        h.app.select_tool("pen");
+        h.settle();
+        let t = h.tokens();
+        let canvas = h.app.canvas_rect.unwrap();
+        let bar = h.rect(wid("penbar-shield", ())).unwrap_or_else(|| panic!("{w}: the pen bar"));
+        let zoom = h.rect(wid("zoom", "in")).unwrap().union(h.rect(wid("zoom", "fit")).unwrap());
+        assert!(!bar.expand(7.5).intersects(zoom), "{w}: {bar:?} 8 points clear of {zoom:?}");
+        assert!(canvas.contains_rect(bar), "{w}: {bar:?} in {canvas:?}");
+        for k in ["undo", "finish", "close"] {
+            let b = h.rect(wid("penbar", k)).unwrap_or_else(|| panic!("{w}: {k}"));
+            assert!(bar.contains_rect(b), "{w}: {k} {b:?} in {bar:?}");
+        }
+        let fill = |h: &Harness, k: &str| h.fill_at(h.rect(wid("penbar", k)).unwrap());
+        assert_eq!(fill(&h, "finish"), Some(t.action), "{w}");
+        assert_eq!(fill(&h, "undo"), Some(t.button), "{w}");
+        assert_eq!(fill(&h, "close"), Some(t.button), "{w}: close whole, not cut off");
+        assert_eq!(h.texts_in(bar).iter().any(|s| s == "Enter"), w >= 1366.0, "{w}: the key shown where there is room");
+        if w >= 1366.0 {
+            assert!((bar.center().x - canvas.center().x).abs() < 0.5, "{w}: centred, {bar:?} in {canvas:?}");
+            assert!((canvas.bottom() - 14.0 - bar.bottom()).abs() < 0.5, "{w}: at the foot, beside the zoom buttons");
+        } else {
+            // 208 points of canvas: above the zoom buttons, the key left out.
+            assert!(bar.bottom() <= zoom.top() - 7.5, "{w}: {bar:?} above {zoom:?}");
+        }
+    }
 }
 
 #[test]
@@ -3499,11 +3816,15 @@ fn every_one_click_button_draws_without_error() {
     for k in ["disturb", "limit", "grid_lbl"] {
         set.push(("stamp", wid("scrap-stamp", k)));
     }
+    // A drawing in the east belt, north first: the scale bars set the scale and keep those.
+    h.app.run("doc.setScale", json!({"scale": 20, "epsg": 5187, "order": "northeast"})).unwrap();
     for (what, id) in set {
         let (before, seq) = (h.node_count(), h.app.ui.status_seq);
         h.click(id);
         check(&mut h, &format!("{what} {id:?}"), before, seq);
     }
+    let cfg = h.app.session.active().unwrap().doc.scale.clone().unwrap();
+    assert_eq!((cfg.scale.denom, cfg.crs.epsg, cfg.crs.order), (200.0, 5187, vectorcraft_doc::scale::CoordOrder::NorthEast));
     // Each standard line by name: added, then drawn with. The twelve buttons name the engine's
     // twelve rows, no more and no fewer.
     let buttons = [
@@ -3537,18 +3858,28 @@ fn every_one_click_button_draws_without_error() {
     h.click(wid("scrap-preset", "all12"));
     assert_eq!(h.app.ui.status_seq, seq, "{}", h.app.ui.status);
 
-    // The datum the set's level-line and section buttons use is typed in its own field.
+    // The datum the set's level-line and section buttons use is typed in its own field, and they
+    // draw at it.
     let set = h.panel(SET);
     assert!(h.texts_in(set).iter().any(|s| s == "Datum elevation"), "the drawing set's Datum elevation");
-    for k in ["scale-bar", "section-line", "spot-height", "north", "legend"] {
-        assert!(h.ctx.memory(|m| m.area_rect(wid("trowel-tile-window", k))).is_none(), "{k}: no ribbon popup");
-    }
-
-    // The tool column: Spot Height at the elevation the drawing set's field set; Slope Hachure along
-    // the selected top line.
     h.ctx.data_mut(|d| d.insert_temp(super::datum_elevation_id(), 95.5));
     h.settle();
     assert!(h.texts_in(set).iter().any(|s| s == "해발 95.5m"), "the datum buttons show it: {:?}", h.texts_in(set));
+    let picked = |h: &Harness| {
+        let st = h.app.session.active().unwrap();
+        st.selection.objects.first().and_then(|id| st.doc.node(*id)).map(|n| n.display_name())
+    };
+    for k in ["dh", "dv"] {
+        h.click(wid("scrap-sec", k));
+        assert!(picked(&h).is_some_and(|n| n.contains("95.5m")), "{k}: {:?}", picked(&h));
+    }
+    h.click(wid("scrap-elev", "below"));
+    let mut datums = vec![];
+    h.app.session.active().unwrap().doc.walk(|n| datums.extend(n.elevation.as_ref().map(|e| e.datum_m)));
+    assert!(datums.contains(&95.5), "level lines at the datum: {datums:?}");
+
+    // The tool column: Spot Height at the elevation the drawing set's field set; Slope Hachure along
+    // the selected top line.
     let (before, seq) = (h.node_count(), h.app.ui.status_seq);
     h.click(wid("arch", "spot-height"));
     check(&mut h, "spot height", before, seq);

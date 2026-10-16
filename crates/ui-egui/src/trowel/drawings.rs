@@ -65,7 +65,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
             if let Some(i) = open {
                 app.ui.home = None;
                 if let Err(e) = app.run("document.activate", json!({ "index": i })) {
-                    app.status(e);
+                    app.status_error(e);
                 }
             }
 
@@ -149,14 +149,17 @@ fn show_scrapboard_palette(app: &mut VectorcraftApp, ui: &mut Ui, area: Rect, t:
                 let tip = format!("1/{denom} 표준 축척자 배치 및 도면 축척 1:{denom} 설정");
                 if grid_btn(ui, wid("scrap-scale", denom), btn_r, &lbl, &tip, false) {
                     let at = super::place_symbol_at(app, ui.ctx(), [0.0, 90.0]);
-                    let _ = app.run("doc.setScale", json!({ "scale": f64::from(denom), "epsg": 5186 }));
+                    // The coordinate system and axis order the drawing has stay.
+                    if let Err(e) = super::scale_dialog::set_scale(app, f64::from(denom), None) {
+                        app.status_error(e);
+                    }
                     let _ = app.run("trowel.insertScaleBar", json!({ "scale": denom, "style": scale_style, "at": at }));
                 }
             }
         }
 
-        // 2. 단면선 (■ 적색 기준점 + ∠) & 해발 기준점 (──┃ 93.0m), at the datum set here (it was
-        // in the ribbon's Spot Height popup; the tool column's Spot Height uses it too).
+        // 2. 단면선 (■ 적색 기준점 + ∠) & 해발 기준점 (──┃ 93.0m), at the datum set here (the tool
+        // column's Spot Height uses it too).
         section_head(ui, "단면선 · 해발 기준점 (■ 적색)");
         let mut elev_m = super::datum_elevation_m(ui.ctx());
         ui.horizontal(|ui| {

@@ -1070,6 +1070,9 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
             }
             Ok(Value::Null)
         }
+        // Trowel's window has no Control bar (design 3.0 §5): its menu item is off, and the
+        // palette and control channel leave the classic window's setting as it is (off here).
+        "window.control" if app.ui.trowel => Ok(json!(false)),
         "window.control" => flag(&mut app.ui.control_bar),
         "window.toolbar" => flag(&mut app.ui.toolbar),
         "window.toolbarColumns" => opt_bool(p, "double").map(|on| {
@@ -3155,7 +3158,7 @@ pub fn invoke(app: &mut VectorcraftApp, id: &str, p: Value) {
         return;
     }
     if let Err(e) = app.run(id, p) {
-        app.status(e);
+        app.status_error(e);
     } else if matches!(id, "object.pattern.make" | "object.pattern.edit") {
         app.ui.open_panel = Some("patternOptions".into());
     }

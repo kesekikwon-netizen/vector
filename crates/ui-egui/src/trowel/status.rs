@@ -5,6 +5,7 @@
 //! and coordinate system, and the zoom. It is the one place for those (principle 5).
 
 use serde_json::json;
+use vectorcraft_doc::scale::CoordOrder;
 
 use super::*;
 
@@ -20,8 +21,6 @@ fn grid_colours() -> [(&'static str, &'static str); 5] {
         (tw!("Dark grey"), "#777777"),
     ]
 }
-/// The scales the scale's list offers (design 3.0 §5 ⑩), as 1:N.
-const SCALES: [f64; 9] = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 80.0, 100.0, 200.0];
 /// The zooms the zoom's list offers, in percent.
 const ZOOMS: [f64; 4] = [50.0, 100.0, 200.0, 400.0];
 /// The width of a cell's ▾: a click there opens its list.
@@ -36,8 +35,12 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         if crate::menus::home_showing(app) {
             let ver = cell(ui, r, r.right(), Mark::None, &[("Trowel 0.2".into(), font(12.0), t.text_dim)], false, &t);
             let room = Rect::from_min_max(pos2(r.left() + 16.0, r.top()), pos2(ver.left() - 12.0, r.bottom()));
-            let msg = message(app, ui.ctx()).unwrap_or_else(|| "「이어서 그리기」를 누르면 하던 도면이 그대로 열립니다.".to_string());
-            ui.painter().with_clip_rect(room).text(pos2(room.left(), r.center().y), Align2::LEFT_CENTER, msg, font(12.0), t.text_dim);
+            let (msg, color) = match message(app, ui.ctx()) {
+                Some((m, true)) => (m, t.error),
+                Some((m, false)) => (m, t.text_dim),
+                None => ("「이어서 그리기」를 누르면 하던 도면이 그대로 열립니다.".to_string(), t.text_dim),
+            };
+            ui.painter().with_clip_rect(room).text(pos2(room.left(), r.center().y), Align2::LEFT_CENTER, msg, font(12.0), color);
             return;
         }
         let has_doc = app.session.active().is_some();
@@ -55,8 +58,8 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         let p = ui.painter().with_clip_rect(room);
         let cy = r.center().y;
         match message(app, ui.ctx()) {
-            Some(m) => {
-                p.text(pos2(room.left(), cy), Align2::LEFT_CENTER, m, font(12.0), t.text);
+            Some((m, error)) => {
+                p.text(pos2(room.left(), cy), Align2::LEFT_CENTER, m, font(12.0), if error { t.error } else { t.text });
             }
             None if has_doc => {
                 let mut x = room.left();
@@ -72,14 +75,15 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
 }
 
 /// A save or export running; else a note ([`soon_note`]); else the last message, for
-/// [`MESSAGE_SECS`] after it is put there (the same one again too), so the hint comes back.
-fn message(app: &VectorcraftApp, ctx: &egui::Context) -> Option<String> {
+/// [`MESSAGE_SECS`] after it is put there (the same one again too), so the hint comes back; an
+/// error (design 3.0 §5 ⑩: red, five seconds) for [`ERROR_SECS`]. With whether it is an error.
+fn message(app: &VectorcraftApp, ctx: &egui::Context) -> Option<(String, bool)> {
     let status = crate::chrome::status_message(app);
     if let Some((running, true)) = status {
-        return Some(running);
+        return Some((running, false));
     }
     if let Some(note) = soon_note(ctx) {
-        return Some(note);
+        return Some((note, false));
     }
     let (message, _) = status?;
     let now = ctx.input(|i| i.time);
@@ -91,11 +95,12 @@ fn message(app: &VectorcraftApp, ctx: &egui::Context) -> Option<String> {
             now
         }
     };
-    let left = MESSAGE_SECS - (now - since);
+    let error = app.ui.status_error;
+    let left = if error { ERROR_SECS } else { MESSAGE_SECS } - (now - since);
     // Drawn again when it is due to go.
     (left > 0.0).then(|| {
         ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
-        message
+        (message, error)
     })
 }
 
@@ -110,7 +115,15 @@ enum Mark {
 /// A cell of the status bar `r` ending at `right` with a line at its left: `mark`, its parts left
 /// to right (text, font, colour) and a ▾ when `arrow`. Returns its rect.
 fn cell(ui: &Ui, r: Rect, right: f32, mark: Mark, parts: &[(String, FontId, Color32)], arrow: bool, t: &Tokens) -> Rect {
-    let widths: Vec<f32> = parts.iter().map(|(s, f, _)| width_of(ui, s, f.clone())).collect();
+    cell_sized(ui, r, right, mark, parts, &[], arrow, t)
+}
+
+/// [`cell`] with each part at least as wide as `least` says (by place; missing ones 0), the text
+/// at the right of its room.
+#[allow(clippy::too_many_arguments)]
+fn cell_sized(ui: &Ui, r: Rect, right: f32, mark: Mark, parts: &[(String, FontId, Color32)], least: &[f32], arrow: bool, t: &Tokens) -> Rect {
+    let own: Vec<f32> = parts.iter().map(|(s, f, _)| width_of(ui, s, f.clone())).collect();
+    let widths: Vec<f32> = own.iter().enumerate().map(|(i, w)| w.max(least.get(i).copied().unwrap_or(0.0))).collect();
     let gaps = 6.0 * parts.len().saturating_sub(1) as f32;
     let mark_w = if matches!(mark, Mark::None) { 0.0 } else { 8.0 + 6.0 };
     let arrow_w = if arrow { 4.0 + 7.0 } else { 0.0 };
@@ -131,8 +144,8 @@ fn cell(ui: &Ui, r: Rect, right: f32, mark: Mark, parts: &[(String, FontId, Colo
             x += mark_w;
         }
     }
-    for ((s, f, color), w) in parts.iter().zip(&widths) {
-        text(ui, pos2(x, cy), Align2::LEFT_CENTER, s, f.clone(), *color);
+    for (((s, f, color), w), own) in parts.iter().zip(&widths).zip(&own) {
+        text(ui, pos2(x + w - own, cy), Align2::LEFT_CENTER, s, f.clone(), *color);
         x += w + 6.0;
     }
     if arrow {
@@ -179,7 +192,7 @@ fn zoom_cell(app: &mut VectorcraftApp, ui: &Ui, r: Rect, right: f32, t: &Tokens)
     if let Some((id, p)) = run
         && let Err(e) = app.run(id, p)
     {
-        app.status(e);
+        app.status_error(e);
     }
     c
 }
@@ -202,7 +215,7 @@ fn scale_cell(app: &mut VectorcraftApp, ui: &Ui, r: Rect, right: f32, t: &Tokens
     let mut set = None;
     let mut dialog = false;
     egui::Popup::menu(&resp).id(wid("status-list", "scale")).show(|ui| {
-        for denom in SCALES {
+        for denom in super::scale_dialog::SCALES {
             let on = doc_scale.as_ref().is_some_and(|cfg| (cfg.scale.denom - denom).abs() < 1e-4);
             if ui.selectable_label(on, format!("1:{denom:.0}")).clicked() {
                 set = Some(denom);
@@ -213,56 +226,98 @@ fn scale_cell(app: &mut VectorcraftApp, ui: &Ui, r: Rect, right: f32, t: &Tokens
             dialog = true;
         }
     });
-    if let Some(denom) = set {
-        // The coordinate system it has stays; a drawing without one gets the central belt's.
-        let epsg = doc_scale.as_ref().map_or(5186, |cfg| cfg.crs.epsg);
-        if let Err(e) = app.run("doc.setScale", json!({ "scale": denom, "epsg": epsg })) {
-            app.status(e);
-        }
+    // The coordinate system and axis order it has stay; a drawing without one gets the central
+    // belt's.
+    if let Some(denom) = set
+        && let Err(e) = super::scale_dialog::set_scale(app, denom, None)
+    {
+        app.status_error(e);
     }
     if dialog {
-        super::ribbon::scale_dialog(app);
+        super::scale_dialog::open(app, ui.ctx());
     }
     c
 }
 
 /// Where the pointer is in the drawing (where it last was on this drawing's canvas, once it has left
-/// it): TM metres with a coordinate system, else the document's unit. A click copies it.
+/// it): with a coordinate system, TM metres to the centimetre in the drawing's axis order,
+/// "X 205 431.20 · Y 451 822.75 m"; else millimetres on paper. A click copies the two numbers,
+/// without the spaces between thousands.
 fn position_cell(app: &mut VectorcraftApp, ui: &Ui, r: Rect, right: f32, t: &Tokens) -> Rect {
     let doc_scale = app.session.active().and_then(|d| d.doc.scale.clone());
-    // The pointer leaves the canvas on its way here, so the cell keeps the last place it was.
+    // The pointer leaves the canvas on its way here, so the cell keeps the last place it was, on
+    // this drawing (by its id: tab indices shift when a tab closes).
     let last_id = wid("status-last-position", ());
-    let doc = app.session.active_index();
+    let doc = app.session.active().map(|d| d.uid);
     let at = match app.hover_doc {
         Some(p) => {
             ui.ctx().data_mut(|d| d.insert_temp(last_id, (doc, p)));
             Some(p)
         }
-        None => ui.ctx().data(|d| d.get_temp::<(Option<usize>, vectorcraft_geom::Point)>(last_id)).filter(|(i, _)| *i == doc).map(|(_, p)| p),
+        None => ui.ctx().data(|d| d.get_temp::<(Option<u64>, vectorcraft_geom::Point)>(last_id)).filter(|(i, _)| *i == doc).map(|(_, p)| p),
     };
-    let (x, y) = match at {
-        Some(p) => match &doc_scale {
-            Some(cfg) => cfg.format_coords(p),
-            None => {
-                let u = app.session.general_unit();
-                (u.readout(p.x), u.readout(p.y))
-            }
-        },
-        None => ("–".to_string(), "–".to_string()),
+    let (values, unit, decimals) = match &doc_scale {
+        Some(cfg) => {
+            let values = at.map(|p| {
+                let (east, north) = cfg.canvas_to_world(p);
+                match cfg.crs.order {
+                    CoordOrder::EastNorth => (east, north),
+                    CoordOrder::NorthEast => (north, east),
+                }
+            });
+            (values, "m", 2)
+        }
+        None => {
+            let mm = vectorcraft_doc::Unit::Millimeters;
+            (at.map(|p| (mm.from_pt(p.x), mm.from_pt(p.y))), "mm", 1)
+        }
     };
+    let (x, y) = values.map_or_else(|| ("–".to_string(), "–".to_string()), |(a, b)| (grouped(a, decimals), grouped(b, decimals)));
     let parts = [
         ("X".to_string(), font(12.0), t.text_dim),
-        (x.clone(), mono(11.5), t.text),
+        (x, mono(11.5), t.text),
         ("· Y".to_string(), font(12.0), t.text_dim),
-        (y.clone(), mono(11.5), t.text),
+        (y, mono(11.5), t.text),
+        (unit.to_string(), font(12.0), t.text_dim),
     ];
-    let c = cell(ui, r, right, Mark::None, &parts, false, t);
+    // Each value right-aligned in room for six figures and a minus (the mockup's fixed cell), so
+    // the cells to the left stay put as the pointer moves.
+    let room = width_of(ui, &grouped(-999_999.0, decimals), mono(11.5));
+    let c = cell_sized(ui, r, right, Mark::None, &parts, &[0.0, room, 0.0, room], false, t);
     let resp = ui.interact(c, wid("status", "position"), Sense::click()).on_hover_text(tw!("Click to copy the coordinates"));
-    if resp.clicked() && at.is_some() {
-        ui.ctx().copy_text(format!("{x}, {y}"));
+    if resp.clicked()
+        && let Some((a, b)) = values.filter(|(a, b)| a.is_finite() && b.is_finite())
+    {
+        ui.ctx().copy_text(format!("{a:.decimals$}, {b:.decimals$}"));
         note(ui.ctx(), tw!("Coordinates copied"));
     }
     c
+}
+
+/// `v` to `decimals` places with a space between thousands: 205431.2 → "205 431.20".
+pub(super) fn grouped(v: f64, decimals: usize) -> String {
+    if !v.is_finite() {
+        return "–".to_string();
+    }
+    let s = format!("{:.decimals$}", v.abs());
+    let (whole, frac) = s.split_once('.').map_or((s.as_str(), None), |(w, f)| (w, Some(f)));
+    let digits: Vec<char> = whole.chars().collect();
+    let mut out = String::new();
+    for (i, ch) in digits.iter().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(' ');
+        }
+        out.push(*ch);
+    }
+    if let Some(f) = frac {
+        out.push('.');
+        out.push_str(f);
+    }
+    // No "-0.00": a minus only on a value that shows as other than zero.
+    if v < 0.0 && s.chars().any(|c| c.is_ascii_digit() && c != '0') {
+        out.insert(0, '-');
+    }
+    out
 }
 
 /// Snap to Point, "■ Snap 2px ▾": a click turns it on or off, its ▾ lists the tolerance (1 to 8 px).
@@ -292,7 +347,7 @@ fn snap_cell(app: &mut VectorcraftApp, ui: &Ui, r: Rect, right: f32, t: &Tokens)
     if let Some(v) = set
         && let Err(e) = app.run("prefs.set", json!({ "key": "snapToPointTolerance", "value": v }))
     {
-        app.status(e);
+        app.status_error(e);
     }
     c
 }
@@ -310,31 +365,52 @@ fn grid_cell(app: &mut VectorcraftApp, ui: &Ui, r: Rect, right: f32, t: &Tokens)
     if body.on_hover_text(tip).clicked() {
         crate::menus::invoke(app, "view.grid", json!({}));
     }
-    let every = app.session.prefs.gridline_every;
+    let every_mm = vectorcraft_doc::Unit::Millimeters.from_pt(app.session.prefs.gridline_every);
+    let current = app.session.prefs.grid_color.to_uppercase();
     let mut set: Option<(&str, serde_json::Value)> = None;
     egui::Popup::menu(&more).id(wid("status-list", "grid")).show(|ui| {
         heading(ui, tw!("Spacing"), t);
         for mm in GRID_MM {
-            let pt = mm * 72.0 / 25.4;
-            if ui.selectable_label((every - pt).abs() < 0.01, format!("{mm:.0} mm")).clicked() {
+            if ui.selectable_label((every_mm - mm).abs() < 0.01, format!("{mm:.0} mm")).clicked() {
                 set = Some(("gridlineEvery", json!(format!("{mm} mm"))));
             }
         }
+        // A spacing from Preferences or an older drawing shows as what it is now.
+        if !GRID_MM.iter().any(|mm| (every_mm - mm).abs() < 0.01) {
+            ui.add_enabled(false, egui::Button::selectable(true, format!("{} {}", tw!("Current"), grouped(every_mm, 1) + " mm")));
+        }
         ui.separator();
         heading(ui, tw!("Colour"), t);
-        let current = app.session.prefs.grid_color.to_uppercase();
         for (label, hex) in grid_colours() {
-            if ui.selectable_label(current == hex, label).clicked() {
+            if colour_item(ui, label, hex, current == hex, true, t).clicked() {
                 set = Some(("gridColor", json!(hex)));
             }
+        }
+        if !grid_colours().iter().any(|(_, hex)| *hex == current) {
+            colour_item(ui, tw!("Current"), &current, true, false, t);
         }
     });
     if let Some((key, value)) = set {
         match app.run("prefs.set", json!({ "key": key, "value": value })) {
             // A grid set up is a grid to see.
-            Ok(_) => app.ui.view.grid = true,
-            Err(e) => app.status(e),
+            Ok(_) if !app.ui.view.grid => crate::menus::invoke(app, "view.grid", json!({})),
+            Ok(_) => {}
+            Err(e) => app.status_error(e),
         }
     }
     c
+}
+
+/// A colour in the grid's list: its swatch, then its label, `on` when it is the grid's; not
+/// pressable unless `enabled`.
+fn colour_item(ui: &mut Ui, label: &str, hex: &str, on: bool, enabled: bool, t: &Tokens) -> egui::Response {
+    ui.horizontal(|ui| {
+        let (sw, _) = ui.allocate_exact_size(vec2(12.0, 12.0), Sense::hover());
+        if let Some(c) = crate::panels::color::parse_hex(hex) {
+            crate::widgets::paint_chip(ui, sw, &vectorcraft_color::Paint::solid(c));
+        }
+        ui.painter().rect_stroke(sw, CornerRadius::ZERO, Stroke::new(1.0, t.input_border), StrokeKind::Inside);
+        ui.add_enabled(enabled, egui::Button::selectable(on, label))
+    })
+    .inner
 }

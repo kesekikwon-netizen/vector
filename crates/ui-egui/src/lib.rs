@@ -822,6 +822,13 @@ impl VectorcraftApp {
     pub fn status(&mut self, s: impl Into<String>) {
         self.ui.status = s.into();
         self.ui.status_seq = self.ui.status_seq.wrapping_add(1);
+        self.ui.status_error = false;
+    }
+
+    /// [`Self::status`] for something that failed: Trowel shows it in red.
+    pub fn status_error(&mut self, s: impl Into<String>) {
+        self.status(s);
+        self.ui.status_error = true;
     }
 
     fn drain_inbox(&mut self) {

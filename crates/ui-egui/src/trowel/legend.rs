@@ -233,7 +233,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         },
     };
     if let Err(e) = result {
-        app.status(e);
+        app.status_error(e);
     }
     show_card(app, ui, r);
 }

@@ -143,7 +143,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context, place: card::P
             Ask::NotAWeight => Err(tw!("Type a weight in points, such as 0.5").to_string()),
         };
         if let Err(e) = done {
-            app.status(e);
+            app.status_error(e);
         }
     }
     open

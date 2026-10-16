@@ -294,6 +294,10 @@ pub struct UiState {
     /// same one again shows again.
     #[serde(skip)]
     pub status_seq: u64,
+    /// The message in [`UiState::status`] is an error ([`crate::VectorcraftApp::status_error`]):
+    /// Trowel's status bar shows it in red.
+    #[serde(skip)]
+    pub status_error: bool,
     pub palette_open: bool,
     pub palette_query: String,
     /// Trowel's own window (design 2.1 §3) instead of the classic chrome: the Trowel workspace's
@@ -526,6 +530,7 @@ impl Default for UiState {
             group_tool: vectorcraft_tools::TOOL_GROUPS.iter().map(|g| g[0].id.to_string()).collect(),
             status: String::new(),
             status_seq: 0,
+            status_error: false,
             trowel: false,
             trowel_started: false,
             palette_open: false,

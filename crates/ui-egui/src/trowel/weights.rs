@@ -103,10 +103,10 @@ pub(super) fn show(app: &mut VectorcraftApp, ctx: &egui::Context, place: card::P
                     // Done: a second press can't change the weights again unseen.
                     open = false;
                 }
-                Err(e) => app.status(e),
+                Err(e) => app.status_error(e),
             },
             Ask::Close => open = false,
-            Ask::Refused(why) => app.status(why),
+            Ask::Refused(why) => app.status_error(why),
         }
     }
     if open {

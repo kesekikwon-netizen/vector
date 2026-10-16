@@ -92,12 +92,12 @@ fn tabs(app: &mut VectorcraftApp, ui: &mut Ui, full: Rect) -> f32 {
     let new = plus_resp.on_hover_text(tw!("New drawing")).clicked();
     if let Some(i) = close {
         if let Err(e) = crate::unsaved::close(app, i) {
-            app.status(e);
+            app.status_error(e);
         }
     } else if let Some(i) = activate {
         app.ui.home = None;
         if let Err(e) = app.run("document.activate", json!({ "index": i })) {
-            app.status(e);
+            app.status_error(e);
         }
     } else if new {
         crate::menus::invoke(app, "file.newDialog", json!({}));
@@ -131,6 +131,7 @@ fn tab(ui: &Ui, i: usize, r: Rect, label: &str, current: bool, dirty: bool, t: &
     ui.painter().with_clip_rect(r).galley(pos2(x, r.center().y - name.size().y / 2.0), name, color);
     if dirty {
         let c = pos2(x + name_w + 8.0 + DOT / 2.0, r.center().y);
+        // The mockup's `.dot` is its clay, #B5573A: the action token (`t.clay` is lighter).
         ui.painter().circle_filled(c, DOT / 2.0, t.action);
         ui.interact(Rect::from_center_size(c, vec2(12.0, 12.0)), wid("tab-unsaved", i), Sense::hover()).on_hover_text(tw!("Not saved"));
     }
@@ -148,13 +149,20 @@ fn overlays(app: &mut VectorcraftApp, ui: &mut Ui) {
     super::canvas_penbar::show(app, ui, canvas, &t);
 }
 
-/// Zoom in, zoom out and fit, one above the other at the bottom right (the mockup's `.zoomst`).
-fn zoom_buttons(app: &mut VectorcraftApp, ui: &Ui, canvas: Rect, t: &Tokens) {
-    const CELL: egui::Vec2 = vec2(34.0, 30.0);
-    let r = Rect::from_min_max(
+/// A zoom button's cell.
+const CELL: egui::Vec2 = vec2(34.0, 30.0);
+
+/// Where the zoom buttons go over `canvas`: 14 points in from its bottom right corner.
+pub(super) fn zoom_column(canvas: Rect) -> Rect {
+    Rect::from_min_max(
         pos2(canvas.right() - 14.0 - CELL.x, canvas.bottom() - 14.0 - 3.0 * CELL.y),
         pos2(canvas.right() - 14.0, canvas.bottom() - 14.0),
-    );
+    )
+}
+
+/// Zoom in, zoom out and fit, one above the other at the bottom right (the mockup's `.zoomst`).
+fn zoom_buttons(app: &mut VectorcraftApp, ui: &Ui, canvas: Rect, t: &Tokens) {
+    let r = zoom_column(canvas);
     field_box(ui, r, t.input, t.input_border);
     let mut run = None;
     let buttons =

@@ -311,8 +311,8 @@ Generated-in-code art is original and has no file to list. This covers the defau
 | `assets/icons/tw-direct.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-dropper.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-dxf.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
-| `assets/icons/tw-find-number.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-export.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) from its design 3.0 mockup | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-find-number.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-finds.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-grid.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-hachure.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
@@ -321,8 +321,8 @@ Generated-in-code art is original and has no file to list. This covers the defau
 | `assets/icons/tw-legend.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-line.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-magnet.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
-| `assets/icons/tw-north.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-new.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) from its design 3.0 mockup | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-north.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-open.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-pdf.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-pen.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
@@ -332,11 +332,11 @@ Generated-in-code art is original and has no file to list. This covers the defau
 | `assets/icons/tw-rect.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-rotate.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-save.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
-| `assets/icons/tw-scale.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-scale-bar.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-scale.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-scissors.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
-| `assets/icons/tw-section.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-section-line.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
+| `assets/icons/tw-section.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-select.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-sheet.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |
 | `assets/icons/tw-spot-height.svg` | Trowel contributors | Original work, drawn for Trowel (VectorCraft fork) | MIT OR Apache-2.0 |  |

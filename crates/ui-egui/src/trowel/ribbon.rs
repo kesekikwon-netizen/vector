@@ -34,6 +34,8 @@ enum Act {
     Plate,
     /// The Strata survey data browser.
     Strata,
+    /// Nothing but open its list (Export).
+    OpenList,
     /// Comes with a later job.
     Soon(&'static str),
 }
@@ -41,7 +43,7 @@ enum Act {
 /// A tile's list (its ▾): where it opens it and what is on it.
 #[derive(Clone, Copy, PartialEq)]
 enum List {
-    /// New Drawing: its label opens the list, its well the New dialog.
+    /// New Drawing: its ▾ opens the list, the rest of it the New dialog.
     New,
     /// Export: the whole tile opens the list.
     Export,
@@ -89,7 +91,7 @@ fn groups() -> [(&'static str, Vec<Tile>); 4] {
                 tile("plate", "tw-title-block", tw!("Plate"), Plate),
             ],
         ),
-        (tw!("Export"), vec![Tile { list: Some(List::Export), ..tile("export", "tw-export", tw!("Export"), Soon("")) }]),
+        (tw!("Export"), vec![Tile { list: Some(List::Export), ..tile("export", "tw-export", tw!("Export"), OpenList) }]),
     ]
 }
 
@@ -112,9 +114,6 @@ fn list_items(list: List) -> Vec<(&'static str, &'static str, Act)> {
 }
 
 fn look(app: &VectorcraftApp, tile: &Tile) -> Look {
-    if tile.list == Some(List::Export) {
-        return if app.session.active().is_some() { Look::Rest } else { Look::Off };
-    }
     match tile.act {
         Act::Soon(_) => Look::Off,
         Act::Underlay => match templates(app) {
@@ -123,7 +122,7 @@ fn look(app: &VectorcraftApp, tile: &Tile) -> Look {
             _ if crate::menus::enabled(app, "file.place") => Look::Rest,
             _ => Look::Off,
         },
-        Act::Scale | Act::LegendTable | Act::Plate | Act::Strata => {
+        Act::Scale | Act::LegendTable | Act::Plate | Act::Strata | Act::OpenList => {
             if app.session.active().is_some() {
                 Look::Rest
             } else {
@@ -201,27 +200,20 @@ fn act_on(app: &mut VectorcraftApp, ctx: &egui::Context, act: Act) {
     match act {
         Act::Cmd(id) => crate::menus::invoke(app, id, json!({})),
         Act::Underlay => underlay(app),
-        Act::Scale => scale_dialog(app),
-        Act::LegendTable => {
-            // Near the middle of the view, as the one-click elements go.
-            let at = place_symbol_at(app, ctx, [0.0, 0.0]);
-            if let Err(e) = app.run("style.generateLegend", json!({ "at": at, "filterUnused": true, "replaceExisting": true })) {
-                app.status(e);
-            }
-        }
+        Act::Scale => super::scale_dialog::open(app, ctx),
+        Act::LegendTable => legend_table(app, ctx),
         Act::Plate => super::plate::toggle_dialog(ctx),
-        Act::Strata => super::gpkg_browser::toggle_dialog(ctx),
-        Act::Soon(_) => {}
+        Act::Strata => super::gpkg_browser::open_dialog(ctx),
+        Act::OpenList | Act::Soon(_) => {}
     }
 }
 
-/// The drawing's scale and coordinate system in a dialog (`doc.setScale`), with the ones it has, or
-/// 1:20 in Korea's central belt (EPSG:5186) when it has none.
-pub(super) fn scale_dialog(app: &mut VectorcraftApp) {
-    let (scale, epsg) = app.session.active().and_then(|d| d.doc.scale.as_ref()).map_or((20.0, 5186), |cfg| (cfg.scale.denom, cfg.crs.epsg));
-    let params = json!({ "command": "doc.setScale", "label": tw!("Scale and Coordinate System"), "params": { "scale": scale, "epsg": epsg } });
-    if let Err(e) = app.run("ui.paramDialog", params) {
-        app.status(e);
+/// A legend table of the rows in use, replacing the one there is, near the middle of the view as
+/// the one-click elements go (the Drawing menu's Insert Legend Table does the same).
+pub(super) fn legend_table(app: &mut VectorcraftApp, ctx: &egui::Context) {
+    let at = place_symbol_at(app, ctx, [0.0, 0.0]);
+    if let Err(e) = app.run("style.generateLegend", json!({ "at": at, "filterUnused": true, "replaceExisting": true })) {
+        app.status_error(e);
     }
 }
 
@@ -242,7 +234,7 @@ fn underlay(app: &mut VectorcraftApp) {
         // Under every line, its layer named in the user's words (`file.place`'s `underlay`).
         crate::menus::invoke(app, "file.place", json!({ "template": true, "underlay": tw!("Underlay") }));
     } else if let Err(e) = app.run("layer.setProps", json!({ "ids": ids, "visible": !shown })) {
-        app.status(e);
+        app.status_error(e);
     }
 }
 
@@ -333,13 +325,14 @@ fn tile_ui(app: &VectorcraftApp, ui: &Ui, tile: &Tile, rect: Rect, t: &Tokens) -
         let x = rect.center().x - w / 2.0;
         let l = clip.text(pos2(x, cy), Align2::LEFT_CENTER, tile.label, font(12.0), color);
         triangle(ui, pos2(l.right() + 1.0 + 3.5, cy + 1.0), 6.0, true, t.text_dim);
-        Rect::from_min_max(pos2(l.left() - 2.0, well.bottom()), pos2(l.right() + 9.0, rect.bottom()))
+        // The ▾ and a little room around it.
+        Rect::from_min_max(pos2(l.right() - 1.0, well.bottom()), pos2(l.right() + 11.0, rect.bottom()))
     } else {
         clip.text(pos2(rect.center().x, cy), Align2::CENTER_CENTER, tile.label, font(12.0), color);
         Rect::NOTHING
     };
     let tip = match tile.act {
-        Act::Soon(job) if tile.list.is_none() => soon(tile.label, job),
+        Act::Soon(job) => soon(tile.label, job),
         Act::Underlay if templates(app).0.is_empty() => tw!("Place a scan under the drawing").to_string(),
         Act::Underlay => tw!("Show or hide the underlay").to_string(),
         Act::Cmd(id) => match crate::menus::shortcut_of(id) {
@@ -349,9 +342,11 @@ fn tile_ui(app: &VectorcraftApp, ui: &Ui, tile: &Tile, rect: Rect, t: &Tokens) -
         _ => tile.label.to_string(),
     };
     let resp = resp.on_hover_text(tip);
-    // New Drawing's list opens from its label; Export's from the whole tile.
+    // New Drawing's list opens from its ▾; Export's from the whole tile.
     let opener = match tile.list {
-        Some(List::New) => Some(ui.interact(label, wid("tile-more", tile.key), Sense::click())),
+        Some(List::New) => {
+            Some(ui.interact(label, wid("tile-more", tile.key), Sense::click()).on_hover_text(tw!("Plan, section, finds or plate at once")))
+        }
         Some(List::Export) if look != Look::Off => Some(resp.clone()),
         _ => None,
     };
@@ -380,7 +375,7 @@ fn tile_ui(app: &VectorcraftApp, ui: &Ui, tile: &Tile, rect: Rect, t: &Tokens) -
     }
     match tile.act {
         // Off: it says what it waits for, and does nothing.
-        Act::Soon(job) if resp.clicked() && tile.list.is_none() => {
+        Act::Soon(job) if resp.clicked() => {
             note_soon(ui.ctx(), tile.label, job);
             None
         }

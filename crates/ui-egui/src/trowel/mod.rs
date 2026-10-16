@@ -29,6 +29,7 @@ pub mod pottery;
 mod props;
 mod ribbon;
 mod rowedit;
+mod scale_dialog;
 pub mod section;
 mod status;
 pub mod style_dialog;
@@ -65,8 +66,8 @@ pub(crate) fn card_took_press(ctx: &egui::Context) -> bool {
     card::took_press(ctx)
 }
 
-/// The elevation the tool column's Spot Height and the ribbon's Spot Height popup use, in metres:
-/// the one last set in that popup, 93.0 m until then.
+/// The elevation the tool column's Spot Height and the drawing set's section and spot height
+/// elements use, in metres: the one last set in the drawing set, 93.0 m until then.
 pub(crate) fn datum_elevation_m(ctx: &egui::Context) -> f64 {
     ctx.data(|d| d.get_temp::<f64>(datum_elevation_id())).unwrap_or(93.0)
 }
@@ -133,6 +134,7 @@ pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {
     plate::show_dialog(app, ui.ctx());
     style_dialog::show_dialog(app, ui.ctx());
     gpkg_browser::show_dialog(app, ui.ctx());
+    scale_dialog::show(app, ui.ctx());
 }
 
 /// The right column: the drawing palette on top, the properties at the bottom, the legend and
@@ -476,6 +478,8 @@ fn soon(what: &str, job: &str) -> String {
 /// How long the status bar shows a note, and a message, before it shows the hint again (seconds).
 const NOTE_SECS: f64 = 4.0;
 const MESSAGE_SECS: f64 = 6.0;
+/// How long it shows an error (design 3.0 §5 ⑩), in red.
+const ERROR_SECS: f64 = 5.0;
 
 /// Where the status bar's note ([`note`]) is kept, with when.
 fn note_id() -> egui::Id {

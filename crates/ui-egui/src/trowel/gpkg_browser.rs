@@ -36,6 +36,12 @@ pub(crate) const DEFAULT_STRATA_LAYERS: &[(&str, &str)] = &[
     ("artifact_finds", "유물출토지 (원형 기호 번호 8 pt)"),
 ];
 
+/// Open the Strata GeoPackage Survey Browser dialog (an item ending in "…" opens, it doesn't
+/// toggle).
+pub fn open_dialog(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.insert_temp(gpkg_dialog_open_id(), true));
+}
+
 /// Open or toggle the Strata GeoPackage Survey Browser dialog.
 pub fn toggle_dialog(ctx: &egui::Context) {
     let cur: bool = ctx.data(|d| d.get_temp(gpkg_dialog_open_id())).unwrap_or(false);

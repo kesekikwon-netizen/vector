@@ -119,7 +119,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
                 }
                 Some(Pick::Arch(key)) => {
                     let res = match key {
-                        // Near the middle of the view, at the elevation the ribbon's Spot Height sets.
+                        // Near the middle of the view, at the elevation the drawing set sets.
                         "spot-height" => {
                             let at = place_symbol_at(app, &ctx, [0.0, 0.0]);
                             app.run("trowel.spotElevation", json!({ "at": at, "elevation": datum_elevation_m(&ctx) }))
@@ -128,7 +128,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
                         _ => Ok(json!({})),
                     };
                     if let Err(e) = res {
-                        app.status(e);
+                        app.status_error(e);
                     }
                 }
                 None => {}

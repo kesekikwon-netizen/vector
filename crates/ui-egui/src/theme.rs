@@ -109,7 +109,7 @@ pub struct Tokens {
     pub axis_x: Color32,
     pub axis_y: Color32,
     pub axis_z: Color32,
-    /// Trowel (design 2.1): the inset ring of a ribbon tile whose view is shown (Grid, Magnet).
+    /// Trowel: the edge of a toggle that is on, and a legend row's eye and padlock when off.
     pub ring: Color32,
     /// Trowel: the well of the one action waiting for the user (Save with unsaved changes), and
     /// the glyph drawn on it.
@@ -501,7 +501,7 @@ mod tests {
         assert_eq!(plate.mark_cr(), CornerRadius::same(4));
     }
 
-    /// Design 2.1's marks beyond the shared plate: the ring around a shown ribbon tile, the save
+    /// Design 2.1's marks beyond the shared plate: the edge of a toggle that is on, the save
     /// tile's well and glyph, the clay star and the clay text of a favourite legend row.
     #[test]
     fn plate_has_the_trowel_tokens() {
