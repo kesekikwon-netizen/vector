@@ -4780,7 +4780,7 @@ fn the_first_layout_is_sheet_13_in_each_window() {
 
 /// The strip (design 3.1 ⑪) lists the layers with something drawn on them, and the current one,
 /// top first; the other layers wait in one line at its foot (정할 것 4). ＋ makes a sublayer in
-/// the current layer, drawn on next and shown 10 points further in, in one undo step.
+/// the current layer, drawn on next and shown 14 points further in, in one undo step.
 #[test]
 fn the_layer_strip_lists_what_is_drawn_and_folds_the_empty_layers() {
     let mut h = Harness::sized(1440.0, 880.0);
@@ -4818,7 +4818,8 @@ fn the_layer_strip_lists_what_is_drawn_and_folds_the_empty_layers() {
     let name = doc.node(sub).unwrap().display_name();
     let (s, p) = (row(&h, sub).unwrap(), row(&h, pits).unwrap());
     assert_eq!(s.top(), p.bottom(), "under it");
-    assert_eq!(text_left(&h, &name, s).unwrap() - text_left(&h, "Pits", p).unwrap(), 10.0, "10 further in");
+    // The mockup's 10-point spacer and the 4-point gap after it.
+    assert_eq!(text_left(&h, &name, s).unwrap() - text_left(&h, "Pits", p).unwrap(), 14.0, "14 further in");
     h.app.run("edit.undo", json!({})).unwrap();
     h.settle();
     assert!(row(&h, sub).is_none(), "one undo step");

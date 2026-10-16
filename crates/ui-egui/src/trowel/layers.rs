@@ -19,7 +19,7 @@ pub(super) const HEAD_H: f32 = 36.0;
 const ROW_H: f32 = 24.0;
 const FOOT_H: f32 = 30.0;
 const LIST_PAD: f32 = 4.0;
-/// How much further in a row is than the row it is in.
+/// The spacer a row has per level in (the mockup's 10-point `<i>`; with the gap after it, 14).
 const INDENT: f32 = 10.0;
 /// The mockup's `.lr`: 6 from the edges, the eye 14, then 4 between the parts.
 const PAD: f32 = 6.0;
@@ -309,10 +309,10 @@ fn list(ui: &mut Ui, area: Rect, all: &[&Row], t: &Tokens) -> Option<Act> {
 fn row_ui(ui: &mut Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
     let cy = rr.center().y;
     let x_eye = rr.left() + PAD;
-    let x_arrow = x_eye + EYE + GAP + INDENT * row.depth as f32;
+    // Each level in: the mockup's 10-point spacer and the gap after it.
+    let x_arrow = x_eye + EYE + GAP + (INDENT + GAP) * row.depth as f32;
     let x_mark = x_arrow + ARROW_W + GAP;
     let lock_r = Rect::from_center_size(pos2(rr.right() - PAD - MARK_W / 2.0, cy), vec2(MARK_W + 4.0, ROW_H));
-    let nib_r = lock_r.translate(vec2(-(MARK_W + GAP), 0.0));
     let resp = ui.interact(rr, wid("strip-row", row.id.0), Sense::click_and_drag());
     let eye = ui.interact(Rect::from_center_size(pos2(x_eye + EYE / 2.0, cy), vec2(EYE + 4.0, ROW_H)), wid("strip-eye", row.id.0), Sense::click());
     let arrow = row.opens.then(|| {
@@ -346,15 +346,22 @@ fn row_ui(ui: &mut Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
         ui.painter().rect_stroke(b, CornerRadius::same(1), Stroke::new(1.0, t.text_disabled), StrokeKind::Inside);
         x_mark + 7.0 + GAP + 1.0
     };
+    // The name takes the row up to the padlock (when locked, or under the pointer to lock it)
+    // and the pen nib (on the current layer), as the mockup's flexible `.nm`.
+    let mut name_end = rr.right() - PAD;
+    let lock_icon = Rect::from_center_size(lock_r.center(), vec2(MARK_W, MARK_W));
     if row.locked {
-        super::legend::padlock(ui, Rect::from_center_size(lock_r.center(), vec2(MARK_W, MARK_W)), t.text_dim);
+        super::legend::padlock(ui, lock_icon, t.text_dim);
     } else if over {
-        icon("lock-open", lock_r.center(), MARK_W, t.ring);
+        icon("lock-open", lock_icon.center(), MARK_W, t.ring);
     }
-    let mut name_end = lock_r.left() - GAP;
+    if row.locked || over {
+        name_end = lock_icon.left() - GAP;
+    }
     if row.current {
-        icon("tw-pen", nib_r.center(), MARK_W, t.clay);
-        name_end = nib_r.left() - GAP;
+        let nib = Rect::from_min_max(pos2(name_end - MARK_W, cy - MARK_W / 2.0), pos2(name_end, cy + MARK_W / 2.0));
+        icon("tw-pen", nib.center(), MARK_W, t.clay);
+        name_end = nib.left() - GAP;
     }
     let renaming: Option<(NodeId, String)> = ui.data(|d| d.get_temp(rename_id()));
     if let Some((_, typed)) = renaming.filter(|(id, _)| *id == row.id) {
