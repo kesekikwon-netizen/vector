@@ -123,6 +123,9 @@ pub struct Tokens {
     pub caution: Color32,
     pub caution_edge: Color32,
     pub caution_wash: Color32,
+    /// Trowel (D3): the mark of a state that is as it should be (the pen as its legend row), the
+    /// glyph on it `on_action`.
+    pub ok: Color32,
 }
 
 impl Tokens {
@@ -183,6 +186,7 @@ impl Tokens {
             caution: hex(0xf0a330),
             caution_edge: hex(0x8a6a2a),
             caution_wash: hex(0x3f3524),
+            ok: hex(0x45af63),
         };
         match b {
             Brightness::Dark => base,
@@ -244,6 +248,7 @@ impl Tokens {
                 caution: hex(0x7a5a00),
                 caution_edge: hex(0xd9c27a),
                 caution_wash: hex(0xf7efd6),
+                ok: hex(0x3f6b31),
                 ..base
             },
             Brightness::Light => Tokens {
@@ -277,6 +282,7 @@ impl Tokens {
                 caution: hex(0x7a5a00),
                 caution_edge: hex(0xd9c27a),
                 caution_wash: hex(0xf7efd6),
+                ok: hex(0x3f6b31),
                 ..base
             },
             // Quiet Plate: Trowel's own light theme (ivory ground, ink text, a clay accent on the
@@ -340,6 +346,7 @@ impl Tokens {
                 caution: hex(0x7a5a00),
                 caution_edge: hex(0xd9c27a),
                 caution_wash: hex(0xf7efd6),
+                ok: hex(0x3f6b31),
             },
         }
     }

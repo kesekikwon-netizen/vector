@@ -14,8 +14,9 @@ use vectorcraft_doc::{Dash, Document, Legend, LegendGroup, LegendSample, LineTyp
 use super::layer::{apply_options, locked_within, make_layer};
 use super::*;
 
-/// The palette's weight chips (points): Change Weights at Once steps along them.
-pub const LADDER: [f64; 6] = [0.1, 0.2, 0.3, 0.5, 0.8, 1.0];
+/// The weights in points (Trowel design 3.0 §2, one list for the whole app): the pen's chips, the
+/// row editor's, and the steps of Change Weights at Once.
+pub const LADDER: [f64; 9] = [0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0];
 /// The longest row name (characters).
 const MAX_NAME: usize = 512;
 
@@ -53,7 +54,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Change Weights at Once",
             [],
             None,
-            "{how: ratio|value|step, ratio?: factor above 0, from?: pt, to?: pt, step?: 1|-1, overrides?: bool} every row with a look takes the rule (ratio: × factor; value: a weight within 1e-9 pt of `from` becomes `to`; step: the next palette weight 0.1, 0.2, 0.3, 0.5, 0.8, 1.0 up or down, none past the ends) and the lines that follow it its new weight; lines set apart take the rule on their own weight only with `overrides`, lines of layers without a look always. Results round to 0.001 pt within 0–1000; hidden lines change, locked ones are skipped and counted; one undo step → {rows: [{id, name, from, to}], lines, skipped}",
+            "{how: ratio|value|step, ratio?: factor above 0, from?: pt, to?: pt, step?: 1|-1, overrides?: bool} every row with a look takes the rule (ratio: × factor; value: a weight within 1e-9 pt of `from` becomes `to`; step: the next weight of 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0 up or down, none past the ends) and the lines that follow it its new weight; lines set apart take the rule on their own weight only with `overrides`, lines of layers without a look always. Results round to 0.001 pt within 0–1000; hidden lines change, locked ones are skipped and counted; one undo step → {rows: [{id, name, from, to}], lines, skipped}",
             has_doc,
             weights
         ),

@@ -1,43 +1,44 @@
-//! The legend and layers, the biggest part of the right column (design 2.1 §3, §7): one row per
-//! top-level layer, the top one first. A legend row (J005, `vectorcraft_doc::Legend`) is the look of
-//! its layer's lines: it shows a sample drawn at its weight, the weight in points, ★ when it is used
-//! often, and how many of its lines are set apart from it ("따로"). Rows matching Strata's layers
-//! get a section of their own above the others, and the favourites come first in each.
+//! The legend, the top of the right column taking the height left (design 3.0 §5 ⑦, §7): one row
+//! per top-level layer, in sections: ★ Used Often, the legend groups (Plan, Section, Finds; the one
+//! chosen in the head first), Underlays (template layers) and the other rows. A legend row (J005,
+//! `vectorcraft_doc::Legend`) is the look of its layer's lines: it shows its eye and padlock, a
+//! sample drawn at its weight, its name (a favourite's in clay after ★), 「따로 N」 when N of its
+//! lines are set apart from its look, its weight and how many objects it holds.
 //!
 //! A click picks a row for the pen (`legend.pick`), and with a selection tool in hand moves the
 //! selection into it; a double click opens its editor and leaves the selection where it was. A
-//! locked or hidden row isn't picked: the status bar says why. A row's eye and padlock show, hide,
-//! lock and unlock the layer, and its arrow lists the objects on it: a click selects one, and ↺
-//! puts a line set apart back to the row's look. The head adds the legend groups, and Weights at
-//! Once is at its foot.
+//! locked or hidden row isn't picked: the status bar says why. The eye and padlock show, hide, lock
+//! and unlock the layer (Alt and the eye: this row alone), and the count selects the row's objects.
+//! A right click edits, selects, stars, moves up or down, or deletes the row. The head's ＋ makes a
+//! new row and opens its editor, and ⋯ lists what is done now and then (Weights at Once among
+//! them).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use serde_json::{Value, json};
+use serde_json::json;
 use vectorcraft_doc::legend::{MM, lines, stroke_of};
 use vectorcraft_doc::{Document, Legend, LegendGroup, LegendSample, Node, NodeId};
 
 use super::*;
 
-const ROW_H: f32 = 24.0;
-const OBJECT_H: f32 = 20.0;
-/// A section's caption in the list: 10 above its text, 14 for it, 4 under it (the mockup's `.cap2`).
-const CAPTION_H: f32 = 10.0 + 14.0 + 4.0;
-/// The panel's padding at the sides.
-const PAD: f32 = 14.0;
-/// Its head over the list, and Weights at Once under it ([`footer`]).
-const ABOVE: f32 = 32.0;
-const BELOW: f32 = 6.0 + FOOT_H;
-/// The footer: 6 over its buttons, 24 for them and 12 under them.
-const FOOT_H: f32 = 6.0 + 24.0 + 12.0;
-/// How tall the legend has to be to list two layers under its caption.
-pub(super) const MIN_HEIGHT: f32 = ABOVE + CAPTION_H + 2.0 * ROW_H + BELOW;
-/// A row's sample, in front of its name.
-const SAMPLE: egui::Vec2 = vec2(20.0, 12.0);
-/// How thick a weight (points) is drawn in a sample (design 2.1 §7), straight between these and on
-/// past the ends.
-const SAMPLE_PX: [(f64, f32); 6] = [(0.1, 0.45), (0.2, 0.6), (0.3, 0.85), (0.5, 1.25), (0.8, 2.0), (1.0, 2.5)];
+/// The head (the mockup's `.ph`), and the room above and under the list (`.lg`).
+const HEAD_H: f32 = 36.0;
+const LIST_PAD: f32 = 4.0;
+/// A row (the mockup's `.row`).
+const ROW_H: f32 = 27.0;
+/// A section's caption: 6 above its text, 14 for it, 3 under it (the mockup's `.lgcap`).
+const CAPTION_H: f32 = 6.0 + 14.0 + 3.0;
+/// How tall the legend has to be to list two rows under a caption.
+pub(super) const MIN_HEIGHT: f32 = HEAD_H + LIST_PAD + CAPTION_H + 2.0 * ROW_H + LIST_PAD;
+/// A row's columns (the mockup's `.row`): 12 in from the left, eye 16, padlock 16, sample 34, the
+/// name, the weight, the count 26, 6 between them and 10 at the right.
+const ROW_IN: f32 = 12.0;
+const ROW_OUT: f32 = 10.0;
+const GAP: f32 = 6.0;
+const ICON_W: f32 = 16.0;
+const COUNT_W: f32 = 26.0;
+const SAMPLE: egui::Vec2 = vec2(34.0, 10.0);
 /// How long a paper millimetre of a line type's dashes is drawn in a sample: long enough to tell
 /// the types apart at a glance.
 const SAMPLE_MM: f64 = 1.5;
@@ -54,24 +55,22 @@ struct Row<'a> {
     locked: bool,
     /// Hidden, or an underlay (a template layer): its name shows faint.
     dim: bool,
+    underlay: bool,
     colour: Color32,
     current: bool,
-    open: bool,
     /// The current layer's when it is locked or hidden: where lines go instead ([`draw_target`]).
     note: Option<String>,
-    /// Its objects, bottom first; an open row lists them under it, top first.
-    objects: &'a [Arc<Node>],
+    /// How many objects it holds.
+    count: usize,
     legend: Option<&'a Legend>,
     /// How many of its lines are set apart from its look.
     apart: usize,
+    /// The rows over and under it in its section, for Up and Down.
+    over: Option<NodeId>,
+    under: Option<NodeId>,
 }
 
 impl Row<'_> {
-    /// How tall the row is with the objects it lists.
-    fn height(&self) -> f32 {
-        ROW_H + if self.open { self.objects.len() as f32 * OBJECT_H } else { 0.0 }
-    }
-
     fn favourite(&self) -> bool {
         self.legend.is_some_and(|l| l.favourite)
     }
@@ -88,7 +87,7 @@ impl Item<'_> {
     fn height(&self) -> f32 {
         match self {
             Item::Caption(_) => CAPTION_H,
-            Item::Layer(row) => row.height(),
+            Item::Layer(_) => ROW_H,
         }
     }
 }
@@ -98,16 +97,27 @@ enum Act {
     Pick(NodeId),
     /// Open a row's editor level with its row's top.
     Edit(NodeId, f32),
-    /// List a row's objects under it, or stop.
-    Open(NodeId, bool),
     Show(NodeId, bool),
+    /// Alt and the eye: this row alone, or every row again when it already is.
+    ShowAlone(NodeId),
     Lock(NodeId, bool),
-    Select(NodeId),
-    Revert(NodeId),
+    /// Select the row's objects.
+    SelectAll(NodeId),
+    Favourite(NodeId, bool),
+    /// Move a row over (`"above"`) or under (`"below"`) another.
+    Move(NodeId, NodeId, &'static str),
     Delete(NodeId),
-    AddSingleRule(LegendGroup, &'static str),
-    AddFieldPreset(Option<&'static str>),
-    PruneEmpty,
+}
+
+/// What the head's ⋯ lists.
+#[derive(Clone, Copy)]
+enum More {
+    EditRow,
+    FieldStandard,
+    Prune,
+    Weights,
+    Styles,
+    Layers,
 }
 
 /// A card beside the right column: a row's editor or Weights at Once.
@@ -173,63 +183,43 @@ fn show_card(app: &mut VectorcraftApp, ui: &Ui, r: Rect) {
 
 pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let t = Tokens::get(ui.ctx());
-    line_below(ui, r, t.border);
-    let head = Rect::from_min_size(r.min, vec2(r.width(), 32.0));
-    panel_head(ui, head, tw!("Legend · Layers"), "", 2, &t);
+    let head = Rect::from_min_size(r.min, vec2(r.width(), HEAD_H));
+    line_below(ui, head, t.border);
     let open = app.session.active().is_some();
-    let group = if open { group_button(app, ui, head, &t) } else { None };
-    let new_btn = head_button(ui, wid("legend-new", ()), head, 1, "plus", "새 레이어 추가 (우클릭: 표준 규칙 골라 넣기)", &t);
-    let new_layer = open && new_btn.clicked();
-    let mut plus_act = None;
-    if open {
-        egui::Popup::context_menu(&new_btn).show(|ui| {
-            rule_picker_menu(ui, &mut plus_act);
-        });
-    }
-    let more = more_button(ui, wid("legend-more", ()), head, 0, tw!("Layers panel"), &t).clicked();
+    let title_end = column_head(ui, head, tw!("Legend"), "", 2, &t);
+    let first = group_button(app, ui, head, title_end, &t);
+    let new_row = head_button(ui, wid("legend-new", ()), head, 1, "plus", tw!("New row with the pen's look: the selected lines move into it"), &t)
+        .clicked()
+        && open;
+    let more = more_menu(ui, head, open, &t);
     let apart = app.session.active().map(|st| apart(ui, st)).unwrap_or_default();
-    let (weights, revert_all) = footer(ui, r, apart.lines.len(), open, &t);
-    let area = Rect::from_min_max(pos2(r.left() + PAD, r.top() + ABOVE), pos2(r.right() - PAD, r.bottom() - BELOW));
-    let act = list(app, ui, area, &apart, &t).or(plus_act);
-    if more {
-        crate::menus::invoke(app, "window.panel", json!({ "panel": "layers" }));
-    }
-    if weights {
-        open_card(app, ui.ctx(), Card::Weights, None);
-    }
+    let area = Rect::from_min_max(pos2(r.left(), head.bottom() + LIST_PAD), pos2(r.right(), (r.bottom() - LIST_PAD).max(head.bottom())));
+    let act = list(app, ui, area, &apart, &t);
+    let ctx = ui.ctx().clone();
     let result = match act {
-        Some(Act::Pick(id)) => pick(app, ui.ctx(), id),
+        Some(Act::Pick(id)) => pick(app, &ctx, id),
         Some(Act::Edit(id, top)) => {
-            let undone = unmove(app, ui.ctx(), id);
-            // Lines going back change the open rows' heights: the card finds its row where it is
-            // laid out next.
-            let top = if matches!(undone, Ok(true)) { None } else { Some(top) };
-            open_card(app, ui.ctx(), Card::Row(id), top);
+            let undone = unmove(app, &ctx, id);
+            open_card(app, &ctx, Card::Row(id), Some(top));
             undone.map(drop)
         }
-        Some(Act::Open(id, on)) => {
-            ui.data_mut(|d| d.insert_temp(opened(id), on));
-            Ok(())
-        }
         Some(Act::Show(id, on)) => app.run("layer.setProps", json!({ "ids": [id.0], "visible": on })).map(drop),
+        Some(Act::ShowAlone(id)) => show_alone(app, id),
         Some(Act::Lock(id, on)) => app.run("layer.setProps", json!({ "ids": [id.0], "locked": on })).map(drop),
-        Some(Act::Select(id)) => app.run("select.set", json!({ "ids": [id.0] })).map(drop),
-        Some(Act::Revert(id)) => revert(app, json!({ "ids": [id.0] })),
+        Some(Act::SelectAll(id)) => select_all(app, id),
+        Some(Act::Favourite(id, on)) => app.run("legend.set", json!({ "id": id.0, "favourite": on })).map(drop),
+        Some(Act::Move(id, target, place)) => app.run("layer.move", json!({ "ids": [id.0], "target": target.0, "place": place })).map(drop),
         Some(Act::Delete(id)) => delete_layer_row(app, id),
-        Some(Act::AddSingleRule(g, name)) => add_single_rule(app, g, name),
-        Some(Act::AddFieldPreset(name_opt)) => {
-            let params = match name_opt {
-                Some(n) => json!({ "name": n }),
-                None => json!({}),
-            };
-            app.run("legend.addFieldPresets", params).map(drop)
-        }
-        Some(Act::PruneEmpty) => prune_empty_layers(app),
-        None if revert_all => revert(app, json!({ "all": true })),
-        None if new_layer => app.run("layer.new", json!({})).map(drop),
-        None => match group {
-            Some(g) => add_group(app, g),
-            None => Ok(()),
+        None if new_row => add_row(app, &ctx),
+        None => match (more, first) {
+            (Some(m), _) => run_more(app, &ctx, m),
+            (None, Some(g)) => {
+                if let Some(st) = app.session.active() {
+                    ctx.data_mut(|d| d.insert_temp(first_id(st.uid), g));
+                }
+                Ok(())
+            }
+            (None, None) => Ok(()),
         },
     };
     if let Err(e) = result {
@@ -304,20 +294,43 @@ pub(super) fn revert(app: &mut VectorcraftApp, params: serde_json::Value) -> Res
     Ok(())
 }
 
-/// Add legend group `g`'s rows and draw on with its first ★ row (a plan's 굴광선): the next line
-/// goes into the legend, not into a layer outside it.
-fn add_group(app: &mut VectorcraftApp, g: LegendGroup) -> Result<(), String> {
-    let done = app.run("legend.addGroup", json!({ "group": g.key() }))?;
-    let added: Vec<NodeId> = done["added"].as_array().into_iter().flatten().filter_map(Value::as_u64).map(NodeId).collect();
-    let first =
-        app.session.active().and_then(|st| added.iter().copied().find(|id| st.doc.node(*id).and_then(|l| l.legend()).is_some_and(|l| l.favourite)));
-    if let Some(id) = first {
-        app.run("legend.pick", json!({ "id": id.0 }))?;
+/// Show row `id` alone (the others hidden), or every row again when it already is.
+fn show_alone(app: &mut VectorcraftApp, id: NodeId) -> Result<(), String> {
+    let Some(st) = app.session.active() else { return Ok(()) };
+    let alone = st.doc.layers.iter().all(|l| (l.id == id) == l.visible);
+    if alone {
+        return app.run("layer.showAll", json!({})).map(drop);
     }
-    let n = added.len();
-    let note =
-        if n > 0 { crate::i18n::fmt(tw!("Legend rows added: {n}"), &[("n", &n.to_string())]) } else { tw!("No legend rows to add").to_string() };
-    app.status(note);
+    if st.doc.node(id).is_some_and(|l| !l.visible) {
+        app.run("layer.setProps", json!({ "ids": [id.0], "visible": true }))?;
+    }
+    app.run("layer.hideOthers", json!({ "ids": [id.0] })).map(drop)
+}
+
+/// Select row `id`'s objects and say how many.
+fn select_all(app: &mut VectorcraftApp, id: NodeId) -> Result<(), String> {
+    let done = app.run("layer.selectAll", json!({ "id": id.0 }))?;
+    let n = done["selected"].as_array().map_or(0, Vec::len);
+    app.status(crate::i18n::fmt(tw!("Selected: {n}"), &[("n", &n.to_string())]));
+    Ok(())
+}
+
+/// A new row (a new layer) and its editor beside it.
+fn add_row(app: &mut VectorcraftApp, ctx: &egui::Context) -> Result<(), String> {
+    let Some(st) = app.session.active() else { return Ok(()) };
+    let taken: HashSet<String> = st.doc.layers.iter().map(|l| l.display_name()).collect();
+    // One of the first taken + 1 numbers is free.
+    let name = (1..=taken.len() + 1)
+        .map(|n| crate::i18n::fmt(tw!("Legend Row {n}"), &[("n", &n.to_string())]))
+        .find(|s| !taken.contains(s))
+        .unwrap_or_default();
+    let done = app.run("legend.add", json!({ "name": name }))?;
+    let Some(id) = done["id"].as_u64() else { return Ok(()) };
+    let moved = done["moved"].as_u64().unwrap_or(0);
+    if moved > 0 {
+        app.status(crate::i18n::fmt(tw!("Moved {n} to {row}"), &[("n", &moved.to_string()), ("row", &name)]));
+    }
+    open_card(app, ctx, Card::Row(NodeId(id)), None);
     Ok(())
 }
 
@@ -344,44 +357,7 @@ pub(super) fn delete_layer_row(app: &mut VectorcraftApp, id: NodeId) -> Result<(
     }
 }
 
-/// Add a single predefined rule layer from `group` with `name` and pick it.
-pub(super) fn add_single_rule(app: &mut VectorcraftApp, group: LegendGroup, name: &'static str) -> Result<(), String> {
-    let rows = vectorcraft_engine::cmd::legend::group_rows(group);
-    let Some((_, legend)) = rows.into_iter().find(|(n, _)| *n == name) else {
-        return Ok(());
-    };
-    let created = app.run("layer.new", json!({ "name": name }))?;
-    let Some(id_u64) = created["id"].as_u64() else { return Ok(()) };
-    let sample_val = match &legend.sample {
-        LegendSample::Line => json!("line"),
-        LegendSample::Area => json!("area"),
-        LegendSample::Mark(m) => json!({ "mark": m }),
-    };
-    let line_val = match &legend.line {
-        vectorcraft_doc::LineType::Solid => json!("solid"),
-        vectorcraft_doc::LineType::Dashed => json!("dashed"),
-        vectorcraft_doc::LineType::Dotted => json!("dotted"),
-        vectorcraft_doc::LineType::DashDot => json!("dashdot"),
-        vectorcraft_doc::LineType::Custom(d) => json!(d),
-    };
-    app.run(
-        "legend.set",
-        json!({
-            "id": id_u64,
-            "weight": legend.weight,
-            "line": line_val,
-            "favourite": legend.favourite,
-            "sample": sample_val,
-            "strata": legend.strata,
-            "group": group.key(),
-        }),
-    )?;
-    let _ = app.run("legend.pick", json!({ "id": id_u64 }));
-    app.status(format!("Rule layer added: {name}"));
-    Ok(())
-}
-
-/// Remove all empty layers except the currently active layer so the user can start clean.
+/// Remove the rows holding nothing but the current one, and say how many went.
 fn prune_empty_layers(app: &mut VectorcraftApp) -> Result<(), String> {
     let Some((current, empty_ids)) = app.session.active().map(|st| {
         let cur = st.current_layer().and_then(|l| st.doc.layer_of(l));
@@ -406,53 +382,71 @@ fn prune_empty_layers(app: &mut VectorcraftApp) -> Result<(), String> {
     if let Some(cur) = current {
         let _ = app.run("layer.setCurrent", json!({ "id": cur.0 }));
     }
-    app.status(format!("Removed empty unused layers: {removed}"));
+    app.status(crate::i18n::fmt(tw!("Unused rows removed: {n}"), &[("n", &removed.to_string())]));
     Ok(())
 }
 
-fn rule_picker_menu(ui: &mut Ui, act: &mut Option<Act>) {
-    ui.menu_button("현장 실무 표준 규격 (윤고딕 6p·7p 기준)", |ui| {
-        if ui.button("★ 현장 실무 표준 12종 일괄 추가").clicked() {
-            *act = Some(Act::AddFieldPreset(None));
-            ui.close();
-        }
-        ui.separator();
-        for (name, leg) in vectorcraft_engine::cmd::legend::field_preset_rows() {
-            let line_tag = if matches!(leg.line, vectorcraft_doc::LineType::Dashed) { ", 파선" } else { "" };
-            let label = match leg.weight {
-                Some(w) if (w * 100.0 - (w * 10.0).round() * 10.0).abs() > 0.1 => format!("{name} ({w:.2} pt{line_tag})"),
-                Some(w) => format!("{name} ({w:.1} pt{line_tag})"),
-                None => name.to_string(),
-            };
-            if ui.button(label).clicked() {
-                *act = Some(Act::AddFieldPreset(Some(name)));
+/// The head's ⋯: a list of what is done now and then. Returns the one picked.
+fn more_menu(ui: &Ui, head: Rect, open: bool, t: &Tokens) -> Option<More> {
+    let resp = more_button(ui, wid("legend-more", ()), head, 0, tw!("More legend actions"), t);
+    let mut pick = None;
+    egui::Popup::menu(&resp).id(wid("legend-more-list", ())).show(|ui| {
+        let items = [
+            (More::EditRow, tw!("Edit Row…")),
+            (More::FieldStandard, tw!("Put the 12 Field Standard Rows Back")),
+            (More::Prune, tw!("Remove Unused Rows")),
+            (More::Weights, tw!("Change Weights at Once…")),
+            (More::Styles, tw!("Save or Load a Style Template…")),
+            (More::Layers, tw!("Layers Panel")),
+        ];
+        for (i, (item, label)) in items.into_iter().enumerate() {
+            if i == 3 || i == 5 {
+                ui.separator();
+            }
+            // Without a drawing only the Layers panel opens.
+            let enabled = open || matches!(item, More::Layers);
+            if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                pick = Some(item);
                 ui.close();
             }
         }
     });
-    ui.separator();
-    for (g, title) in [
-        (LegendGroup::Plan, "평면 규칙 골라 추가"),
-        (LegendGroup::Section, "단면·토층 규칙 골라 추가"),
-        (LegendGroup::Finds, "유물 실측 규칙 골라 추가"),
-    ] {
-        ui.menu_button(title, |ui| {
-            for (name, leg) in vectorcraft_engine::cmd::legend::group_rows(g) {
-                let label = match leg.weight {
-                    Some(w) => format!("{name} ({w:.1} pt)"),
-                    None => name.to_string(),
-                };
-                if ui.button(label).clicked() {
-                    *act = Some(Act::AddSingleRule(g, name));
-                    ui.close();
-                }
+    pick
+}
+
+fn run_more(app: &mut VectorcraftApp, ctx: &egui::Context, more: More) -> Result<(), String> {
+    match more {
+        More::EditRow => {
+            let row = app.session.active().and_then(|st| st.current_layer().and_then(|l| st.doc.layer_of(l)));
+            if let Some(id) = row {
+                open_card(app, ctx, Card::Row(id), None);
             }
-        });
-    }
-    ui.separator();
-    if ui.button("미사용 빈 레이어 모두 정리 (현재 레이어만 남기기)").clicked() {
-        *act = Some(Act::PruneEmpty);
-        ui.close();
+            Ok(())
+        }
+        More::FieldStandard => {
+            let done = app.run("legend.addFieldPresets", json!({}))?;
+            let n = done["added"].as_array().map_or(0, Vec::len);
+            let note = if n > 0 {
+                crate::i18n::fmt(tw!("Legend rows added: {n}"), &[("n", &n.to_string())])
+            } else {
+                tw!("The 12 field standard rows are all there").to_string()
+            };
+            app.status(note);
+            Ok(())
+        }
+        More::Prune => prune_empty_layers(app),
+        More::Weights => {
+            open_card(app, ctx, Card::Weights, None);
+            Ok(())
+        }
+        More::Styles => {
+            super::style_dialog::toggle_dialog(ctx);
+            Ok(())
+        }
+        More::Layers => {
+            crate::menus::invoke(app, "window.panel", json!({ "panel": "layers" }));
+            Ok(())
+        }
     }
 }
 
@@ -500,38 +494,49 @@ pub(super) fn main_group(doc: &Document) -> Option<LegendGroup> {
     LegendGroup::ALL.iter().zip(counts).rev().filter(|(_, n)| *n > 0).max_by_key(|(_, n)| *n).map(|(g, _)| *g)
 }
 
-/// The head's group button, after its title: the legend group most rows come from ("For Plans ▾",
-/// [`main_group`]), or "Add a Legend ▾"; it lists the groups to add. Returns the one picked.
-fn group_button(app: &VectorcraftApp, ui: &Ui, head: Rect, t: &Tokens) -> Option<LegendGroup> {
-    let label = match app.session.active().and_then(|st| main_group(&st.doc)) {
-        Some(LegendGroup::Plan) => tw!("For Plans"),
-        Some(LegendGroup::Section) => tw!("For Sections and Elevations"),
-        Some(LegendGroup::Finds) => tw!("For Finds"),
-        None => tw!("Add a Legend"),
-    };
+/// Where the group a drawing's legend shows first is kept.
+fn first_id(doc: u64) -> egui::Id {
+    wid("legend-first", doc)
+}
+
+/// The group shown first, after ★: the one chosen in the head, else the one most rows come from,
+/// else plans.
+fn first_group(app: &VectorcraftApp, ctx: &egui::Context) -> LegendGroup {
+    let Some(st) = app.session.active() else { return LegendGroup::Plan };
+    ctx.data(|d| d.get_temp::<LegendGroup>(first_id(st.uid))).or_else(|| main_group(&st.doc)).unwrap_or(LegendGroup::Plan)
+}
+
+/// A legend group's name, as its section's caption and in the head.
+fn group_name(g: LegendGroup) -> &'static str {
+    match g {
+        LegendGroup::Plan => tw!("Plan"),
+        LegendGroup::Section => tw!("Section"),
+        LegendGroup::Finds => tw!("Finds"),
+    }
+}
+
+/// The head's group, after its title (the mockup's 「평면 ▾」): the group shown first, and the
+/// list of the three. Returns the one picked.
+fn group_button(app: &VectorcraftApp, ui: &Ui, head: Rect, title_end: f32, t: &Tokens) -> Option<LegendGroup> {
+    let shown = first_group(app, ui.ctx());
+    let label = group_name(shown);
     let cy = head.center().y;
-    let x = head.left() + 12.0 + width_of(ui, tw!("Legend · Layers"), font(13.0)) + 6.0;
-    // Up to the head's two buttons.
-    let room = head.right() - 12.0 - 24.0 * 2.0 - 4.0;
-    let r = Rect::from_min_max(pos2(x - 4.0, cy - 10.0), pos2((x + width_of(ui, label, font(11.0)) + 4.0 + 7.0 + 4.0).min(room), cy + 10.0));
-    let resp = ui.interact(r, wid("legend-group", ()), Sense::click());
-    if resp.hovered() {
+    let x = title_end + 6.0;
+    let f = font(12.0);
+    let r = Rect::from_min_max(pos2(x - 4.0, cy - 11.0), pos2(x + width_of(ui, label, f.clone()) + 4.0 + 7.0 + 4.0, cy + 11.0));
+    let open = app.session.active().is_some();
+    let resp = ui.interact(r, wid("legend-group", ()), if open { Sense::click() } else { Sense::hover() });
+    if resp.hovered() && open {
         ui.painter().rect_filled(r, CornerRadius::same(4), t.hover);
     }
-    let p = ui.painter().with_clip_rect(r);
-    let said = p.text(pos2(x, cy), Align2::LEFT_CENTER, label, font(11.0), t.text_dim);
-    if said.right() + 4.0 + 7.0 <= r.right() {
-        triangle(ui, pos2(said.right() + 4.0 + 3.5, cy), 7.0, true, t.text_dim);
-    }
-    let resp = resp.on_hover_text(tw!("Add a legend group's rows"));
+    let color = if open { t.text_dim } else { t.text_disabled };
+    let said = text(ui, pos2(x, cy), Align2::LEFT_CENTER, label, f, color);
+    triangle(ui, pos2(said.right() + 4.0 + 3.5, cy), 7.0, true, color);
+    let resp = resp.on_hover_text(tw!("Which legend group comes first"));
     let mut pick = None;
-    egui::Popup::menu(&resp).show(|ui| {
-        for (g, label) in [
-            (LegendGroup::Plan, tw!("Add the Plan Legend")),
-            (LegendGroup::Section, tw!("Add the Section and Elevation Legend")),
-            (LegendGroup::Finds, tw!("Add the Finds Legend")),
-        ] {
-            if ui.button(label).clicked() {
+    egui::Popup::menu(&resp).id(wid("legend-group-list", ())).show(|ui| {
+        for g in LegendGroup::ALL {
+            if ui.selectable_label(g == shown, group_name(g)).clicked() {
                 pick = Some(g);
                 ui.close();
             }
@@ -540,8 +545,7 @@ fn group_button(app: &VectorcraftApp, ui: &Ui, head: Rect, t: &Tokens) -> Option
     pick
 }
 
-/// The layers, top first, each followed by its objects when open, in their sections. Only the rows
-/// in view are laid out: one layer can hold thousands of objects.
+/// The rows, top first, in their sections. Only the rows in view are laid out.
 fn list(app: &VectorcraftApp, ui: &mut Ui, area: Rect, apart: &Apart, t: &Tokens) -> Option<Act> {
     let items = items(app, ui.ctx(), apart);
     // Where each item starts, from the top of the list.
@@ -554,17 +558,12 @@ fn list(app: &VectorcraftApp, ui: &mut Ui, area: Rect, apart: &Apart, t: &Tokens
         })
         .collect();
     let total: f32 = items.iter().map(Item::height).sum();
-    let selected: HashSet<NodeId> = match app.session.active() {
-        Some(st) if items.iter().any(|item| matches!(item, Item::Layer(row) if row.open)) => st.selection.objects.iter().copied().collect(),
-        _ => HashSet::new(),
-    };
-    let lang = crate::i18n::current();
     let click = clicked(ui, area);
     let mut act = None;
     let mut list = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::top_down(egui::Align::Min)));
     // No fading edges: a faded row reads as a hidden layer.
     list.spacing_mut().scroll.fade.strength = 0.0;
-    // Exactly `area`, however short: egui would make it at least 64 tall, over the footer.
+    // Exactly `area`, however short: egui would make it at least 64 tall, over the pen.
     let scroll = egui::ScrollArea::vertical().id_salt(wid("legend-scroll", ())).auto_shrink([false, false]).min_scrolled_height(0.0);
     scroll.show_viewport(&mut list, |ui, view| {
         ui.set_height(total);
@@ -576,28 +575,16 @@ fn list(app: &VectorcraftApp, ui: &mut Ui, area: Rect, apart: &Apart, t: &Tokens
             if *top >= view.bottom() {
                 break;
             }
-            let row = match item {
+            match item {
                 Item::Caption(label) => {
-                    list_caption(ui, origin.x, origin.x + w, origin.y + top + 10.0 + 7.0, label, t);
-                    continue;
+                    let cy = origin.y + top + 6.0 + 7.0;
+                    text_to(ui, pos2(origin.x + ROW_IN, cy), origin.x + w - ROW_OUT, label, font(11.0), t.text_dim);
                 }
-                Item::Layer(row) => row,
-            };
-            let rr = Rect::from_min_size(origin + vec2(0.0, *top), vec2(w, ROW_H));
-            if let Some(a) = layer_row(ui, row, rr, t) {
-                act = Some(a);
-            }
-            if !row.open {
-                continue;
-            }
-            // Its objects in view, top first.
-            let below = top + ROW_H;
-            let from = ((view.top() - below) / OBJECT_H).floor().max(0.0) as usize;
-            let to = ((view.bottom() - below) / OBJECT_H).ceil().max(0.0) as usize;
-            for (k, node) in row.objects.iter().rev().enumerate().take(to).skip(from) {
-                let rr = Rect::from_min_size(origin + vec2(0.0, below + k as f32 * OBJECT_H), vec2(w, OBJECT_H));
-                if let Some(a) = object_row(ui, node, selected.contains(&node.id), apart.lines.contains(&node.id), lang, rr, t) {
-                    act = Some(a);
+                Item::Layer(row) => {
+                    let rr = Rect::from_min_size(origin + vec2(0.0, *top), vec2(w, ROW_H));
+                    if let Some(a) = layer_row(ui, row, rr, t) {
+                        act = Some(a);
+                    }
                 }
             }
         }
@@ -627,8 +614,8 @@ fn list(app: &VectorcraftApp, ui: &mut Ui, area: Rect, apart: &Apart, t: &Tokens
 /// A click that ended in this pass: when and where, and the row it opens ([`Act::Edit`]) when it
 /// is a second click on the list soon after one picking that row, as near to it as egui's own
 /// clicks go. That row, whatever is under the pointer now: the first click's pick may have moved
-/// lines out of an open row above, the rows going up under it. Counted here, not by egui, which
-/// takes the second click for a third one when another click (✕ on the card) came just before.
+/// lines out of a row above. Counted here, not by egui, which takes the second click for a third
+/// one when another click (✕ on the card) came just before.
 #[derive(Clone, Copy)]
 struct Click {
     time: f64,
@@ -659,152 +646,176 @@ fn clicked(ui: &Ui, area: Rect) -> Option<Click> {
     Some(Click { time, at, second })
 }
 
-/// The drawing's layers in the legend's sections, top first: those matching Strata's layers, then
-/// the others, or all under one caption when none does; ★ rows first in each, then the layers'
-/// order.
-pub(super) fn sections(doc: &Document) -> Vec<(&'static str, Vec<&Arc<Node>>)> {
-    let layers: Vec<&Arc<Node>> = doc.layers.iter().rev().collect();
-    let strata = |l: &&Arc<Node>| l.legend().is_some_and(|g| g.strata.is_some());
-    let mut sections = if layers.iter().any(strata) {
-        let (survey, drawing): (Vec<_>, Vec<_>) = layers.into_iter().partition(strata);
-        vec![(tw!("Survey Data · Same Layers as Strata"), survey), (tw!("Drawing · Trowel"), drawing)]
-    } else {
-        vec![(tw!("This drawing's layers"), layers)]
-    };
-    for (_, layers) in &mut sections {
-        // A stable sort: each part keeps the layers' order.
-        layers.sort_by_key(|l| !l.legend().is_some_and(|g| g.favourite));
+/// The drawing's layers in the legend's sections, top first: ★ Used Often, the legend groups with
+/// `first` first, Underlays (template layers) and the other rows, each in the layers' order. An
+/// underlay goes under Underlays, starred or not; a section without rows is left out.
+pub(super) fn sections(doc: &Document, first: LegendGroup) -> Vec<(&'static str, Vec<&Arc<Node>>)> {
+    let groups: Vec<LegendGroup> = std::iter::once(first).chain(LegendGroup::ALL.into_iter().filter(|g| *g != first)).collect();
+    let mut favourites = vec![];
+    let mut by_group: Vec<Vec<&Arc<Node>>> = vec![vec![]; groups.len()];
+    let mut underlays = vec![];
+    let mut others = vec![];
+    for l in doc.layers.iter().rev() {
+        let legend = l.legend();
+        if l.is_template() {
+            underlays.push(l);
+        } else if legend.is_some_and(|g| g.favourite) {
+            favourites.push(l);
+        } else if let Some(slot) = legend.and_then(|g| g.group).and_then(|g| groups.iter().position(|x| *x == g)).and_then(|i| by_group.get_mut(i)) {
+            slot.push(l);
+        } else {
+            others.push(l);
+        }
     }
-    sections
+    let mut out = vec![(tw!("★ Used Often"), favourites)];
+    out.extend(groups.into_iter().zip(by_group).map(|(g, rows)| (group_name(g), rows)));
+    out.push((tw!("Underlays"), underlays));
+    out.push((tw!("Other rows"), others));
+    out.retain(|(_, rows)| !rows.is_empty());
+    out
 }
 
-/// The rows of the active drawing in their [`sections`], each under its caption; a section with
-/// no rows is left out after the first.
+/// The rows of the active drawing in their [`sections`], each under its caption.
 fn items<'a>(app: &'a VectorcraftApp, ctx: &egui::Context, apart: &Apart) -> Vec<Item<'a>> {
-    let Some(st) = app.session.active() else { return vec![Item::Caption(tw!("This drawing's layers"))] };
+    let Some(st) = app.session.active() else { return vec![] };
     let current = st.current_layer();
     let note = draw_target(st).note;
-    let row = |l: &'a Arc<Node>| Row {
-        id: l.id,
-        name: l.display_name(),
-        visible: l.visible,
-        locked: l.locked,
-        dim: !l.visible || l.is_template(),
-        colour: crate::panels::layers::layer_colour(&st.doc, l.id),
-        current: Some(l.id) == current,
-        open: ctx.data(|d| d.get_temp::<bool>(opened(l.id))).unwrap_or(false),
-        note: note.clone().filter(|_| Some(l.id) == current),
-        objects: l.children().map_or(&[][..], |c| c.as_slice()),
-        legend: l.legend(),
-        apart: apart.rows.get(&l.id).copied().unwrap_or(0),
-    };
     let mut out = vec![];
-    for (caption, layers) in sections(&st.doc) {
-        if layers.is_empty() && !out.is_empty() {
-            continue;
-        }
+    for (caption, layers) in sections(&st.doc, first_group(app, ctx)) {
         out.push(Item::Caption(caption));
-        out.extend(layers.into_iter().map(|l| Item::Layer(row(l))));
+        for (i, l) in layers.iter().enumerate() {
+            let over = i.checked_sub(1).and_then(|j| layers.get(j)).map(|n| n.id);
+            let under = layers.get(i + 1).map(|n| n.id);
+            out.push(Item::Layer(Row {
+                id: l.id,
+                name: l.display_name(),
+                visible: l.visible,
+                locked: l.locked,
+                dim: !l.visible || l.is_template(),
+                underlay: l.is_template(),
+                colour: crate::panels::layers::layer_colour(&st.doc, l.id),
+                current: Some(l.id) == current,
+                note: note.clone().filter(|_| Some(l.id) == current),
+                count: l.children().map_or(0, Vec::len),
+                legend: l.legend(),
+                apart: apart.rows.get(&l.id).copied().unwrap_or(0),
+                over,
+                under,
+            }));
+        }
     }
     out
 }
 
-/// Where whether a layer's row is open is kept.
-fn opened(id: NodeId) -> egui::Id {
-    wid("legend-opened", id.0)
-}
-
-/// One layer's row in `rr`: its arrow, eye, padlock, sample (or colour), ★, name, how many of its
-/// lines are set apart, its weight and its number of objects.
+/// One row in `rr` (the mockup's `.row`): eye, padlock, sample, name (★ and 「따로 N」), weight
+/// and count.
 fn layer_row(ui: &Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
-    let x0 = rr.left() + 4.0;
-    let column = |a: f32, b: f32| Rect::from_min_max(pos2(a, rr.top()), pos2(b, rr.bottom()));
+    let x0 = rr.left() + ROW_IN;
+    let column = |a: f32, w: f32| Rect::from_min_max(pos2(a, rr.top()), pos2(a + w, rr.bottom()));
+    let eye_col = column(x0 - 3.0, ICON_W + 6.0);
+    let lock_col = column(x0 + ICON_W + GAP - 3.0, ICON_W + 6.0);
+    let right = rr.right() - ROW_OUT;
+    let count_col = column(right - COUNT_W, COUNT_W);
     let resp = ui.interact(rr, wid("legend-row", row.id.0), Sense::click());
-    let open = ui.interact(column(rr.left(), x0 + 12.5), wid("legend-open", row.id.0), Sense::click());
-    let eye = ui.interact(column(x0 + 12.5, x0 + 34.5), wid("legend-eye", row.id.0), Sense::click());
-    let lock = ui.interact(column(x0 + 34.5, x0 + 56.5), wid("legend-lock", row.id.0), Sense::click());
+    let eye = ui.interact(eye_col, wid("legend-eye", row.id.0), Sense::click());
+    let lock = ui.interact(lock_col, wid("legend-lock", row.id.0), Sense::click());
+    let count = ui.interact(count_col, wid("legend-count", row.id.0), Sense::click());
     if row.current {
-        ui.painter().rect_filled(rr, CornerRadius::same(4), t.row_selected);
-    } else if resp.hovered() || open.hovered() || eye.hovered() || lock.hovered() {
-        ui.painter().rect_filled(rr, CornerRadius::same(4), t.hover);
+        ui.painter().rect_filled(rr, 0.0, t.row_selected);
+    } else if resp.hovered() || eye.hovered() || lock.hovered() || count.hovered() {
+        ui.painter().rect_filled(rr, 0.0, t.hover);
     }
     let cy = rr.center().y;
-    // As in the mockup: a small arrow; the eye dark when shown, pale when hidden; the padlock
-    // black when locked, pale when not.
-    triangle(ui, pos2(x0 + 4.5, cy), 7.0, row.open, t.text_dim);
-    let icon = |name: &str, cx: f32, color: Color32| crate::icons::paint(ui, name, Rect::from_center_size(pos2(cx, cy), vec2(15.0, 15.0)), color);
-    icon(if row.visible { "eye" } else { "eye-off" }, x0 + 23.5, if row.visible { t.icon } else { t.ring });
-    icon(if row.locked { "lock" } else { "lock-open" }, x0 + 45.5, if row.locked { t.text } else { t.ring });
-    let slot = Rect::from_min_size(pos2(x0 + 60.0, cy - SAMPLE.y / 2.0), SAMPLE);
+    // The eye dark when shown, pale when hidden; the padlock in ink when locked, pale when not.
+    let icon =
+        |name: &str, cx: f32, size: f32, color: Color32| crate::icons::paint(ui, name, Rect::from_center_size(pos2(cx, cy), vec2(size, size)), color);
+    icon(if row.visible { "eye" } else { "eye-off" }, x0 + ICON_W / 2.0, 14.0, if row.visible { t.icon } else { t.ring });
+    icon(if row.locked { "lock" } else { "lock-open" }, x0 + ICON_W + GAP + ICON_W / 2.0, 13.0, if row.locked { t.icon } else { t.ring });
+    let slot = Rect::from_min_size(pos2(x0 + 2.0 * (ICON_W + GAP), cy - SAMPLE.y / 2.0), SAMPLE);
     match row.legend {
+        _ if row.underlay => {
+            // The mockup's piece of a photo: a pale box.
+            ui.painter().rect_filled(slot.shrink2(vec2(4.0, 0.0)), 0.0, t.border);
+        }
         Some(legend) => sample(ui, slot, legend, t),
         None => {
-            ui.painter().rect(slot, 0.0, row.colour.gamma_multiply(0.25), Stroke::new(1.5, row.colour), StrokeKind::Inside);
+            ui.painter().rect(slot.shrink2(vec2(4.0, 0.0)), 0.0, row.colour.gamma_multiply(0.25), Stroke::new(1.5, row.colour), StrokeKind::Inside);
         }
     }
-    if row.favourite() {
-        text(ui, pos2(x0 + 87.0, cy), Align2::LEFT_CENTER, "★", font(11.0), t.clay);
-    }
-    // At the right: the number of objects, the weight, how many lines are set apart.
-    let count = row.objects.len().to_string();
-    let mut right = rr.right() - 4.0;
-    text(ui, pos2(right, cy), Align2::RIGHT_CENTER, &count, mono(10.0), t.text_dim);
-    right -= width_of(ui, &count, mono(10.0)).max(16.0) + 7.0;
-    if let Some(w) = row.legend.and_then(|l| l.weight) {
-        right = text(ui, pos2(right, cy), Align2::RIGHT_CENTER, pt(w), mono(10.0), t.text_dim).left() - 7.0;
-    }
-    let mut apart = None;
-    if row.apart > 0 {
-        let label = crate::i18n::fmt(tw!("Apart {n}"), &[("n", &row.apart.to_string())]);
-        let b = badge(ui, pos2(right, cy), &label, t);
-        right = b.left() - 7.0;
-        apart = Some(b);
-    }
-    // The current row on oat, its name regular as the others'; a favourite's name bold in clay.
-    let (f, color) = if row.note.is_some() {
-        (font(12.0), t.clay_text)
-    } else if row.favourite() {
-        (bold(12.0), t.clay_text)
+    // At the right: the count, then the weight ("-" without one).
+    text(ui, pos2(right, cy), Align2::RIGHT_CENTER, row.count.to_string(), mono(10.5), t.text_disabled);
+    let weight = row.legend.and_then(|l| l.weight).map_or_else(|| "-".to_string(), pt);
+    let name_end = text(ui, pos2(count_col.left() - GAP, cy), Align2::RIGHT_CENTER, &weight, mono(11.0), t.text_dim).left() - GAP;
+    // The name, with 「따로 N」 after it, cut short to leave the badge room.
+    let name_x = slot.right() + GAP;
+    let badge_label = (row.apart > 0).then(|| crate::i18n::fmt(tw!("Apart {n}"), &[("n", &row.apart.to_string())]));
+    let badge_w = badge_label.as_ref().map_or(0.0, |l| width_of(ui, l, font(10.0)) + 10.0 + 4.0);
+    let (name, f, color) = if row.favourite() {
+        (format!("★ {}", row.name), font(12.5), t.clay_text)
+    } else if row.note.is_some() {
+        (row.name.clone(), font(12.5), t.clay_text)
     } else if row.dim {
-        (font(12.0), t.text_disabled)
+        (row.name.clone(), font(12.5), t.text_disabled)
     } else {
-        (font(12.0), t.text)
+        (row.name.clone(), font(12.5), t.text)
     };
-    let name_x = x0 + 104.0;
-    text_to(ui, pos2(name_x, cy), right, &row.name, f.clone(), color);
-    let open = open.on_hover_text(if row.open { tw!("Hide the objects") } else { tw!("Show the objects") });
-    let eye = eye.on_hover_text(if row.visible { tw!("Hide") } else { tw!("Show") });
+    let name_room = (name_end - name_x - badge_w).max(0.0);
+    let said = text_to(ui, pos2(name_x, cy), name_x + name_room, &name, f.clone(), color);
+    let mut badge_r = None;
+    if let Some(label) = &badge_label {
+        badge_r = Some(badge(ui, pos2(said.right().min(name_x + name_room) + 4.0, cy), label, t));
+    }
+    let eye =
+        eye.on_hover_text(if row.visible { tw!("Hide · Alt+click: show this row alone") } else { tw!("Show · Alt+click: show this row alone") });
     let lock = lock.on_hover_text(if row.locked { tw!("Unlock") } else { tw!("Lock") });
+    let count = count.on_hover_text(tw!("Select this row's objects"));
     // On hover, over the badge what it counts; else the note or what a click does, after the
     // whole name when it is cut short.
-    let tip = if apart.zip(resp.hover_pos()).is_some_and(|(b, p)| b.contains(p)) {
+    let tip = if badge_r.zip(resp.hover_pos()).is_some_and(|(b, p)| b.contains(p)) {
         crate::i18n::fmt(tw!("Lines of this row with a weight or line type of their own: {n}"), &[("n", &row.apart.to_string())])
     } else {
         let tip = row.note.as_deref().unwrap_or(tw!("Draw with this row · double-click to change it"));
-        if width_of(ui, &row.name, f) > right - name_x { format!("{}\n{tip}", row.name) } else { tip.to_string() }
+        if width_of(ui, &name, f) > name_room { format!("{}\n{tip}", row.name) } else { tip.to_string() }
     };
     let resp = resp.on_hover_text(tip);
-    let mut ctx_act = None;
-    egui::Popup::context_menu(&resp).show(|ui| {
-        if ui.button("규칙(범례) 편집…").clicked() {
-            ctx_act = Some(Act::Edit(row.id, rr.top()));
-            ui.close();
+    let mut menu_act = None;
+    egui::Popup::context_menu(&resp).id(wid("legend-row-menu", row.id.0)).show(|ui| {
+        if ui.button(tw!("Edit Row…")).clicked() {
+            menu_act = Some(Act::Edit(row.id, rr.top()));
         }
-        if ui.button("이 레이어 삭제 (Delete)").clicked() {
-            ctx_act = Some(Act::Delete(row.id));
-            ui.close();
+        if ui.button(tw!("Select All on This Row")).clicked() {
+            menu_act = Some(Act::SelectAll(row.id));
+        }
+        if ui.selectable_label(row.favourite(), tw!("★ Used Often")).clicked() {
+            menu_act = Some(Act::Favourite(row.id, !row.favourite()));
         }
         ui.separator();
-        rule_picker_menu(ui, &mut ctx_act);
+        if ui.add_enabled(row.over.is_some(), egui::Button::new(tw!("Move Up"))).clicked()
+            && let Some(over) = row.over
+        {
+            menu_act = Some(Act::Move(row.id, over, "above"));
+        }
+        if ui.add_enabled(row.under.is_some(), egui::Button::new(tw!("Move Down"))).clicked()
+            && let Some(under) = row.under
+        {
+            menu_act = Some(Act::Move(row.id, under, "below"));
+        }
+        ui.separator();
+        if ui.button(tw!("Delete Row")).clicked() {
+            menu_act = Some(Act::Delete(row.id));
+        }
+        if menu_act.is_some() {
+            ui.close();
+        }
     });
-    if let Some(a) = ctx_act {
+    if let Some(a) = menu_act {
         Some(a)
-    } else if open.clicked() {
-        Some(Act::Open(row.id, !row.open))
     } else if eye.clicked() {
-        Some(Act::Show(row.id, !row.visible))
+        if ui.input(|i| i.modifiers.alt) { Some(Act::ShowAlone(row.id)) } else { Some(Act::Show(row.id, !row.visible)) }
     } else if lock.clicked() {
         Some(Act::Lock(row.id, !row.locked))
+    } else if count.clicked() {
+        Some(Act::SelectAll(row.id))
     } else if resp.clicked() {
         // A second click soon after opens the row's editor instead ([`Click`]).
         Some(Act::Pick(row.id))
@@ -813,60 +824,14 @@ fn layer_row(ui: &Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
     }
 }
 
-/// One object under an open layer's row, in `rr`; a line set apart from the row's look shows its
-/// weight and ↺ at the right, which reverts it.
-fn object_row(ui: &Ui, node: &Node, selected: bool, apart: bool, lang: crate::i18n::Lang, rr: Rect, t: &Tokens) -> Option<Act> {
-    let resp = ui.interact(rr, wid("legend-obj", node.id.0), Sense::click());
-    if resp.hovered() {
-        ui.painter().rect_filled(rr, CornerRadius::same(4), t.hover);
-    }
-    let mut right = rr.right() - 4.0;
-    let mut revert = false;
-    if let Some(st) = stroke_of(node).filter(|_| apart) {
-        let label = crate::i18n::fmt(tw!("{w} Apart ↺"), &[("w", &pt(st.width))]);
-        let b = badge(ui, pos2(right, rr.center().y), &label, t);
-        revert = ui.interact(b, wid("legend-revert", node.id.0), Sense::click()).on_hover_text(tw!("Back to the row's look")).clicked();
-        right = b.left() - 6.0;
-    }
-    let name = crate::panels::layers::painted_name(node, &node.display_name(), lang);
-    // The selected one black and bold; the others in the mockup's ink2, of which `icon` is the
-    // nearest token.
-    let (f, color) = if selected { (bold(11.0), t.text) } else { (font(11.0), t.icon) };
-    text_to(ui, pos2(rr.left() + 36.0, rr.center().y), right, &name, f, color);
-    if revert {
-        Some(Act::Revert(node.id))
-    } else if resp.clicked() {
-        Some(Act::Select(node.id))
-    } else {
-        None
-    }
-}
-
-/// The mockup's `.ovr` badge: `label` in caution on its wash, edged, ending at `at` (its right
-/// centre). Returns where it is.
+/// The mockup's `.fx` badge: `label` in white on clay, from `at` (its left centre). Returns where
+/// it is.
 pub(super) fn badge(ui: &Ui, at: Pos2, label: &str, t: &Tokens) -> Rect {
     let f = font(10.0);
-    let r = Rect::from_min_max(pos2(at.x - width_of(ui, label, f.clone()) - 8.0, at.y - 8.0), pos2(at.x, at.y + 8.0));
-    ui.painter().rect(r, CornerRadius::same(4), t.caution_wash, Stroke::new(1.0, t.caution_edge), StrokeKind::Inside);
-    text(ui, r.center(), Align2::CENTER_CENTER, label, f, t.caution);
+    let r = Rect::from_min_size(pos2(at.x, at.y - 8.0), vec2(width_of(ui, label, f.clone()) + 10.0, 16.0));
+    ui.painter().rect_filled(r, CornerRadius::same(4), t.action);
+    text(ui, r.center(), Align2::CENTER_CENTER, label, f, t.on_action);
     r
-}
-
-/// Weights at Once under the list, [`FOOT_H`] tall: "All Weights ×0.8 …" opens its card (dimmed
-/// with no drawing `open`), and "Apart N → Legend" reverts every line set apart (dimmed when none
-/// is). Returns which was pressed.
-fn footer(ui: &Ui, r: Rect, apart: usize, open: bool, t: &Tokens) -> (bool, bool) {
-    let foot = Rect::from_min_max(pos2(r.left() + PAD, r.bottom() - FOOT_H), pos2(r.right() - PAD, r.bottom()));
-    line_above(ui, foot, t.border);
-    let cy = foot.top() + 6.0 + 12.0;
-    let x = text(ui, pos2(foot.left(), cy), Align2::LEFT_CENTER, tw!("Weights at once"), font(11.0), t.text_dim).right() + 6.0;
-    let label = crate::i18n::fmt(tw!("All Weights ×{r} …"), &[("r", &RATIO.to_string())]);
-    let weights = small_button(ui, wid("legend-weights", ()), pos2(x, cy), 24.0, &label, open, t);
-    let label = crate::i18n::fmt(tw!("Apart {n} → Legend"), &[("n", &apart.to_string())]);
-    let revert = small_button(ui, wid("legend-overrides", ()), pos2(weights.rect.right() + 4.0, cy), 24.0, &label, apart > 0, t);
-    let weights = weights.on_hover_text(if open { tw!("Change every line's weight at once") } else { tw!("Open a drawing to change its weights") });
-    let revert = revert.on_hover_text(if apart > 0 { tw!("Put every line set apart back to its row's look") } else { tw!("No line is set apart") });
-    (weights.clicked(), revert.clicked())
 }
 
 /// A weight in points as the legend shows it: one decimal at least, three at most ("1.0", "0.64").
@@ -874,25 +839,6 @@ pub(super) fn pt(w: f64) -> String {
     let s = format!("{w:.3}");
     let s = s.trim_end_matches('0');
     if s.ends_with('.') { format!("{s}0") } else { s.to_string() }
-}
-
-/// How thick weight `w` (points) is drawn in a sample.
-fn sample_px(w: f64) -> f32 {
-    if !w.is_finite() {
-        return 1.0;
-    }
-    // The pair of the table holding `w`, or the first or last one carried on past its ends.
-    let mut seg = None;
-    for pair in SAMPLE_PX.windows(2) {
-        if let [a, b] = pair {
-            seg = Some((*a, *b));
-            if w <= b.0 {
-                break;
-            }
-        }
-    }
-    let Some(((x0, y0), (x1, y1))) = seg else { return 1.0 };
-    (y0 + (y1 - y0) * ((w - x0) / (x1 - x0)) as f32).clamp(0.3, 5.0)
 }
 
 /// A dash pattern (points) as drawn in a sample: its dashes and its gaps ([`SAMPLE_MM`] a paper
@@ -909,12 +855,13 @@ fn dash_px(pattern: &[f64]) -> Option<(Vec<f32>, Vec<f32>)> {
     Some((px.iter().step_by(2).copied().collect(), px.iter().skip(1).step_by(2).copied().collect()))
 }
 
-/// A legend row's sample in `r`: its line or area drawn at its weight in its dashes, or its mark;
-/// without a look, a thin faint line or box.
+/// A legend row's sample in `r` (design 3.0 §7): its line drawn at its weight (as the pen's chips,
+/// [`super::palette::sample_px`]) in its dashes, an area row's too, or its mark; without a look, a
+/// thin faint line.
 pub(super) fn sample(ui: &Ui, r: Rect, legend: &Legend, t: &Tokens) {
     let look = legend.look();
     let stroke = match look {
-        Some((w, _)) => Stroke::new(sample_px(w), t.text),
+        Some((w, _)) => Stroke::new(super::palette::sample_px(w), t.text),
         None => Stroke::new(1.0, t.text_disabled),
     };
     let dashes = look.and_then(|(_, line)| line.dash_pt()).and_then(|p| dash_px(&p));
@@ -924,6 +871,8 @@ pub(super) fn sample(ui: &Ui, r: Rect, legend: &Legend, t: &Tokens) {
             ui.painter().add(egui::Shape::line(points.to_vec(), stroke));
         }
     };
+    // The line from 2 to 32 of the 34 (the mockup's `M2 5h30`).
+    let line = r.shrink2(vec2(2.0, 0.0));
     match &legend.sample {
         // The datum's △ drawn as the mockup's: 10 × 9 in one point of ink.
         LegendSample::Mark(mark) if mark == "△" => {
@@ -934,17 +883,10 @@ pub(super) fn sample(ui: &Ui, r: Rect, legend: &Legend, t: &Tokens) {
         LegendSample::Mark(mark) => {
             // 12 points, shrunk to fit down to 7.
             let w = width_of(ui, mark, font(12.0));
-            let size = if w > 24.0 { (12.0 * 24.0 / w).max(7.0) } else { 12.0 };
+            let size = if w > 30.0 { (12.0 * 30.0 / w).max(7.0) } else { 12.0 };
             ui.painter().with_clip_rect(r.expand2(vec2(3.0, 2.0))).text(r.center(), Align2::CENTER_CENTER, mark, font(size), t.text);
         }
-        LegendSample::Line => path(&[pos2(r.left(), r.center().y), pos2(r.right(), r.center().y)]),
-        LegendSample::Area if dashes.is_none() => {
-            ui.painter().rect(r, 0.0, t.input, stroke, StrokeKind::Inside);
-        }
-        LegendSample::Area => {
-            ui.painter().rect_filled(r, 0.0, t.input);
-            let b = r.shrink(stroke.width / 2.0);
-            path(&[b.left_top(), b.right_top(), b.right_bottom(), b.left_bottom(), b.left_top()]);
-        }
+        // An area row's outline is a line as well: the mockup draws its rows as lines.
+        LegendSample::Line | LegendSample::Area => path(&[pos2(line.left(), line.center().y), pos2(line.right(), line.center().y)]),
     }
 }

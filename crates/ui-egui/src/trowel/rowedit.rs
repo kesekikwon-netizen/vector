@@ -230,14 +230,15 @@ fn look(ui: &mut Ui, row: &Row, t: &Tokens, asks: &mut Vec<Ask>) {
     text(ui, r.left_center(), Align2::LEFT_CENTER, tw!("This row is the layer"), font(12.0), t.text_dim);
     // Weight: a palette weight, points typed, or none. A chip pressed as the typing ends wins, then
     // the none toggle: what was typed only counts on its own.
-    let chips: Vec<String> = LADDER.iter().map(|w| pt(*w)).collect();
+    // The app's one list, labelled as the pen's chips (".6") to fit the card.
+    let chips: Vec<(String, String)> = LADDER.iter().map(|w| (pt(*w), super::palette::short(*w))).collect();
     let parts: Vec<Seg> = LADDER
         .iter()
         .zip(&chips)
-        .map(|(w, label)| Seg { key: label, label, on: legend.weight.is_some_and(|x| (x - w).abs() <= SAME), soon: None })
+        .map(|(w, (key, label))| Seg { key, label, on: legend.weight.is_some_and(|x| (x - w).abs() <= SAME), soon: None })
         .collect();
     let r = card::row(ui, tw!("Weight"), SEG_H, t);
-    let seg = SegLook { h: SEG_H, pad: 6.0, font: mono(11.0) };
+    let seg = SegLook { h: SEG_H, pad: 3.5, font: mono(11.0) };
     let chip = segments(ui, "card-weight", r.left_center(), &seg, &parts, t).0.and_then(card::points);
     let r = card::row(ui, "", ROW_H, t);
     let field = Rect::from_min_size(r.min, vec2(76.0, r.height()));

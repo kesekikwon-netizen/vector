@@ -1,6 +1,6 @@
 //! Trowel's main window (design 3.0 §4, the main mockup at 1440 × 880): caption, menu bar with
 //! the Drawing menu, ribbon, tool column, drawing set, document tabs, the canvas with the zoom
-//! buttons on it, the right column (drawing palette, legend and layers, properties) and the status
+//! buttons on it, the right column (legend, pen, properties) and the status
 //! bar. It draws the same engine state and runs the same commands as the classic window
 //! ([`crate::chrome`], [`crate::toolbar`], [`crate::dock`]); each thing it does has one place
 //! (design 3.0 §3, principle 1), and what later jobs bring shows dimmed, with their job number on
@@ -137,9 +137,9 @@ pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {
     scale_dialog::show(app, ui.ctx());
 }
 
-/// The right column: the drawing palette on top, the properties at the bottom, the legend and
-/// layers between them. A window too short for them all scrolls them, the legend with room for two
-/// layers. The dock's own panels pop out to its left.
+/// The right column (design 3.0 §5 ⑦–⑨): the legend at the top, taking the height left, the pen
+/// under it and the properties at the bottom. A window too short for them all scrolls them, the
+/// legend with room for two rows. The dock's own panels pop out to its left.
 fn right_column(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     egui::Panel::right(RIGHT)
@@ -153,15 +153,15 @@ fn right_column(app: &mut VectorcraftApp, ui: &mut Ui) {
             ui.set_min_width(r.width());
             line_left(ui, r, t.border);
             ui.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id()));
-            let props_h = props::height(ui.ctx());
-            let tall = palette::HEIGHT + legend::MIN_HEIGHT + props_h;
+            let heights = (palette::height(app, ui.ctx()), props::height(app, ui.ctx()));
+            let tall = legend::MIN_HEIGHT + heights.0 + heights.1;
             if r.height() >= tall {
-                right_parts(app, ui, r, props_h);
+                right_parts(app, ui, r, heights, true);
             } else {
                 let mut column = ui.new_child(egui::UiBuilder::new().max_rect(r).layout(egui::Layout::top_down(egui::Align::Min)));
                 egui::ScrollArea::vertical().id_salt(wid("right-scroll", ())).auto_shrink([false, false]).show(&mut column, |ui| {
                     let (_, content) = ui.allocate_space(vec2(ui.available_width(), tall));
-                    right_parts(app, ui, content, props_h);
+                    right_parts(app, ui, content, heights, false);
                 });
             }
             // Its panels pop out to its left, level with its top.
@@ -170,47 +170,46 @@ fn right_column(app: &mut VectorcraftApp, ui: &mut Ui) {
         });
 }
 
-/// The right column's parts in `r`: the palette at the top, the properties `props_h` tall at the
-/// bottom, the legend between them, with mouse-draggable horizontal splitters between sections.
-fn right_parts(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect, props_h: f32) {
-    let top_delta_id = wid("right-split-top-delta", ());
-    let bot_delta_id = wid("right-split-bot-delta", ());
-    let mut top_delta = ui.data(|d| d.get_temp::<f32>(top_delta_id).unwrap_or(0.0));
-    let mut bot_delta = ui.data(|d| d.get_temp::<f32>(bot_delta_id).unwrap_or(0.0));
-
-    let max_extra = (r.height() - palette::HEIGHT - props_h - legend::MIN_HEIGHT).max(0.0);
-    top_delta = top_delta.clamp(-80.0, max_extra);
-    bot_delta = bot_delta.clamp(-80.0, (max_extra - top_delta.max(0.0)).max(0.0));
-
-    let top_h = (palette::HEIGHT + top_delta).clamp(palette::HEIGHT, (r.height() - legend::MIN_HEIGHT - 80.0).max(palette::HEIGHT));
-    let bot_h = (props_h + bot_delta).clamp(90.0, (r.height() - top_h - legend::MIN_HEIGHT).max(props_h));
-
-    let top = Rect::from_min_size(r.min, vec2(r.width(), top_h));
-    let bottom = Rect::from_min_max(pos2(r.left(), r.bottom() - bot_h), r.max);
-    palette::show(app, ui, top);
-    legend::show(app, ui, Rect::from_min_max(top.left_bottom(), bottom.right_top()));
-    props::show(app, ui, bottom);
-
-    // Draggable vertical splitters between Palette/Legend and Legend/Props.
-    let split_top_rect = Rect::from_min_max(pos2(r.left(), top.bottom() - 3.0), pos2(r.right(), top.bottom() + 3.0));
-    let resp_top = ui.interact(split_top_rect, wid("right-split-top", ()), Sense::drag());
-    if resp_top.hovered() || resp_top.dragged() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+/// The right column's parts in `r`: the properties at the bottom, the pen over them and the legend
+/// in the rest; `heights` are the pen's and the properties'. With `hold`, when the pen's three
+/// buttons come or go under the pointer its top stays where it is, so the rows under the pointer
+/// don't move: the properties under it give way (pushed out of the column, or a gap over them)
+/// until the pointer leaves the pen. (Scrolled, the legend keeps its least height and the pen's top stays
+/// anyway.)
+fn right_parts(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect, (pen_h, props_h): (f32, f32), hold: bool) {
+    let mut top = r.bottom() - props_h - pen_h;
+    if hold {
+        let pointer = ui.ctx().pointer_hover_pos();
+        let over = |t: f32| pointer.is_some_and(|p| Rect::from_min_size(pos2(r.left(), t), vec2(r.width(), pen_h)).contains(p));
+        // Where the pen was, how tall, and whether it is held: from when its height changed under
+        // the pointer until the pointer leaves it. The properties opening or folding move it.
+        let mut held = false;
+        if let Some((was, was_h, was_held)) = ui.data(|d| d.get_temp::<(f32, f32, bool)>(pen_top_id()))
+            && over(was)
+            && (was_held || was_h != pen_h)
+        {
+            top = was.max(r.top() + legend::MIN_HEIGHT);
+            held = true;
+        }
+        let keep = over(top);
+        ui.data_mut(|d| {
+            if keep {
+                d.insert_temp(pen_top_id(), (top, pen_h, held));
+            } else {
+                d.remove::<(f32, f32, bool)>(pen_top_id());
+            }
+        });
     }
-    if resp_top.dragged() {
-        top_delta += resp_top.drag_delta().y;
-        ui.data_mut(|d| d.insert_temp(top_delta_id, top_delta));
-    }
+    let pen = Rect::from_min_size(pos2(r.left(), top), vec2(r.width(), pen_h));
+    let props = Rect::from_min_size(pos2(r.left(), pen.bottom().max(r.bottom() - props_h)), vec2(r.width(), props_h));
+    legend::show(app, ui, Rect::from_min_max(r.min, pen.right_top()));
+    palette::show(app, ui, pen);
+    props::show(app, ui, props);
+}
 
-    let split_bot_rect = Rect::from_min_max(pos2(r.left(), bottom.top() - 3.0), pos2(r.right(), bottom.top() + 3.0));
-    let resp_bot = ui.interact(split_bot_rect, wid("right-split-bot", ()), Sense::drag());
-    if resp_bot.hovered() || resp_bot.dragged() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-    }
-    if resp_bot.dragged() {
-        bot_delta -= resp_bot.drag_delta().y;
-        ui.data_mut(|d| d.insert_temp(bot_delta_id, bot_delta));
-    }
+/// Where the pen's top is held while the pointer is over it ([`right_parts`]).
+fn pen_top_id() -> egui::Id {
+    wid("pen-top-held", ())
 }
 
 fn font(size: f32) -> FontId {
@@ -269,6 +268,18 @@ fn panel_head(ui: &Ui, r: Rect, title: &str, sub: &str, buttons: usize, t: &Toke
     let right = r.right() - 12.0 - 24.0 * buttons as f32 - 4.0;
     let shown = text_to(ui, pos2(x, r.center().y), right, sub, font(11.0), t.text_dim);
     (width_of(ui, sub, font(11.0)) > right - x).then_some(shown)
+}
+
+/// A head of the right column's parts in `r` (the mockup's `.ph`): `title` in semibold 13.5 at
+/// the left, then `sub` dimmed, cut short with "…" before room for `buttons` [`head_button`]s.
+/// Returns where the title ends.
+fn column_head(ui: &Ui, r: Rect, title: &str, sub: &str, buttons: usize, t: &Tokens) -> f32 {
+    let end = text(ui, pos2(r.left() + 10.0, r.center().y), Align2::LEFT_CENTER, title, bold(13.5), t.text).right();
+    if !sub.is_empty() {
+        let right = r.right() - 12.0 - 24.0 * buttons as f32 - 4.0;
+        text_to(ui, pos2(end + 6.0, r.center().y), right, sub, font(12.0), t.text_dim);
+    }
+    end
 }
 
 /// A panel head's button `slot` places from the right (0: the last one): `icon` in a 24-point

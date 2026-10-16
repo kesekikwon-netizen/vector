@@ -516,13 +516,13 @@ fn weights_step_along_the_chip_ladder() {
     run(&mut s, "legend.set", json!({"id": row.0, "weight": 0.5}));
     run(&mut s, "legend.weights", json!({"how": "step", "step": 1}));
     let up: Vec<f64> = lines.iter().map(|l| weight(&s, *l)).collect();
-    assert_eq!(up, vec![0.8, 0.8, 1.0, 0.2, 0.1, 0.3, 2.0]);
-    assert_eq!((row_weight(&s, row), weight(&s, rl)), (Some(0.8), 0.8));
+    assert_eq!(up, vec![0.6, 0.8, 1.0, 0.15, 0.1, 0.3, 2.0]);
+    assert_eq!((row_weight(&s, row), weight(&s, rl)), (Some(0.6), 0.6));
     run(&mut s, "edit.undo", json!({}));
     run(&mut s, "legend.weights", json!({"how": "step", "step": -1}));
     let down: Vec<f64> = lines.iter().map(|l| weight(&s, *l)).collect();
-    assert_eq!(down, vec![0.3, 0.5, 0.8, 0.1, 0.0, 0.2, 1.0]);
-    assert_eq!(row_weight(&s, row), Some(0.3));
+    assert_eq!(down, vec![0.4, 0.5, 0.8, 0.1, 0.0, 0.2, 1.0]);
+    assert_eq!(row_weight(&s, row), Some(0.4));
 }
 
 #[test]
