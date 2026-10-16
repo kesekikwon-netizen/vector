@@ -11,7 +11,7 @@ use vectorcraft_doc::scale::CoordOrder;
 use super::*;
 
 /// The head (the mockup's `.props .ph`), the rows under it and the room above and under them.
-const HEAD_H: f32 = 34.0;
+pub(super) const HEAD_H: f32 = 34.0;
 const ROW: f32 = 26.0;
 const TOP: f32 = 2.0;
 const BOTTOM: f32 = 8.0;

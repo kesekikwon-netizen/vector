@@ -400,6 +400,10 @@ pub struct UiState {
     /// The Image Trace panel's Advanced section is open (as it was last left).
     #[serde(default = "yes")]
     pub image_trace_advanced: bool,
+    /// Where Trowel's panels go (design 3.1 §13): columns, widths, heights, folds and hidden
+    /// panels. A layout that doesn't read gives the default.
+    #[serde(default, deserialize_with = "crate::trowel_layout::lenient")]
+    pub trowel_layout: crate::trowel_layout::Layout,
     /// The desktop window's size, position and maximized state, saved when the app quits and
     /// restored at the next launch (the desktop host reads and writes it; none on the web).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -497,6 +501,7 @@ impl UiState {
             f.tools.first().is_some_and(|k| seen.insert(k.clone()))
         });
         FloatingPanels::sanitize(&mut self.floating_panels, &mut self.toolbar_pos);
+        self.trowel_layout.sanitize();
         // Overrides that can't fire (modifier-only chords recorded by older versions, #487) give
         // the default back.
         self.shortcut_overrides.retain(|_, c| c.is_empty() || crate::shortcut_editor::normalize(c).is_some());
@@ -564,6 +569,7 @@ impl Default for UiState {
             home: None,
             layers_panel: Default::default(),
             image_trace_advanced: true,
+            trowel_layout: Default::default(),
             window: None,
         }
     }

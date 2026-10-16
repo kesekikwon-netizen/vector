@@ -63,6 +63,7 @@ pub mod titlebar;
 pub mod toolbar;
 mod touch;
 mod trowel;
+pub mod trowel_layout;
 mod ui_fonts;
 pub mod unsaved;
 pub mod widgets;

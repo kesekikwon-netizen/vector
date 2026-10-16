@@ -23,7 +23,7 @@ use vectorcraft_doc::{Document, Legend, LegendGroup, LegendSample, Node, NodeId}
 use super::*;
 
 /// The head (the mockup's `.ph`), and the room above and under the list (`.lg`).
-const HEAD_H: f32 = 36.0;
+pub(super) const HEAD_H: f32 = 36.0;
 const LIST_PAD: f32 = 4.0;
 /// A row (the mockup's `.row`).
 const ROW_H: f32 = 27.0;
@@ -160,14 +160,22 @@ fn show_card(app: &mut VectorcraftApp, ui: &Ui, r: Rect) {
     let Some(open) = ui.data(|d| d.get_temp::<Open>(card_id())) else { return };
     let column = ui.clip_rect();
     let ctx = ui.ctx();
-    // Over the canvas at the column's left, within its height and under the tab row.
+    // Over the canvas beside the column (at its left, or its right when the legend was moved left
+    // of the canvas), within its height and under the tab row.
     let top = app.canvas_rect.map_or(column.top(), |c| c.top().max(column.top()));
-    let bounds = Rect::from_min_max(pos2(ctx.content_rect().left(), top), pos2(column.left(), column.bottom()));
+    let left_side = app.canvas_rect.is_some_and(|c| column.center().x < c.center().x);
+    let screen = ctx.content_rect();
+    let bounds = if left_side {
+        Rect::from_min_max(pos2(column.right(), top), pos2(screen.right(), column.bottom()))
+    } else {
+        Rect::from_min_max(pos2(screen.left(), top), pos2(column.left(), column.bottom()))
+    };
     let top = match open.card {
         Card::Row(id) => open.top.or_else(|| ctx.read_response(wid("legend-row", id.0)).map(|row| row.rect.top())),
         Card::Weights => open.top,
     };
-    let at = pos2(column.left() - 8.0 - super::card::W, top.unwrap_or(r.top()));
+    let x = if left_side { column.right() + 8.0 } else { column.left() - 8.0 - super::card::W };
+    let at = pos2(x, top.unwrap_or(r.top()));
     // A press in the pass it opened in opened it, or came before it: it doesn't put it away.
     let fresh = open.since == ctx.cumulative_pass_nr();
     let place = super::card::Place { at, bounds, fresh };
@@ -298,7 +306,7 @@ pub(super) fn revert(app: &mut VectorcraftApp, params: serde_json::Value) -> Res
 }
 
 /// Show row `id` alone (the others hidden), or every row again when it already is.
-fn show_alone(app: &mut VectorcraftApp, id: NodeId) -> Result<(), String> {
+pub(super) fn show_alone(app: &mut VectorcraftApp, id: NodeId) -> Result<(), String> {
     let Some(st) = app.session.active() else { return Ok(()) };
     let alone = st.doc.layers.iter().all(|l| (l.id == id) == l.visible);
     if alone {
@@ -831,7 +839,7 @@ fn layer_row(ui: &Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
 
 /// A shut padlock filling `r` (the mockup's `#i-lock` on 24: a body 14 × 9 at 5, 11 in ink and its
 /// shackle 1.8 wide above it), drawn rather than an outline icon (design 3.0 §7: locked is filled).
-fn padlock(ui: &Ui, r: Rect, color: Color32) {
+pub(super) fn padlock(ui: &Ui, r: Rect, color: Color32) {
     let k = r.width() / 24.0;
     let p = |x: f32, y: f32| r.min + vec2(x * k, y * k);
     ui.painter().rect_filled(Rect::from_min_max(p(5.0, 11.0), p(19.0, 20.0)), CornerRadius::same(1), color);

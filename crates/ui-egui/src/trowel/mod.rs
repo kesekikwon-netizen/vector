@@ -1,7 +1,8 @@
-//! Trowel's main window (design 3.0 §4, the main mockup at 1440 × 880): caption, menu bar with
-//! the Drawing menu, ribbon, tool column, drawing set, document tabs, the canvas with the zoom
-//! buttons on it, the right column (legend, pen, properties) and the status
-//! bar. It draws the same engine state and runs the same commands as the classic window
+//! Trowel's main window (design 3.0 §4, the main mockup at 1440 × 880; 3.1 §13): caption, menu
+//! bar with the Drawing menu, ribbon, tool column, drawing set, document tabs, the canvas with the
+//! zoom buttons on it, the right column (legend, pen, properties), the layer strip and the status
+//! bar. The drawing set, the right column's panels and the strip move and size as the user lays
+//! them out ([`layout`]). It draws the same engine state and runs the same commands as the classic window
 //! ([`crate::chrome`], [`crate::toolbar`], [`crate::dock`]); each thing it does has one place
 //! (design 3.0 §3, principle 1), and what later jobs bring shows dimmed, with their job number on
 //! hover ([`soon`]).
@@ -22,6 +23,8 @@ mod center;
 pub mod drawings;
 pub mod gpkg_browser;
 pub mod home;
+mod layers;
+mod layout;
 mod legend;
 mod menu;
 mod palette;
@@ -52,8 +55,6 @@ const MENU_H: f32 = 28.0;
 const RIBBON_H: f32 = 86.0;
 const STATUS_H: f32 = 28.0;
 const TOOLS_W: f32 = 50.0;
-const SET_W: f32 = 216.0;
-const RIGHT_W: f32 = 304.0;
 const TABS_H: f32 = 34.0;
 
 /// The id of one of Trowel's widgets: its kind and which one.
@@ -127,8 +128,7 @@ pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {
             tools::show(app, ui);
         }
         if app.ui.dock {
-            drawings::show(app, ui);
-            right_column(app, ui);
+            layout::columns(app, ui);
         }
     }
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.pasteboard)).show(ui, |ui| center::show(app, ui, mode));
@@ -137,87 +137,6 @@ pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {
     gpkg_browser::show_dialog(app, ui.ctx());
     scale_dialog::show(app, ui.ctx());
     ask::show(app, ui.ctx());
-}
-
-/// The right column (design 3.0 §5 ⑦–⑨): the legend at the top, taking the height left, the pen
-/// under it and the properties at the bottom. A window too short for them all scrolls them, the
-/// legend with room for two rows. The dock's own panels pop out to its left.
-fn right_column(app: &mut VectorcraftApp, ui: &mut Ui) {
-    let t = Tokens::get(ui.ctx());
-    egui::Panel::right(RIGHT)
-        .resizable(true)
-        .default_size(RIGHT_W)
-        .size_range(220.0..=560.0)
-        .show_separator_line(false)
-        .frame(egui::Frame::NONE.fill(t.panel))
-        .show(ui, |ui| {
-            let r = ui.max_rect();
-            ui.set_min_width(r.width());
-            line_left(ui, r, t.border);
-            ui.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id()));
-            let heights = (palette::height(app, ui.ctx()), props::height(app, ui.ctx()));
-            let tall = legend::MIN_HEIGHT + heights.0 + heights.1;
-            if r.height() >= tall {
-                right_parts(app, ui, r, heights, true);
-            } else {
-                let mut column = ui.new_child(egui::UiBuilder::new().max_rect(r).layout(egui::Layout::top_down(egui::Align::Min)));
-                egui::ScrollArea::vertical().id_salt(wid("right-scroll", ())).auto_shrink([false, false]).show(&mut column, |ui| {
-                    let (_, content) = ui.allocate_space(vec2(ui.available_width(), tall));
-                    right_parts(app, ui, content, heights, false);
-                });
-            }
-            // Its panels pop out to its left, level with its top.
-            let keep = ui.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id())).unwrap_or_default();
-            crate::dock::set_flyout(ui.ctx(), crate::dock::Flyout { left: r.left(), top: r.top() + 6.0, keep });
-        });
-}
-
-/// The right column's parts in `r`: the properties at the bottom, the pen over them and the legend
-/// in the rest; `heights` are the pen's and the properties'. With `hold`, when the pen's three
-/// buttons come or go under the pointer its top stays where it is, so the rows under the pointer
-/// don't move: the properties under it give way (pushed out of the column, or a gap over them)
-/// until the pointer leaves the pen. (Scrolled, the legend keeps its least height and the pen's top stays
-/// anyway.)
-fn right_parts(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect, (pen_h, props_h): (f32, f32), hold: bool) {
-    let mut top = r.bottom() - props_h - pen_h;
-    if hold {
-        let pointer = ui.ctx().pointer_hover_pos();
-        let over = |t: f32, h: f32| pointer.is_some_and(|p| Rect::from_min_size(pos2(r.left(), t), vec2(r.width(), h)).contains(p));
-        // Where the pen was, how tall, and whether it is held: from when its height changed under
-        // the pointer until the pointer leaves it, as tall as it was at its tallest meanwhile (the
-        // buttons gone from under the pointer leave it over the pen still). The properties opening
-        // or folding move it.
-        let mut h = pen_h;
-        let mut held = false;
-        if let Some((was, was_h, was_held)) = ui.data(|d| d.get_temp::<(f32, f32, bool)>(pen_top_id()))
-            && over(was, was_h.max(pen_h))
-            && (was_held || was_h != pen_h)
-        {
-            top = was.max(r.top() + legend::MIN_HEIGHT);
-            h = was_h.max(pen_h);
-            held = true;
-        }
-        let keep = over(top, h);
-        ui.data_mut(|d| {
-            if keep {
-                d.insert_temp(pen_top_id(), (top, h, held));
-            } else {
-                d.remove::<(f32, f32, bool)>(pen_top_id());
-            }
-        });
-    } else {
-        ui.data_mut(|d| d.remove::<(f32, f32, bool)>(pen_top_id()));
-    }
-    let pen = Rect::from_min_size(pos2(r.left(), top), vec2(r.width(), pen_h));
-    let props = Rect::from_min_size(pos2(r.left(), pen.bottom().max(r.bottom() - props_h)), vec2(r.width(), props_h));
-    legend::show(app, ui, Rect::from_min_max(r.min, pen.right_top()));
-    palette::show(app, ui, pen);
-    props::show(app, ui, props);
-}
-
-/// Where the pen's top is held while the pointer is over it ([`right_parts`]).
-fn pen_top_id() -> egui::Id {
-    wid("pen-top-held", ())
 }
 
 fn font(size: f32) -> FontId {

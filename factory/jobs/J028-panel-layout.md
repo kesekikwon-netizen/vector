@@ -1,4 +1,4 @@
-상태: spec (시안 승인 대기)
+상태: build
 
 # J028 (디자인 3.0 D4+): 칸 배치 — 레이어 띠, 옮기기·크기 바꾸기, 배치 처음대로
 
@@ -11,7 +11,7 @@
   - 「그렇지만 초기에 완벽한 디자인 배치가 되어 사용자가 만지지않아도 편할 배치를 해주ㅝ」
   - 결정 카드 21:24Z: 칸은 「양옆 칸 안에서」만 옮긴다(떠 있는 창 없음).
 - 시안: 디자인 3.1 (https://claude.ai/artifact/GmVPKvYKq4ADAe5ZbmZLdc, 버전 3) 4장 시안 ⑪, 5장 ⑪, 9장 좁은 화면, 13장 전체. 원본 `/mnt/project-files/design/trowel-design-v3.src.html`.
-- **이 명세는 시안 승인 뒤에 만든다.** 시안의 정할 것 4–6은 추천값으로 적었고, 사용자가 다르게 고르면 이 절을 고친다.
+- 시안 승인: 2026-10-16 22:18:54Z, 사용자가 결정 카드에서 「추천대로」를 고름(정할 것 4–6 = 추천값: 띠에는 그린 것이 있는 레이어만, 1400 미만이면 띠 접기, 눈·자물쇠는 범례와 띠 둘 다).
 
 ### 완료 기준
 1. 처음 배치(설정 없는 새 실행)가 13장 막대와 같다.
@@ -77,3 +77,22 @@
 - ◆ 사용자 설정 파일 형식에 필드가 생긴다(예전 파일과 호환: 없으면 처음 배치).
 - 레이어 띠의 눈·자물쇠는 범례 줄과 같은 스위치를 두 곳에 둔다(정할 것 6, 「한 기능 한 자리」의 예외).
 - 범례 셈과 「빈 레이어」 판단이 다르면 띠와 범례가 서로 다른 레이어 수를 보일 수 있다. 같은 기준(레이어 안 객체 수)을 쓴다.
+
+## 구현 (build)
+- 새 파일
+  - `crates/ui-egui/src/trowel_layout.rs`: 칸 배치 모델(`Layout`: 열 셋에 놓인 칸, 열 너비, 손으로 접고 편 것, 손으로 정한 칸 높이, 숨긴 칸과 그 자리), 창 너비에 맞춘 열 너비·접기(`shown`), 예전·망가진 설정을 처음 배치로 읽는 `lenient`, UI 명령 `trowel.layout.reset|panel|move|size|get`.
+  - `crates/ui-egui/src/trowel/layout.rs`: 열 그리기(칸 쌓기, 칸 사이 경계, 캔버스 쪽 너비 가장자리, 접힌 열 28 레일), 칸 머리 끌기·놓을 자리 표시·반투명 칸.
+  - `crates/ui-egui/src/trowel/layers.rs`: 레이어 띠(⑪). 기존 명령만 쓴다: `legend.pick`, `layer.setCurrent`, `layer.selectAll`, `layer.setProps`, `layer.move`, `layer.newSublayer`, 범례의 「이 레이어만 보기」. **새 엔진 명령 없음.**
+- 바꾼 파일: `trowel/mod.rs`(오른쪽 열 코드를 layout.rs로), `drawings.rs`(Panel 대신 받은 사각형에 그림, 서랍 216 → 236), `legend.rs`(범례 카드가 열이 왼쪽에 있으면 오른쪽으로 뜸), `palette.rs`·`props.rs`(최소 높이 상수만), `state.rs`(`UiState.trowel_layout`), `workspaces.rs`(작업 공간에 배치, 「필수 재설정」도 처음 배치), `prefs_dialog.rs`(환경설정 재설정이 배치도), `menus.rs`(창 메뉴 맨 위 「배치 처음대로」와 칸 다섯 개 ✓, 클래식 창에서는 숨김, 빈 가름줄 정리), `i18n/ko.tsv`.
+- 22:22Z 요청 반영: 창이 좁아지면 열은 사라지지 않고 먼저 최소 너비까지 좁아진다(띠 → 서랍 → 오른쪽 열 순서). 그래도 캔버스가 480보다 좁으면 띠, 그다음 서랍이 접힌다. 손으로 편 열은 저절로 접지 않는다. 배치는 설정 파일에 저장되어 다음 실행에도 그대로 열린다.
+- 만들면서 찾아 고친 결함: 펜 칸의 「세 단추가 생기거나 사라질 때 펜 위치 고정」 상태를 펜이 없는 다른 열이 매 프레임 지웠다. 그래서 고고학 단추를 누를 때 펜 칸이 움직였다(기존 시험 3개 실패로 드러남). 이제 펜이 있는 열만 그 상태를 다루고, 칸 경계를 끄는 동안에는 고정하지 않는다.
+
+### 기대값을 바꾼 기존 시험과 근거
+- `regions_match_the_mockup_at_1600_by_988`: 서랍 216 → 236, 오른쪽 열이 띠(132)만큼 왼쪽으로, 띠 열 1468–1600, 캔버스 302–1164. 근거: 디자인 3.1 13장 막대(사용자 승인 22:18:54Z).
+- `the_tabs_never_overlap`: 800 × 500에서 긴 이름이 이제 잘리지 않는다. 서랍과 띠가 접혀 캔버스가 넓어졌기 때문이다(9장 규칙). 잘리는 경우는 서랍과 띠를 손으로 편 800 × 500 사례를 더해 계속 시험한다.
+- `the_pen_bar_keeps_clear_of_the_zoom_buttons`: 800 × 500에서 이제 공간이 있어 단축키 글자가 보이고 확대 단추 옆에 놓인다. 손으로 편 800 × 500(가장 좁은 데스크톱 캔버스 262)은 글자를 빼고 옆에, 웹에서만 가능한 750 폭(캔버스 212)은 확대 단추 위에 놓이는지 시험한다.
+
+### 새 시험
+- 모델: `the_first_layout_is_the_mockups`, `a_narrow_canvas_narrows_the_columns_then_folds_the_strip_then_the_drawer`, `panels_move_hide_and_come_back_where_they_were`, `a_saved_layout_reads_leniently`, `the_layout_is_kept_with_the_preferences`.
+- 화면: `the_first_layout_is_sheet_13_in_each_window`(1440 × 880, 1366 × 768, 1280 × 720, 1100 × 700), `the_layer_strip_lists_what_is_drawn_and_folds_the_empty_layers`, `the_strip_picks_shows_and_locks_as_the_legend_does`, `the_strip_renames_and_reorders_its_rows`, `a_panel_moves_by_its_head_within_the_side_columns`, `columns_and_panels_size_by_their_edges`, `either_reset_brings_back_the_first_layout`, `the_window_menu_lists_the_panels_only_in_trowel`.
+

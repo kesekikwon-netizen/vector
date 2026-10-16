@@ -7,76 +7,64 @@ use serde_json::json;
 
 use super::*;
 
-const HEAD_H: f32 = 32.0;
+pub(super) const HEAD_H: f32 = 32.0;
 const ROW_H: f32 = 26.0;
+/// The least it shrinks to: its head, the open drawings' caption and two of them.
+pub(super) const MIN_HEIGHT: f32 = HEAD_H + 17.0 + 9.0 + 2.0 * ROW_H + 2.0 + 4.0;
 
-pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
+/// The drawing set in `r`: its head with ＋, the open drawings and, under them, the one-click
+/// drawing elements.
+pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let t = Tokens::get(ui.ctx());
-    egui::Panel::left(SET)
-        .resizable(true)
-        .default_size(SET_W)
-        .size_range(140.0..=450.0)
-        .show_separator_line(false)
-        .frame(egui::Frame::NONE.fill(t.panel))
-        .show(ui, |ui| {
-            let r = ui.max_rect();
-            ui.set_min_width(r.width());
-            line_right(ui, r, t.border);
-            // The head: its title and ＋ (File › New).
-            let head = Rect::from_min_size(r.min, vec2(r.width(), HEAD_H));
-            panel_head(ui, head, tw!("Drawing Set"), "", 1, &t);
-            if head_button(ui, wid("set-new", ()), head, 0, "plus", tw!("New drawing"), &t).clicked() {
-                crate::menus::invoke(app, "file.newDialog", json!({}));
+    // The head: its title and ＋ (File › New).
+    let head = Rect::from_min_size(r.min, vec2(r.width(), HEAD_H));
+    panel_head(ui, head, tw!("Drawing Set"), "", 1, &t);
+    if head_button(ui, wid("set-new", ()), head, 0, "plus", tw!("New drawing"), &t).clicked() {
+        crate::menus::invoke(app, "file.newDialog", json!({}));
+    }
+    // The open drawings.
+    let cap = head.bottom() + 10.0 + 7.0;
+    list_caption(ui, r.left() + 12.0, r.right() - 12.0, cap, tw!("Open Drawings"), &t);
+    let avail_h = (r.bottom() - 4.0 - (cap + 9.0)).max(0.0);
+    let names: Vec<String> = app.session.documents().iter().map(|d| d.title()).collect();
+    let open_list_h = ((names.len().clamp(2, 3) as f32) * ROW_H + 2.0).min(avail_h);
+    let rows = Rect::from_min_max(pos2(r.left(), cap + 9.0), pos2(r.right() - 1.0, cap + 9.0 + open_list_h));
+    let current = app.session.active_index().filter(|_| !crate::menus::home_showing(app));
+    let mut open = None;
+    let mut list = ui.new_child(egui::UiBuilder::new().max_rect(rows).layout(egui::Layout::top_down(egui::Align::Min)));
+    egui::ScrollArea::vertical().id_salt(wid("set-scroll", ())).auto_shrink([false, false]).show(&mut list, |ui| {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        for (i, name) in names.iter().enumerate() {
+            let (_, row) = ui.allocate_space(vec2(ui.available_width(), ROW_H));
+            let row = Rect::from_min_max(pos2(row.left() + 6.0, row.top()), pos2(row.right() - 6.0, row.bottom()));
+            let resp = ui.interact(row, wid("set-row", i), Sense::click());
+            let on = current == Some(i);
+            if on {
+                ui.painter().rect_filled(row, CornerRadius::same(4), t.row_selected);
+            } else if resp.hovered() {
+                ui.painter().rect_filled(row, CornerRadius::same(4), t.hover);
             }
-            // The open drawings.
-            let cap = head.bottom() + 10.0 + 7.0;
-            list_caption(ui, r.left() + 12.0, r.right() - 12.0, cap, tw!("Open Drawings"), &t);
-            let avail_h = (r.bottom() - 4.0 - (cap + 9.0)).max(0.0);
-            let names: Vec<String> = app.session.documents().iter().map(|d| d.title()).collect();
-            let open_list_h = ((names.len().clamp(2, 3) as f32) * ROW_H + 2.0).min(avail_h);
-            let rows = Rect::from_min_max(pos2(r.left(), cap + 9.0), pos2(r.right() - 1.0, cap + 9.0 + open_list_h));
-            let current = app.session.active_index().filter(|_| !crate::menus::home_showing(app));
-            let mut open = None;
-            let mut list = ui.new_child(egui::UiBuilder::new().max_rect(rows).layout(egui::Layout::top_down(egui::Align::Min)));
-            egui::ScrollArea::vertical().id_salt(wid("set-scroll", ())).auto_shrink([false, false]).show(&mut list, |ui| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                for (i, name) in names.iter().enumerate() {
-                    let (_, row) = ui.allocate_space(vec2(ui.available_width(), ROW_H));
-                    let row = Rect::from_min_max(pos2(row.left() + 6.0, row.top()), pos2(row.right() - 6.0, row.bottom()));
-                    let resp = ui.interact(row, wid("set-row", i), Sense::click());
-                    let on = current == Some(i);
-                    if on {
-                        ui.painter().rect_filled(row, CornerRadius::same(4), t.row_selected);
-                    } else if resp.hovered() {
-                        ui.painter().rect_filled(row, CornerRadius::same(4), t.hover);
-                    }
-                    crate::icons::paint(
-                        ui,
-                        "tw-plan",
-                        Rect::from_center_size(pos2(row.left() + 6.0 + 7.0, row.center().y), vec2(14.0, 14.0)),
-                        t.icon,
-                    );
-                    ui.painter().with_clip_rect(row).text(pos2(row.left() + 26.0, row.center().y), Align2::LEFT_CENTER, name, font(12.0), t.text);
-                    if resp.on_hover_text(name).clicked() {
-                        open = Some(i);
-                    }
-                }
-            });
-            if let Some(i) = open {
-                app.ui.home = None;
-                if let Err(e) = app.run("document.activate", json!({ "index": i })) {
-                    app.status_error(e);
-                }
+            crate::icons::paint(ui, "tw-plan", Rect::from_center_size(pos2(row.left() + 6.0 + 7.0, row.center().y), vec2(14.0, 14.0)), t.icon);
+            ui.painter().with_clip_rect(row).text(pos2(row.left() + 26.0, row.center().y), Align2::LEFT_CENTER, name, font(12.0), t.text);
+            if resp.on_hover_text(name).clicked() {
+                open = Some(i);
             }
+        }
+    });
+    if let Some(i) = open {
+        app.ui.home = None;
+        if let Err(e) = app.run("document.activate", json!({ "index": i })) {
+            app.status_error(e);
+        }
+    }
 
-            // Always-visible Scrapboard Palette (소스판 팔레트) right below Open Drawings.
-            let scrap_top = rows.bottom() + 4.0;
-            if r.bottom() - 4.0 > scrap_top + 28.0 {
-                let scrap_rect = Rect::from_min_max(pos2(r.left(), scrap_top), pos2(r.right() - 1.0, r.bottom() - 4.0));
-                line_above(ui, scrap_rect, t.border);
-                show_scrapboard_palette(app, ui, scrap_rect, &t);
-            }
-        });
+    // Always-visible Scrapboard Palette (소스판 팔레트) right below Open Drawings.
+    let scrap_top = rows.bottom() + 4.0;
+    if r.bottom() - 4.0 > scrap_top + 28.0 {
+        let scrap_rect = Rect::from_min_max(pos2(r.left(), scrap_top), pos2(r.right() - 1.0, r.bottom() - 4.0));
+        line_above(ui, scrap_rect, t.border);
+        show_scrapboard_palette(app, ui, scrap_rect, &t);
+    }
 }
 
 /// Always-visible field symbol palette (도면 기호 소스판): 1-click placement of scale bars

@@ -197,6 +197,25 @@ impl Harness {
         }
     }
 
+    /// Press at `from`, move to `to` in steps and let go there; with `esc`, Esc before letting go.
+    fn drag_with(&mut self, from: Pos2, to: Pos2, esc: bool) {
+        let (button, modifiers) = (PointerButton::Primary, egui::Modifiers::default());
+        self.frame(vec![Event::PointerMoved(from)]);
+        self.frame(vec![Event::PointerButton { pos: from, button, pressed: true, modifiers }]);
+        for i in 1..=8 {
+            self.frame(vec![Event::PointerMoved(from + (to - from) * (i as f32 / 8.0))]);
+        }
+        if esc {
+            self.frame(vec![Event::Key { key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers }]);
+        }
+        self.frame(vec![Event::PointerButton { pos: to, button, pressed: false, modifiers }]);
+        self.settle();
+    }
+
+    fn drag(&mut self, from: Pos2, to: Pos2) {
+        self.drag_with(from, to, false);
+    }
+
     /// Two clicks in a row on the widget `id`.
     fn double_click(&mut self, id: egui::Id) {
         let at = self.rect(id).unwrap_or_else(|| panic!("no widget {id:?}")).center();
@@ -411,21 +430,22 @@ fn regions_match_the_mockup_at_1600_by_988() {
         (RIBBON, r(0.0, 60.0, 1600.0, 146.0)),
         (STATUS, r(0.0, 960.0, 1600.0, 988.0)),
         (TOOLS, r(0.0, 146.0, 50.0, 960.0)),
-        (SET, r(50.0, 146.0, 266.0, 960.0)),
-        (RIGHT, r(1296.0, 146.0, 1600.0, 960.0)),
+        // Design 3.1 (sheet 13): the drawer 236, the right column 304 and the layer strip 132.
+        (SET, r(50.0, 146.0, 286.0, 960.0)),
+        (RIGHT, r(1164.0, 146.0, 1468.0, 960.0)),
+        (layout::EDGE, r(1468.0, 146.0, 1600.0, 960.0)),
     ];
     for (id, rect) in want {
         assert!(close(h.panel(id), rect), "{id}: {:?}, the mockup {rect:?}", h.panel(id));
     }
     assert!(egui::PanelState::load(&h.ctx, egui::Id::new("trowel-control")).is_none(), "no Control bar");
-    // The canvas region is 1030 × 814 under the 34-point tabs (the tool column is 50, the drawing
-    // set keeps its 216 until D5); the rulers take 16 points of it.
+    // The canvas region is 878 × 814 under the 34-point tabs; the rulers take 16 points of it.
     let canvas = h.app.canvas_rect.unwrap();
-    assert!(close(canvas, r(282.0, 196.0, 1296.0, 960.0)), "{canvas:?}");
+    assert!(close(canvas, r(302.0, 196.0, 1164.0, 960.0)), "{canvas:?}");
     // Full screen with menu bar off: no caption, menu or ribbon.
     h.app.ui.screen_mode = 2;
     h.settle();
-    assert!(close(h.app.canvas_rect.unwrap(), r(282.0, 50.0, 1296.0, 960.0)), "{:?}", h.app.canvas_rect);
+    assert!(close(h.app.canvas_rect.unwrap(), r(302.0, 50.0, 1164.0, 960.0)), "{:?}", h.app.canvas_rect);
     // Full screen: the canvas alone.
     h.app.ui.screen_mode = 3;
     h.settle();
@@ -733,10 +753,20 @@ fn the_legend_list_stays_above_the_pen() {
 #[test]
 fn the_tabs_never_overlap() {
     let long = "Excavation area 3, trench 12, north section, second season";
-    // The window, the drawing opened after "Site 1" (the current one), whether its name is cut.
-    let cases = [(1600.0, 988.0, None, false), (1366.0, 728.0, Some(long), false), (800.0, 500.0, Some(long), true)];
-    for (w, height, other, cut) in cases {
+    // The window, the drawing opened after "Site 1" (the current one), whether its name is cut, and
+    // whether the drawer and the layer strip were opened by hand (design 3.1 §9: the smallest
+    // window folds them, so its canvas has room for the name; opened, it doesn't).
+    let cases = [
+        (1600.0, 988.0, None, false, false),
+        (1366.0, 728.0, Some(long), false, false),
+        (800.0, 500.0, Some(long), false, false),
+        (800.0, 500.0, Some(long), true, true),
+    ];
+    for (w, height, other, cut, opened) in cases {
         let mut h = Harness::sized(w, height);
+        if opened {
+            open_drawer_and_strip(&mut h);
+        }
         if let Some(name) = other {
             h.app.run("file.new", json!({"name": name, "width": 400, "height": 300})).unwrap();
         }
@@ -767,11 +797,19 @@ fn the_tabs_never_overlap() {
                 _ => None,
             })
             .collect();
-        assert_eq!(elided, [cut], "{w} {name}: the current tab's name");
+        assert_eq!(elided, [cut], "{w} {name} {opened}: the current tab's name");
         let shown = h.texts_in(strip);
         assert!(!shown.iter().any(|s| s == "Not saved"), "{w} {name}: {shown:?}");
         assert_eq!(shown.iter().filter(|s| *s == name).count(), 1, "{w} {name}: once, in its tab: {shown:?}");
     }
+}
+
+/// Open the drawer and the layer strip by hand, as a user may in a window that folds them.
+fn open_drawer_and_strip(h: &mut Harness) {
+    for column in ["left", "edge"] {
+        crate::menus::invoke(&mut h.app, "trowel.layout.size", json!({ "column": column, "folded": false }));
+    }
+    h.settle();
 }
 
 /// The tool column as in the mockup (design 3.0 §4 `.a-tools`, §5 ④): 50 wide, buttons 38 × 32
@@ -3933,8 +3971,16 @@ fn test_canvas_penbar_adversarial_suite() {
 /// button whole.
 #[test]
 fn the_pen_bar_keeps_clear_of_the_zoom_buttons() {
-    for (w, height) in [(1600.0, 988.0), (1366.0, 728.0), (800.0, 500.0)] {
+    // The window and whether the drawer and the layer strip were opened by hand: the smallest
+    // desktop window folds them (design 3.1 §9), so its canvas has room for the bar beside the
+    // zoom buttons; opened, the canvas is the narrowest it gets there (262 points), and the bar
+    // drops the key. A web page can be narrower still: 212 points of canvas put it above them.
+    let cases = [(1600.0, 988.0, false), (1366.0, 728.0, false), (800.0, 500.0, false), (800.0, 500.0, true), (750.0, 500.0, true)];
+    for (w, height, opened) in cases {
         let mut h = Harness::sized(w, height);
+        if opened {
+            open_drawer_and_strip(&mut h);
+        }
         h.app.select_tool("pen");
         h.settle();
         let t = h.tokens();
@@ -3951,12 +3997,14 @@ fn the_pen_bar_keeps_clear_of_the_zoom_buttons() {
         assert_eq!(fill(&h, "finish"), Some(t.action), "{w}");
         assert_eq!(fill(&h, "undo"), Some(t.button), "{w}");
         assert_eq!(fill(&h, "close"), Some(t.button), "{w}: close whole, not cut off");
-        assert_eq!(h.texts_in(bar).iter().any(|s| s == "Enter"), w >= 1366.0, "{w}: the key shown where there is room");
-        if w >= 1366.0 {
+        assert_eq!(h.texts_in(bar).iter().any(|s| s == "Enter"), !opened, "{w}: the key shown where there is room");
+        if !opened {
             assert!((bar.center().x - canvas.center().x).abs() < 0.5, "{w}: centred, {bar:?} in {canvas:?}");
+        }
+        if w >= 800.0 {
             assert!((canvas.bottom() - 14.0 - bar.bottom()).abs() < 0.5, "{w}: at the foot, beside the zoom buttons");
+            assert!(bar.right() <= zoom.left() - 7.5, "{w}: {bar:?} left of {zoom:?}");
         } else {
-            // 208 points of canvas: above the zoom buttons, the key left out.
             assert!(bar.bottom() <= zoom.top() - 7.5, "{w}: {bar:?} above {zoom:?}");
         }
     }
@@ -4672,4 +4720,287 @@ fn the_archaeology_tools_draw_the_eighth_chapter() {
     let names = object_names(&h);
     assert!(names.iter().any(|m| m == "토층선 Ⅱ") && !names.iter().any(|m| m.ends_with('Ⅲ')), "{names:?}");
     assert_eq!(h.app.session.active().unwrap().doc.stratigraphy_tables.first().map(|t| t.layers.len()), Some(2));
+}
+
+// J028 (design 3.1): the panel layout — the layer strip, panels moved and sized, the first layout.
+
+/// The layout as the user left it.
+fn layout_of(h: &Harness) -> &crate::trowel_layout::Layout {
+    &h.app.ui.trowel_layout
+}
+
+fn node_of(h: &Harness, id: NodeId) -> vectorcraft_doc::Node {
+    h.app.session.active().unwrap().doc.node(id).unwrap().clone()
+}
+
+/// A new top layer `name`, the current one.
+fn new_layer(h: &mut Harness, name: &str) -> NodeId {
+    NodeId(h.app.run("layer.new", json!({ "name": name })).unwrap()["id"].as_u64().unwrap())
+}
+
+/// Where the text `s` starts inside `area`.
+fn text_left(h: &Harness, s: &str, area: Rect) -> Option<f32> {
+    h.texts.iter().find(|p| p.text == s && area.expand(0.5).contains_rect(p.rect)).map(|p| p.rect.left())
+}
+
+/// Sheet 13: with nothing saved, the columns are those of the mockup in the windows it was drawn
+/// for; the drawer folds under 1200 points and the layer strip under 1400 (정할 것 5).
+#[test]
+fn the_first_layout_is_sheet_13_in_each_window() {
+    use crate::trowel_layout::FOLDED_W;
+    // The window, then the drawer's, the right column's and the strip's widths.
+    let cases = [
+        (1440.0, 880.0, 236.0, 304.0, 132.0),
+        (1366.0, 768.0, 236.0, 304.0, FOLDED_W),
+        (1280.0, 720.0, 236.0, 304.0, FOLDED_W),
+        (1100.0, 700.0, FOLDED_W, 304.0, FOLDED_W),
+    ];
+    for (w, height, set_w, right_w, edge_w) in cases {
+        let h = Harness::sized(w, height);
+        let (tools, set, right, edge) = (h.panel(TOOLS), h.panel(SET), h.panel(RIGHT), h.panel(layout::EDGE));
+        assert_eq!((tools.right(), set.left(), set.width()), (50.0, 50.0, set_w), "{w}: the drawer");
+        assert_eq!((right.width(), right.right()), (right_w, edge.left()), "{w}: the right column");
+        assert_eq!((edge.width(), edge.right()), (edge_w, w), "{w}: the layer strip");
+        for c in [set, right, edge] {
+            assert_eq!((c.top(), c.bottom()), (tools.top(), tools.bottom()), "{w}: {c:?} as tall as the tools");
+        }
+    }
+    let h = Harness::sized(1440.0, 880.0);
+    assert_eq!(h.panel(RIGHT).left() - h.panel(SET).right(), 718.0, "the canvas of sheet 13");
+    let edge = h.panel(layout::EDGE);
+    assert_eq!(h.texts_in(Rect::from_min_size(edge.min, vec2(edge.width(), 36.0))), ["Layers"]);
+    for b in ["strip-new", "strip-fold"] {
+        assert_eq!(h.rect(wid(b, ())).map(|r| r.size()), Some(vec2(22.0, 22.0)), "{b}");
+    }
+    // Folded: the rail, its name down it.
+    let h = Harness::sized(1366.0, 768.0);
+    let rail = h.panel(layout::EDGE);
+    assert!(h.rect(wid("column-rail", "edge")).is_some());
+    let mut letters: Vec<&Painted> = h.texts.iter().filter(|p| rail.contains_rect(p.rect)).collect();
+    letters.sort_by(|a, b| a.rect.top().total_cmp(&b.rect.top()));
+    assert_eq!(letters.iter().map(|p| p.text.as_str()).collect::<String>(), "Layers");
+}
+
+/// The strip (design 3.1 ⑪) lists the layers with something drawn on them, and the current one,
+/// top first; the other layers wait in one line at its foot (정할 것 4). ＋ makes a sublayer in
+/// the current layer, drawn on next and shown 10 points further in, in one undo step.
+#[test]
+fn the_layer_strip_lists_what_is_drawn_and_folds_the_empty_layers() {
+    let mut h = Harness::sized(1440.0, 880.0);
+    let first = h.layer_ids()[0];
+    draw_rect(&mut h, 10.0);
+    let spare = new_layer(&mut h, "Spare");
+    let pits = new_layer(&mut h, "Pits");
+    h.settle();
+    let edge = h.panel(layout::EDGE);
+    let row = |h: &Harness, id: NodeId| h.rect(wid("strip-row", id.0));
+    let (p, f) = (row(&h, pits).expect("the current layer, though empty"), row(&h, first).expect("Layer 1"));
+    assert!(edge.contains_rect(p) && p.bottom() <= f.top(), "the top layer first: {p:?} {f:?}");
+    assert_eq!(p.height(), 24.0);
+    assert!(row(&h, spare).is_none(), "an empty layer waits at the foot");
+    let foot = h.rect(wid("strip-empties", ())).unwrap();
+    assert_eq!(h.line_in(foot), "1 empty layer");
+    assert_eq!(foot.bottom(), edge.bottom());
+    h.click(wid("strip-empties", ()));
+    assert!(row(&h, spare).is_some_and(|s| s.top() >= f.bottom()), "shown under the others");
+    h.click(wid("strip-empties", ()));
+    assert!(row(&h, spare).is_none(), "folded again");
+    // The current row: oat, bold, the clay pen nib.
+    let t = h.tokens();
+    let p = row(&h, pits).unwrap();
+    assert_eq!(h.fill_at(p), Some(t.row_selected));
+    assert_eq!(h.font_of("Pits", p), Some(crate::theme::semibold(12.0)));
+    // ＋: a sublayer of Pits, drawn on next, under it and 10 further in.
+    let n = h.layer_ids().len();
+    h.click(wid("strip-new", ()));
+    let sub = h.current_layer().unwrap();
+    assert_ne!(sub, pits);
+    assert_eq!(h.layer_ids().len(), n, "a sublayer, not a top layer");
+    let doc = &h.app.session.active().unwrap().doc;
+    assert_eq!(doc.ancestry(sub).unwrap_or_default().first(), Some(&pits), "in Pits");
+    let name = doc.node(sub).unwrap().display_name();
+    let (s, p) = (row(&h, sub).unwrap(), row(&h, pits).unwrap());
+    assert_eq!(s.top(), p.bottom(), "under it");
+    assert_eq!(text_left(&h, &name, s).unwrap() - text_left(&h, "Pits", p).unwrap(), 10.0, "10 further in");
+    h.app.run("edit.undo", json!({})).unwrap();
+    h.settle();
+    assert!(row(&h, sub).is_none(), "one undo step");
+}
+
+/// The strip does what the legend's rows do, with the same switches (정할 것 6): a press draws on
+/// the layer and the pen takes its row's look, leaving what is selected where it is; the eye and
+/// the padlock are the legend row's own, so each shows what the other did.
+#[test]
+fn the_strip_picks_shows_and_locks_as_the_legend_does() {
+    let mut h = Harness::sized(1440.0, 880.0);
+    let first = h.layer_ids()[0];
+    let line = draw_rect(&mut h, 10.0);
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8}));
+    draw_rect(&mut h, 40.0);
+    h.app.run("select.set", json!({ "ids": [line.0] })).unwrap();
+    h.settle();
+    h.click(wid("strip-row", first.0));
+    assert_eq!(h.current_layer(), Some(first));
+    h.click(wid("strip-row", pits.0));
+    assert_eq!(h.current_layer(), Some(pits));
+    assert_eq!(h.app.session.new_art_stroke().width, 0.8, "the pen takes the row's look");
+    assert_eq!(h.app.session.active().unwrap().doc.layer_of(line), Some(first), "the selected line stays");
+    let t = h.tokens();
+    assert_eq!(h.fill_at(h.rect(wid("legend-row", pits.0)).unwrap()), Some(t.row_selected), "the legend's row too");
+    // The eye and the padlock, from either side.
+    h.click(wid("strip-eye", first.0));
+    assert!(!node_of(&h, first).visible);
+    h.click(wid("legend-eye", first.0));
+    assert!(node_of(&h, first).visible);
+    h.click(wid("strip-lock", first.0));
+    assert!(node_of(&h, first).locked);
+    let lock_col = h.rect(wid("legend-lock", first.0)).unwrap();
+    assert!(h.rects_in(lock_col).iter().any(|(_, fill, _)| *fill == t.icon), "the legend's padlock shuts");
+    h.click(wid("legend-lock", first.0));
+    assert!(!node_of(&h, first).locked);
+    // Alt and the eye: this layer alone, then every layer again.
+    h.alt_click(wid("strip-eye", first.0));
+    assert!(node_of(&h, first).visible && !node_of(&h, pits).visible, "Layer 1 alone");
+    h.alt_click(wid("strip-eye", first.0));
+    assert!(node_of(&h, pits).visible, "every layer again");
+}
+
+/// A double click renames a row (the legend's row too); a row dragged onto the top quarter of
+/// another goes above it, in one undo step.
+#[test]
+fn the_strip_renames_and_reorders_its_rows() {
+    let mut h = Harness::sized(1440.0, 880.0);
+    let first = h.layer_ids()[0];
+    draw_rect(&mut h, 10.0);
+    let pits = new_layer(&mut h, "Pits");
+    draw_rect(&mut h, 40.0);
+    h.settle();
+    h.double_click(wid("strip-row", pits.0));
+    assert!(h.rect(wid("strip-rename-field", pits.0)).is_some(), "the name in a field");
+    h.type_into(wid("strip-rename-field", pits.0), "Postholes");
+    assert_eq!(node_of(&h, pits).name.as_deref(), Some("Postholes"));
+    assert!(h.texts_in(h.rect(wid("legend-row", pits.0)).unwrap()).contains(&"Postholes".to_string()));
+    let (from, onto) = (h.rect(wid("strip-row", first.0)).unwrap(), h.rect(wid("strip-row", pits.0)).unwrap());
+    h.drag(from.center(), pos2(onto.center().x, onto.top() + 3.0));
+    assert_eq!(h.layer_ids(), [pits, first], "Layer 1 on top");
+    assert!(h.rect(wid("strip-row", first.0)).unwrap().bottom() <= h.rect(wid("strip-row", pits.0)).unwrap().top());
+    h.app.run("edit.undo", json!({})).unwrap();
+    assert_eq!(h.layer_ids(), [first, pits], "one undo step");
+}
+
+/// A panel moves by its head within the side columns (「양옆 칸 안에서」, no floating window):
+/// let go over the canvas, or Esc first, and it stays; let go low in the drawer's column and it
+/// goes under the drawing set, where it works as before.
+#[test]
+fn a_panel_moves_by_its_head_within_the_side_columns() {
+    use crate::trowel_layout::Panel;
+    let mut h = Harness::sized(1440.0, 880.0);
+    let head = h.rect(wid("panel-head", "pen")).unwrap();
+    let grab = pos2(head.left() + 24.0, head.center().y);
+    let canvas = h.app.canvas_rect.unwrap();
+    h.drag(grab, canvas.center());
+    assert_eq!(layout_of(&h).right, [Panel::Legend, Panel::Pen, Panel::Props], "over the canvas: it stays");
+    let set = h.panel(SET);
+    h.drag_with(grab, pos2(set.center().x, set.bottom() - 20.0), true);
+    assert_eq!(layout_of(&h).right, [Panel::Legend, Panel::Pen, Panel::Props], "Esc: it stays");
+    h.drag(grab, pos2(set.center().x, set.bottom() - 20.0));
+    assert_eq!(layout_of(&h).left, [Panel::Set, Panel::Pen]);
+    assert_eq!(layout_of(&h).right, [Panel::Legend, Panel::Props]);
+    let (set, chip) = (h.panel(SET), h.rect(wid("weight", "0.5")).unwrap());
+    assert!(set.contains_rect(h.rect(wid("panel-head", "pen")).unwrap()) && set.contains_rect(chip), "the pen in the drawer's column");
+    h.click(wid("weight", "0.5"));
+    assert_eq!(h.app.session.new_art_stroke().width, 0.5, "and it works there");
+    // Every panel out of the right column: it goes, and the canvas reaches the strip.
+    for p in ["legend", "props"] {
+        crate::menus::invoke(&mut h.app, "trowel.layout.move", json!({ "panel": p, "column": "left" }));
+    }
+    h.settle();
+    assert_eq!(h.app.canvas_rect.unwrap().right(), h.panel(layout::EDGE).left(), "no right column");
+}
+
+/// Columns size by their edge by the canvas, panels by the boundaries between them; a double
+/// click gives either its first size back. Too wide for the window, the other columns narrow
+/// before anything folds (2026-10-16 22:22Z: 「줄여도 사라지지않고 축소되게」).
+#[test]
+fn columns_and_panels_size_by_their_edges() {
+    use crate::trowel_layout::Panel;
+    let mut h = Harness::sized(1440.0, 880.0);
+    let right = h.panel(RIGHT);
+    let edge = pos2(right.left() + 2.0, right.center().y);
+    h.drag(edge, edge - vec2(100.0, 0.0));
+    // As wide as from the pointer to the strip.
+    assert_eq!(h.panel(RIGHT).width(), right.right() - (edge.x - 100.0));
+    let edge = pos2(h.panel(RIGHT).left() + 2.0, edge.y);
+    h.drag(edge, pos2(300.0, edge.y));
+    assert_eq!(h.panel(RIGHT).width(), 560.0, "at most 560");
+    // 1440 − 50 − 236 − 560 leaves 594: the strip gives 18 of its 132 to keep 480 of canvas.
+    assert_eq!(h.panel(layout::EDGE).width(), 114.0, "the strip narrowed, not folded");
+    assert_eq!(h.panel(RIGHT).left() - h.panel(SET).right(), 480.0);
+    h.double_click(wid("column-edge", "right"));
+    assert_eq!((h.panel(RIGHT).width(), h.panel(layout::EDGE).width()), (304.0, 132.0), "first widths");
+    // The boundary over the pen: up, the pen taller; down, at least its weight row; double click.
+    let pen = h.rect(wid("panel-head", "pen")).unwrap();
+    let was = layout_of(&h).height(Panel::Pen);
+    assert_eq!(was, None);
+    let at = pos2(pen.center().x, pen.top());
+    h.drag(at, at - vec2(0.0, 50.0));
+    let taller = layout_of(&h).height(Panel::Pen).expect("a height of its own");
+    h.drag(pos2(at.x, at.y - 50.0), pos2(at.x, h.panel(RIGHT).bottom()));
+    assert_eq!(layout_of(&h).height(Panel::Pen), Some(super::palette::MIN_HEIGHT), "no shorter than its weight row");
+    assert!(h.rect(wid("weight", "0.1")).is_some(), "the weights still there");
+    let pen_top = h.rect(wid("panel-head", "pen")).unwrap().top();
+    let boundary = (0..3).find(|k| h.rect(wid("panel-boundary", ("right", *k))).is_some_and(|b| (b.center().y - pen_top).abs() < 1.0));
+    h.double_click(wid("panel-boundary", ("right", boundary.unwrap())));
+    assert_eq!(layout_of(&h).height(Panel::Pen), None, "its own height again");
+    assert!(taller > 0.0);
+}
+
+/// 「창 › 배치 처음대로」 and Preferences' Reset both bring back the first layout, hidden panels
+/// too; the Window menu lists the five panels, ✓ for those shown.
+#[test]
+fn either_reset_brings_back_the_first_layout() {
+    for via_prefs in [false, true] {
+        let mut h = Harness::sized(1440.0, 880.0);
+        let first = [h.panel(SET), h.panel(RIGHT), h.panel(layout::EDGE)];
+        let calls = [
+            ("trowel.layout.move", json!({ "panel": "pen", "column": "left" })),
+            ("trowel.layout.size", json!({ "column": "right", "width": 500 })),
+            ("trowel.layout.panel", json!({ "panel": "props", "shown": false })),
+            ("trowel.layout.size", json!({ "column": "edge", "folded": true })),
+        ];
+        for (id, p) in calls {
+            crate::menus::invoke(&mut h.app, id, p);
+        }
+        h.settle();
+        assert_ne!([h.panel(SET), h.panel(RIGHT), h.panel(layout::EDGE)], first);
+        assert_eq!(crate::menus::checked(&h.app, "trowel.layout.panel", &json!({ "panel": "props" })), Some(false));
+        assert_eq!(crate::menus::checked(&h.app, "trowel.layout.panel", &json!({ "panel": "legend" })), Some(true));
+        let screen = Rect::from_min_size(Pos2::ZERO, h.screen);
+        if via_prefs {
+            crate::prefs_dialog::open(&mut h.app, None);
+            h.settle();
+            h.click_text("Reset Preferences", screen);
+            assert_ne!(layout_of(&h), &crate::trowel_layout::Layout::default(), "on OK");
+            h.click_text("OK", screen);
+        } else {
+            h.click_text("Window", h.panel(MENU));
+            h.click_text("Reset Panel Layout", screen);
+        }
+        assert_eq!(layout_of(&h), &crate::trowel_layout::Layout::default(), "prefs {via_prefs}");
+        assert_eq!([h.panel(SET), h.panel(RIGHT), h.panel(layout::EDGE)], first, "prefs {via_prefs}");
+    }
+}
+
+/// The panel items are Trowel's: the classic window's Window menu leaves them out.
+#[test]
+fn the_window_menu_lists_the_panels_only_in_trowel() {
+    let mut h = Harness::new();
+    let ids = ["trowel.layout.reset", "trowel.layout.panel"];
+    for id in ids {
+        assert!(crate::menus::shown_state(&h.app, id, &json!({ "panel": "pen" })).is_some(), "{id} in Trowel");
+    }
+    h.app.ui.trowel = false;
+    for id in ids {
+        assert!(crate::menus::shown_state(&h.app, id, &json!({ "panel": "pen" })).is_none(), "{id} in the classic window");
+    }
 }

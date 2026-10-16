@@ -43,6 +43,9 @@ pub fn confirm(app: &mut VectorcraftApp) -> Result<Value, String> {
     app.ui.view.smart_guides = d.fields.get("__smartGuides").and_then(Value::as_bool).unwrap_or(app.ui.view.smart_guides);
     app.ui.view.snap_to_grid = d.fields.get("__snapToGrid").and_then(Value::as_bool).unwrap_or(app.ui.view.snap_to_grid);
     app.ui.task_bar = d.fields.get("__taskBar").and_then(Value::as_bool).unwrap_or(app.ui.task_bar);
+    if d.bool("__resetLayout") {
+        app.ui.trowel_layout = crate::trowel_layout::Layout::default();
+    }
     app.ui.dialog = None;
     app.ui.engine_prefs = app.session.prefs.to_json();
     Ok(Value::Null)
@@ -223,6 +226,8 @@ pub fn show(app: &mut VectorcraftApp, ctx: &egui::Context) {
         for (k, v) in Prefs::default().to_json().as_object().cloned().unwrap_or_default() {
             d.fields.insert(k, v);
         }
+        // Trowel's panels go back to their first layout too (design 3.1 §13), on OK.
+        d.fields.insert("__resetLayout".into(), json!(true));
     }
     app.ui.dialog = Some(d);
     if cancel {

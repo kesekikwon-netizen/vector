@@ -35,6 +35,9 @@ pub struct Workspace {
     pub toolbar_pos: Option<[f32; 2]>,
     /// Trowel's own window (design 2.1 §3) instead of the classic chrome.
     pub trowel: bool,
+    /// Where Trowel's panels go (built-in workspaces: the first layout, design 3.1 §13).
+    #[serde(deserialize_with = "crate::trowel_layout::lenient")]
+    pub trowel_layout: crate::trowel_layout::Layout,
 }
 
 impl Default for Workspace {
@@ -167,6 +170,7 @@ pub fn capture(ui: &UiState, name: &str) -> Workspace {
         floating_panels: ui.floating_panels.clone(),
         toolbar_pos: ui.toolbar_pos,
         trowel: ui.trowel,
+        trowel_layout: ui.trowel_layout.clone(),
     }
 }
 
@@ -187,6 +191,8 @@ pub fn apply(ui: &mut UiState, w: &Workspace) {
     ui.floating_panels = w.floating_panels.clone();
     ui.toolbar_pos = w.toolbar_pos;
     ui.trowel = w.trowel;
+    ui.trowel_layout = w.trowel_layout.clone();
+    ui.trowel_layout.sanitize();
     if w.trowel {
         ui.brightness = crate::theme::Brightness::Plate;
     }

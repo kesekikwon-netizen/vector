@@ -17,9 +17,13 @@ use super::*;
 /// Above the head, and the head (the mockup's `.pen .ph`).
 const TOP: f32 = 2.0;
 const HEAD_H: f32 = 34.0;
+/// Where its head ends: what moves it ([`super::layout`]).
+pub(super) const HEAD_END: f32 = TOP + HEAD_H;
 /// The weight row (chips 30 tall and 3 either side), the line and hatch rows (a 26 choice and 3
 /// either side) and the colour row (20 swatches and 3 either side): the mockup's 6 between them.
 const WEIGHT_ROW: f32 = 36.0;
+/// The least it shrinks to: its head and the weight row.
+pub(super) const MIN_HEIGHT: f32 = TOP + HEAD_H + WEIGHT_ROW;
 const ROW: f32 = 32.0;
 const COLOUR_ROW: f32 = 26.0;
 /// The same-or-not line, the three buttons under it when they show, and the room at the foot.

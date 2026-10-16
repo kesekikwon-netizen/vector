@@ -4355,3 +4355,30 @@ trowel	Put in	넣기
 	 to finish  |  	 끝내기  |  
 	 to take the last point back  |  	 마지막 점 지우기  |  
 trowel	This drawing has map coordinates: draw level lines in a section drawing	이 도면에는 지도 좌표가 있습니다. 해발선은 단면도에서 그리세요
+	Reset Panel Layout	배치 처음대로
+	Drawing Set and Elements	도면집·요소함
+	Legend	범례
+	Pen	펜
+	Layer Strip	레이어 띠
+	Show or Hide a Panel	칸 보이기·숨기기
+	Move a Panel	칸 옮기기
+	Size a Column	열 너비
+	Panel Layout	칸 배치
+trowel	Open {name}	{name} 펴기
+trowel	New sublayer in the current layer	지금 레이어 안에 하위 레이어
+trowel	Fold the layer strip	레이어 띠 접기
+trowel	{n} empty layer	빈 레이어 {n}개
+trowel	{n} empty layers	빈 레이어 {n}개
+trowel	Fold the layers with nothing drawn on them	그린 것이 없는 레이어 접기
+trowel	Show the layers with nothing drawn on them	그린 것이 없는 레이어 펼치기
+trowel	Hide · Alt+click: show this layer alone	숨기기 · Alt+클릭: 이 레이어만 보이기
+trowel	Show · Alt+click: show this layer alone	보이기 · Alt+클릭: 이 레이어만 보이기
+trowel	Draw on this layer · double-click to rename	이 레이어에 그립니다 · 두 번 누르면 이름을 바꿉니다
+trowel	Select · Shift+click: add · double-click to rename	고릅니다 · Shift+클릭: 더해 고르기 · 두 번 누르면 이름을 바꿉니다
+trowel	panel must be one of set, legend, pen, props, layers	panel은 set, legend, pen, props, layers 가운데 하나여야 합니다
+trowel	column must be one of left, right, edge	column은 left, right, edge 가운데 하나여야 합니다
+trowel	shown must be true or false	shown은 true 또는 false여야 합니다
+trowel	index must be a whole number from 0	index는 0부터의 정수여야 합니다
+trowel	the panel went missing	칸을 찾지 못했습니다
+trowel	width must be a number	width는 숫자여야 합니다
+trowel	folded must be true, false or null	folded는 true, false 또는 null이어야 합니다
