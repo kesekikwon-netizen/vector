@@ -34,14 +34,11 @@ const PROXY_GAP: f32 = 6.0;
 const PROXY_H: f32 = 58.0;
 
 /// The archaeology tools (J009): their keys, icons and names.
-/// (`section-line` is in the top Ribbon only so it isn't duplicated here.)
-fn arch() -> [(&'static str, &'static str, &'static str); 4] {
-    [
-        ("spot-height", "tw-spot-height", tw!("Spot Height")),
-        ("find-number", "tw-find-number", tw!("Find Number")),
-        ("posthole", "tw-posthole", tw!("Posthole Depth")),
-        ("hachure", "tw-hachure", tw!("Slope Hachure")),
-    ]
+/// (`section-line` is in the top Ribbon only so it isn't duplicated here. Find Number, which has
+/// no engine command, and Posthole Depth, which called one that doesn't exist instead of
+/// `trowel.depthMarker`, left with design 3.0 D1; the column's archaeology tools come back in D4.)
+fn arch() -> [(&'static str, &'static str, &'static str); 2] {
+    [("spot-height", "tw-spot-height", tw!("Spot Height")), ("hachure", "tw-hachure", tw!("Slope Hachure"))]
 }
 
 /// How tall the tools are with buttons `bh` tall: the slots and the lines between their groups,
@@ -122,9 +119,11 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
                 }
                 Some(Pick::Arch(key)) => {
                     let res = match key {
-                        "spot-height" => app.run("trowel.spotElevation", json!({ "x": 100.0, "y": 100.0, "elevation_m": 152.34 })),
-                        "find-number" => app.run("trowel.artifactBadge", json!({ "x": 120.0, "y": 120.0, "number": 1 })),
-                        "posthole" => app.run("trowel.postholeDepth", json!({ "x": 140.0, "y": 140.0, "depth_cm": -18 })),
+                        // Near the middle of the view, at the elevation the ribbon's Spot Height sets.
+                        "spot-height" => {
+                            let at = place_symbol_at(app, &ctx, [0.0, 0.0]);
+                            app.run("trowel.spotElevation", json!({ "at": at, "elevation": datum_elevation_m(&ctx) }))
+                        }
                         "hachure" => app.run("trowel.slopeHachures", json!({})),
                         _ => Ok(json!({})),
                     };

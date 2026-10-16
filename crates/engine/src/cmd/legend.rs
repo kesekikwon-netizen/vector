@@ -89,7 +89,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Add Field Standard Legend Presets",
             [],
             None,
-            "{name?: string} add Korean excavation report field standard legend rows (0.6pt 평면외곽선, 0.3pt 내선(바닥), 0.4pt 이중굴광시-가운데선, 0.5pt 석곽-평면외곽선, 0.2pt 석곽-내선, 0.3pt 석곽-유물 토기외곽·금속, 0.2pt 석곽-유물 내선, 0.15pt 석곽-유물 깨진면, 0.8pt 단면선, 0.2pt 단면빗금, 0.3pt 해발선, 0.5pt 해발선 0.5단위)",
+            "{name?: string} add Korean excavation report field standard legend rows; `name` (one of the twelve, else an error) adds that one, or draws with it when it is there already → {added: [id], picked?: id} (0.6pt 평면외곽선, 0.3pt 내선(바닥), 0.4pt 이중굴광시-가운데선, 0.5pt 석곽-평면외곽선, 0.2pt 석곽-내선, 0.3pt 석곽-유물 토기외곽·금속, 0.2pt 석곽-유물 내선, 0.15pt 석곽-유물 깨진면, 0.8pt 단면선, 0.2pt 단면빗금, 0.3pt 해발선, 0.5pt 해발선 0.5단위)",
             has_doc,
             add_field_presets
         ),
@@ -769,12 +769,31 @@ pub fn field_preset_rows() -> Vec<(&'static str, Legend)> {
 }
 
 fn add_field_presets(s: &mut Session, p: &Value) -> Result<Value> {
-    let filter_name = p.get("name").and_then(Value::as_str);
+    const C: &str = "legend.addFieldPresets";
+    let filter_name = match p.get("name") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(name)) => Some(name.as_str()),
+        Some(_) => return Err(bad(C, "`name` is not text")),
+    };
+    // A name that isn't one of the twelve is a caller's mistake, not "nothing to add".
+    if let Some(name) = filter_name
+        && !FIELD_PRESETS.iter().any(|row| row.0 == name)
+    {
+        return Err(bad(C, format!("no field standard row named `{name}`")));
+    }
     let d = &s.doc()?.doc;
-    let there = |name: &str| d.layers.iter().any(|l| l.display_name().trim() == name);
-    let rows: Vec<(&'static str, Legend)> =
-        field_preset_rows().into_iter().filter(|(name, _)| filter_name.is_none_or(|fnm| *name == fnm)).filter(|(name, _)| !there(name)).collect();
+    let there = |name: &str| d.layers.iter().find(|l| l.display_name().trim() == name).map(|l| l.id);
+    let rows: Vec<(&'static str, Legend)> = field_preset_rows()
+        .into_iter()
+        .filter(|(name, _)| filter_name.is_none_or(|fnm| *name == fnm))
+        .filter(|(name, _)| there(name).is_none())
+        .collect();
     if rows.is_empty() {
+        // One row asked for by name and already there: draw with it, as when it is added.
+        if let Some(id) = filter_name.and_then(there) {
+            pick(s, &json!({ "id": id.0 }))?;
+            return Ok(json!({ "added": [], "picked": id.0 }));
+        }
         return Ok(json!({ "added": [], "skipped": 0 }));
     }
     let added = s.edit("Add Field Standard Legend Presets", |d, _| {

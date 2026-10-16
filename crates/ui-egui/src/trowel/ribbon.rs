@@ -538,8 +538,8 @@ fn show_trowel_tile_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_
                     });
                 }
                 "spot-height" => {
-                    let elev_id = wid("spot-datum-elev-val", ());
-                    let mut elev_m = ui.data(|d| d.get_temp::<f64>(elev_id).unwrap_or(93.0));
+                    let elev_id = super::datum_elevation_id();
+                    let mut elev_m = super::datum_elevation_m(ctx);
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("기준 해발(m):").font(font(11.0)).color(t.text_dim));
                         ui.add(egui::DragValue::new(&mut elev_m).speed(0.1).range(-100.0..=2000.0).suffix(" m"));
@@ -547,10 +547,12 @@ fn show_trowel_tile_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_
                     ui.data_mut(|d| d.insert_temp(elev_id, elev_m));
                     ui.add_space(4.0);
                     if ui.button("자동 해발선: 단면선 아래쪽 + 우측 붉은 눈금 (──┃)").clicked() {
-                        app.select_tool("selection");
+                        // Near the middle of the view when there's no section to follow.
+                        let at = super::place_symbol_at(app, ctx, [0.0, 0.0]);
                         let _ = app.run(
                             "elevation.create",
                             json!({
+                                "at": at,
                                 "datumM": elev_m,
                                 "minorWeightPt": 0.3,
                                 "majorWeightPt": 0.5,
@@ -562,10 +564,12 @@ fn show_trowel_tile_popup(app: &mut VectorcraftApp, ctx: &egui::Context, ribbon_
                         );
                     }
                     if ui.button("자동 해발선: 빈 곳(위쪽) + 좌측 숫자 (기본)").clicked() {
-                        app.select_tool("selection");
+                        // Near the middle of the view when there's no section to follow.
+                        let at = super::place_symbol_at(app, ctx, [0.0, 0.0]);
                         let _ = app.run(
                             "elevation.create",
                             json!({
+                                "at": at,
                                 "datumM": elev_m,
                                 "minorWeightPt": 0.2,
                                 "majorWeightPt": 0.5,

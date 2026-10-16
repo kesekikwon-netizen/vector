@@ -67,6 +67,17 @@ pub(crate) fn card_took_press(ctx: &egui::Context) -> bool {
     card::took_press(ctx)
 }
 
+/// The elevation the tool column's Spot Height and the ribbon's Spot Height popup use, in metres:
+/// the one last set in that popup, 93.0 m until then.
+pub(crate) fn datum_elevation_m(ctx: &egui::Context) -> f64 {
+    ctx.data(|d| d.get_temp::<f64>(datum_elevation_id())).unwrap_or(93.0)
+}
+
+/// Where [`datum_elevation_m`] is kept.
+pub(crate) fn datum_elevation_id() -> egui::Id {
+    wid("spot-datum-elev-val", ())
+}
+
 /// Compute a visible placement position near the active viewport center (or active artboard
 /// center), applying a small cascade offset on consecutive insertions so multiple 1-click
 /// symbols do not stack on the exact same pixel, and switch to the Selection tool so the user

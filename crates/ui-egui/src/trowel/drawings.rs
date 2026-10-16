@@ -194,10 +194,12 @@ fn show_scrapboard_palette(app: &mut VectorcraftApp, ui: &mut Ui, area: Rect, t:
                 "단면선 아래 지면 영역에 50cm/10cm 연속 해발선(우측 주기 + 적색 기준점) 자동 생성",
                 false,
             ) {
-                app.select_tool("selection");
+                // Near the middle of the view when there's no section to follow.
+                let at = super::place_symbol_at(app, ui.ctx(), [0.0, 0.0]);
                 let _ = app.run(
                     "elevation.create",
                     json!({
+                        "at": at,
                         "datumM": 93.0,
                         "minorWeightPt": 0.3,
                         "majorWeightPt": 0.5,
@@ -210,10 +212,12 @@ fn show_scrapboard_palette(app: &mut VectorcraftApp, ui: &mut Ui, area: Rect, t:
             }
             if grid_btn(ui, wid("scrap-elev", "open"), b2, "빈 곳 해발선 생성", "단면 위 굴광 빈 공간에 50cm/10cm 연속 해발선 자동 생성", false)
             {
-                app.select_tool("selection");
+                // Near the middle of the view when there's no section to follow.
+                let at = super::place_symbol_at(app, ui.ctx(), [0.0, 0.0]);
                 let _ = app.run(
                     "elevation.create",
                     json!({
+                        "at": at,
                         "datumM": 93.0,
                         "minorWeightPt": 0.2,
                         "majorWeightPt": 0.5,
@@ -341,7 +345,7 @@ fn show_scrapboard_palette(app: &mut VectorcraftApp, ui: &mut Ui, area: Rect, t:
         let core_row = [
             ("p1", "평면외곽", "평면외곽선", "평면외곽선 (0.6 pt 실선) 레이어 추가 및 선택"),
             ("p2", "내선(바닥)", "내선(바닥)", "내선(바닥) (0.3 pt 실선) 레이어 추가 및 선택"),
-            ("p3", "이중굴광", "이중굴광-가운데선", "이중굴광-가운데선 (0.4 pt 파선) 레이어 추가 및 선택"),
+            ("p3", "이중굴광", "이중굴광시-가운데선", "이중굴광시-가운데선 (0.4 pt 파선) 레이어 추가 및 선택"),
         ];
         {
             let (_, row_r) = ui.allocate_space(vec2(ui.available_width(), 22.0));
@@ -361,14 +365,14 @@ fn show_scrapboard_palette(app: &mut VectorcraftApp, ui: &mut Ui, area: Rect, t:
                     ("p6", "석곽내선", "석곽-내선", "석곽-내선 (0.2 pt 실선) 레이어 추가 및 선택"),
                 ],
                 [
-                    ("p7", "유물외곽", "유물-외곽선", "유물-외곽선 (0.3 pt 실선) 레이어 추가 및 선택"),
-                    ("p8", "유물내선", "유물-내선", "유물-내선 (0.2 pt 실선) 레이어 추가 및 선택"),
-                    ("p9", "깨진면", "석곽·유물 깨진면", "석곽·유물 깨진면 (0.15 pt 실선) 레이어 추가 및 선택"),
+                    ("p7", "유물외곽", "석곽-유물 토기외곽·금속", "석곽-유물 토기외곽·금속 (0.3 pt 실선) 레이어 추가 및 선택"),
+                    ("p8", "유물내선", "석곽-유물 내선", "석곽-유물 내선 (0.2 pt 실선) 레이어 추가 및 선택"),
+                    ("p9", "깨진면", "석곽-유물 깨진면", "석곽-유물 깨진면 (0.15 pt 실선) 레이어 추가 및 선택"),
                 ],
                 [
                     ("p10", "단면빗금", "단면빗금", "단면빗금 (0.2 pt 실선) 레이어 추가 및 선택"),
                     ("p11", "해발선", "해발선", "해발선 (0.3 pt 실선) 레이어 추가 및 선택"),
-                    ("p12", "0.5m 주해발", "해발 0.5단위 해발선", "해발 0.5m 단위 주해발선 (0.5 pt 실선) 레이어 추가 및 선택"),
+                    ("p12", "0.5m 주해발", "해발선 0.5단위", "해발선 0.5단위 (0.5 pt 실선) 레이어 추가 및 선택"),
                 ],
             ];
             for row_presets in extra_rows {

@@ -56,8 +56,9 @@ const SLOTS: [&str; 14] = [
     "zoom",
 ];
 
-/// The archaeology tools under them.
-const ARCH: [&str; 4] = ["spot-height", "find-number", "posthole", "hachure"];
+/// The archaeology tools under them (Find Number and Posthole Depth left with design 3.0 D1: the
+/// engine has no commands for them).
+const ARCH: [&str; 2] = ["spot-height", "hachure"];
 
 /// Text painted in the last frame: what it says, where and in what colour, and the part of it
 /// that shows (inside its clip).
@@ -342,6 +343,21 @@ impl Harness {
         self.app.session.active().unwrap().current_layer()
     }
 
+    /// Click the button reading `label` inside `area`, for buttons without an id of their own.
+    fn click_text(&mut self, label: &str, area: Rect) {
+        let at = self
+            .texts
+            .iter()
+            .find(|p| p.text == label && area.contains(p.shown.center()))
+            .map(|p| p.shown.center())
+            .unwrap_or_else(|| panic!("no {label:?} in {area:?}"));
+        self.click_at(at);
+    }
+
+    fn node_count(&self) -> usize {
+        self.app.session.active().unwrap().doc.node_count()
+    }
+
     /// The enabled and disabled clickable widgets of the open popup, top to bottom.
     fn popup_buttons(&self) -> Vec<(Rect, bool)> {
         let mut v: Vec<(Rect, bool)> = self.ctx.viewport(|vp| {
@@ -560,7 +576,10 @@ fn small_windows_keep_every_tile_and_tool_in_reach() {
             column.contains_rect(r) && r.bottom() <= fill.top()
         };
         let all: Vec<egui::Id> = SLOTS.iter().map(|k| wid("tool", k)).chain(ARCH.iter().map(|k| wid("arch", k))).collect();
-        if height >= 816.0 {
+        // From 1366 × 728 the whole column fits, tightened (two tools fewer since design 3.0 D1):
+        // its 500 points less the fill and stroke leave 428, and 14 slots, 4 lines and 2
+        // archaeology tools at 22 points take 418 (464 with four).
+        if height >= 728.0 {
             let hidden: Vec<_> = all.iter().filter(|id| !tool_shown(&h, **id)).collect();
             assert!(hidden.is_empty(), "{w}: tools cut off {hidden:?}");
         } else {
@@ -712,14 +731,21 @@ fn tool_column_has_the_mockup_groups() {
     let at = h.rect(wid("tool", "pen")).unwrap().center();
     h.press(at, PointerButton::Secondary);
     assert!(h.app.ui.flyout.is_some(), "the Pen slot's flyout");
-    // The archaeology tools wait for J009.
+    // The archaeology tools under them.
     for a in ARCH {
         let rect = h.rect(wid("arch", a)).unwrap_or_else(|| panic!("no {a}"));
         assert!(column.contains_rect(rect) && rect.top() > rects[13].bottom(), "{a} under the tools");
     }
+    for gone in ["find-number", "posthole"] {
+        assert!(h.rect(wid("arch", gone)).is_none(), "{gone}: no command for it yet (design 3.0 D1)");
+    }
+    // Spot Height puts one near the middle of the view and hands over the Selection tool to move
+    // it, as the set's one-click elements do (it sent `x`, `y` without `at` and drew nothing).
     h.app.ui.flyout = None;
+    let before = h.app.session.active().unwrap().doc.node_count();
     h.click(wid("arch", "spot-height"));
-    assert_eq!(h.app.session.tool_id(), "curvature");
+    assert!(h.app.session.active().unwrap().doc.node_count() > before, "a spot height: {}", h.app.ui.status);
+    assert_eq!(h.app.session.tool_id(), "selection");
 }
 
 #[test]
@@ -1214,7 +1240,8 @@ fn every_trowel_icon_is_bundled() {
             names.insert(rest[..rest.find('"').unwrap()].to_string());
         }
     }
-    assert!(names.len() >= 37, "{names:?}");
+    // The scan finds the window's icons (37 before Find Number and Posthole Depth left, design 3.0 D1).
+    assert!(names.len() >= 35, "{names:?}");
     let missing: Vec<_> = names.iter().filter(|n| !crate::icons::exists(n)).collect();
     assert!(missing.is_empty(), "icons not bundled: {missing:?}");
 }
@@ -3473,4 +3500,136 @@ fn test_trowel_ux_dedup_units_and_one_click_workflows() {
     assert_eq!(h.app.session.tool_id(), "pen");
     h.click(wid("scrap-sec", "ah"));
     assert_eq!(h.app.session.tool_id(), "selection", "1-click symbol insertion auto-switches to selection tool");
+}
+
+/// Design 3.0 D1: every one-click button of the drawing set, the ribbon's element popups and the
+/// tool column draws something and reports no error. (Five of the set's standard lines sent names
+/// the engine doesn't know and did nothing; Spot Height sent `x`, `y` without `at`.)
+#[test]
+fn every_one_click_button_draws_without_error() {
+    // Tall enough for the whole drawing set, unscrolled.
+    let mut h = Harness::sized(1600.0, 1700.0);
+    let check = |h: &mut Harness, what: &str, before: usize, seq: u64| {
+        assert_eq!(h.app.ui.status_seq, seq, "{what}: {}", h.app.ui.status);
+        assert!(h.node_count() > before, "{what} drew nothing");
+    };
+    // The drawing set's buttons.
+    h.click(wid("scrap-preset-fold", ()));
+    let mut set: Vec<(&str, egui::Id)> = vec![];
+    for d in [10_u32, 20, 30, 40, 50, 60, 80, 100, 200] {
+        set.push(("scale bar", wid("scrap-scale", d)));
+    }
+    for k in ["ah", "bh", "ch", "av", "dh", "dv"] {
+        set.push(("section mark", wid("scrap-sec", k)));
+    }
+    for k in ["below", "open"] {
+        set.push(("level lines", wid("scrap-elev", k)));
+    }
+    for k in ["n0", "n30", "nm30"] {
+        set.push(("north arrow", wid("scrap-north", k)));
+    }
+    for k in ["roman", "circled", "table7p"] {
+        set.push(("layer number", wid("scrap-strat", k)));
+    }
+    for k in ["disturb", "limit", "grid_lbl"] {
+        set.push(("stamp", wid("scrap-stamp", k)));
+    }
+    for (what, id) in set {
+        let (before, seq) = (h.node_count(), h.app.ui.status_seq);
+        h.click(id);
+        check(&mut h, &format!("{what} {id:?}"), before, seq);
+    }
+    // Each standard line by name: added, then drawn with. The twelve buttons name the engine's
+    // twelve rows, no more and no fewer.
+    let buttons = [
+        ("p1", "평면외곽선"),
+        ("p2", "내선(바닥)"),
+        ("p3", "이중굴광시-가운데선"),
+        ("p4", "단면선"),
+        ("p5", "석곽-평면외곽선"),
+        ("p6", "석곽-내선"),
+        ("p7", "석곽-유물 토기외곽·금속"),
+        ("p8", "석곽-유물 내선"),
+        ("p9", "석곽-유물 깨진면"),
+        ("p10", "단면빗금"),
+        ("p11", "해발선"),
+        ("p12", "해발선 0.5단위"),
+    ];
+    let mut engine: Vec<&str> = vectorcraft_engine::cmd::legend::field_preset_rows().iter().map(|(n, _)| *n).collect();
+    let mut named: Vec<&str> = buttons.iter().map(|b| b.1).collect();
+    engine.sort_unstable();
+    named.sort_unstable();
+    assert_eq!(named, engine);
+    for (key, name) in buttons {
+        let (before, seq) = (h.node_count(), h.app.ui.status_seq);
+        h.click(wid("scrap-preset", key));
+        check(&mut h, name, before, seq);
+        let cur = h.current_layer().and_then(|id| h.app.session.active().unwrap().doc.node(id).map(|n| n.display_name()));
+        assert_eq!(cur.as_deref(), Some(name), "{key}");
+    }
+    // All twelve again: there already, so nothing to add and nothing wrong.
+    let seq = h.app.ui.status_seq;
+    h.click(wid("scrap-preset", "all12"));
+    assert_eq!(h.app.ui.status_seq, seq, "{}", h.app.ui.status);
+
+    // The ribbon's element popups.
+    let popups: [(&str, &[&str]); 5] = [
+        ("scale-bar", &["1/10", "1/20", "1/30", "1/40", "1/50", "1/60", "1/80", "1/100", "1/200"]),
+        ("section-line", &["A–A′ (가로)", "B–B′ (세로)", "C–C′ (가로)", "a–a′ (가로)", "b–b′ (세로)", "──┃ 93.0m (가로단면)", "┳ 93.0m (세로단면)"]),
+        (
+            "spot-height",
+            &[
+                "자동 해발선: 단면선 아래쪽 + 우측 붉은 눈금 (──┃)",
+                "자동 해발선: 빈 곳(위쪽) + 좌측 숫자 (기본)",
+                "붉은 눈금 ──┃ 93.0m 찍기",
+                "세로 눈금 ┳ 93.0m 찍기",
+            ],
+        ),
+        ("north", &["방위표 넣기", "-45°", "-30°", "-15°", "+0°", "+15°", "+30°", "+45°", "+90°"]),
+        (
+            "legend",
+            &[
+                "토층설명 7p 텍스트 넣기 (I : 흑갈색 사질점토…)",
+                "교란 (6p)",
+                "조사경계 (6p+파선)",
+                "격자 기호 (A1~C3)",
+                "현장 선굵기 규격 주기",
+                "I",
+                "II",
+                "III",
+                "IV",
+                "V",
+                "VI",
+                "VII",
+                "VIII",
+                "IX",
+                "X",
+            ],
+        ),
+    ];
+    for (tile, buttons) in popups {
+        h.click(wid("tile", tile));
+        let area = h.ctx.memory(|m| m.area_rect(wid("trowel-tile-window", tile))).unwrap_or_else(|| panic!("{tile}'s popup"));
+        for b in buttons {
+            let (before, seq) = (h.node_count(), h.app.ui.status_seq);
+            h.click_text(b, area);
+            check(&mut h, &format!("{tile} › {b}"), before, seq);
+        }
+    }
+
+    // The tool column: Spot Height at the elevation the ribbon's popup set; Slope Hachure along the
+    // selected top line.
+    h.ctx.data_mut(|d| d.insert_temp(super::datum_elevation_id(), 95.5));
+    let (before, seq) = (h.node_count(), h.app.ui.status_seq);
+    h.click(wid("arch", "spot-height"));
+    check(&mut h, "spot height", before, seq);
+    let st = h.app.session.active().unwrap();
+    let spot = st.selection.objects.first().and_then(|id| st.doc.node(*id)).map(|n| n.display_name());
+    assert!(spot.as_deref().is_some_and(|n| n.contains("95.50")), "{spot:?}");
+    let top = h.app.run("shape.line", json!({ "x1": 50.0, "y1": 50.0, "x2": 250.0, "y2": 80.0 })).unwrap();
+    h.app.run("select.set", json!({ "ids": [top["id"]] })).unwrap();
+    h.settle();
+    let (before, seq) = (h.node_count(), h.app.ui.status_seq);
+    h.click(wid("arch", "hachure"));
+    check(&mut h, "slope hachure", before, seq);
 }

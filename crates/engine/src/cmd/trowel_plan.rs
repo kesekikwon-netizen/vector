@@ -1058,6 +1058,19 @@ mod tests {
         // 5. Field standard 12 stroke presets (0.15..0.8 pt)
         let fp = s.execute("legend.addFieldPresets", &json!({})).expect("field presets");
         assert_eq!(fp["added"].as_array().map(Vec::len), Some(12));
+        // One by name: already there, so it becomes the row to draw with; a wrong name is an error
+        // (design 3.0 D1: the set's buttons sent five names the list doesn't have, and nothing happened).
+        let again = s.execute("legend.addFieldPresets", &json!({ "name": "석곽-유물 깨진면" })).expect("by name");
+        let picked = again["picked"].as_u64().map(NodeId).expect("picked");
+        assert_eq!(s.doc().unwrap().current_layer(), Some(picked));
+        assert_eq!(s.doc().unwrap().doc.node(picked).map(|n| n.display_name()).as_deref(), Some("석곽-유물 깨진면"));
+        assert!(s.execute("legend.addFieldPresets", &json!({ "name": "석곽·유물 깨진면" })).is_err(), "not one of the twelve");
+        assert!(s.execute("legend.addFieldPresets", &json!({ "name": 5 })).is_err(), "a name is text");
+        // A locked row can't be drawn with: an error, and the row in hand stays.
+        let section = fp["added"].as_array().and_then(|a| a.get(8)).and_then(|v| v.as_u64()).expect("단면선");
+        s.execute("layer.setProps", &json!({ "ids": [section], "locked": true })).expect("lock");
+        assert!(s.execute("legend.addFieldPresets", &json!({ "name": "단면선" })).is_err(), "locked");
+        assert_eq!(s.doc().unwrap().current_layer(), Some(picked));
 
         // 6. Roman numeral (I..XX) & 7pt inline stratigraphy block
         assert_eq!(vectorcraft_doc::stratigraphy::to_ascii_roman(1), "I");
