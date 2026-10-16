@@ -4290,5 +4290,22 @@ trowel	…and {n} more	…외 {n}줄
 trowel	Alternating Hatch (45°/135°). Click to flip direction	번갈아 빗금 (45°/135°). 클릭하여 방향 전환
 trowel	Cut border (0.8 pt) and alternating hatch	단면 외곽선 (0.8 pt) 및 번갈아 빗금
 trowel	Odd-cycle conflict (3+ mutually adjacent faces)! Click to flip direction	홀수 순환 충돌 (인접한 3면 이상)! 클릭하여 방향 전환
+trowel	Click to copy the coordinates	눌러서 좌표 복사
+trowel	Colour	색
+trowel	Coordinates copied	좌표를 복사했습니다
+trowel	DXF (keeps coordinates)…	DXF (좌표 유지)…
+trowel	Dark grey	진한 회색
+trowel	Datum elevation	기준 해발
+trowel	Finish Line	선 끝내기
+trowel	Graph green	모눈 초록
+trowel	Light grey	연한 회색
+trowel	Ochre	황토색
+trowel	PDF…	PDF…
+trowel	SVG…	SVG…
+trowel	Scale and Coordinate System	축척과 좌표계
+trowel	Scale · CRS	축척·좌표
+trowel	Sky	하늘색
+trowel	Strata Survey Data…	Strata 조사 자료…
+trowel	Place	넣기
 @msg	Rule layer added: {name}	규칙 레이어 추가됨: {name}
 @msg	Removed empty unused layers: {removed}	비어 있는 미사용 레이어 {removed}개를 정리했습니다.

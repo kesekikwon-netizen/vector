@@ -1,9 +1,10 @@
-//! Trowel's main window (design 2.1 §3, the `win-plan` mockup at 1600 × 988): caption, menu bar
-//! with the Drawing menu, ribbon, Control bar, tool column, drawing set, document tabs, the canvas
-//! with what floats on it, the right column (drawing palette, legend and layers, properties) and
-//! the status bar. It draws the same engine state and runs the same commands as the classic window
-//! ([`crate::chrome`], [`crate::toolbar`], [`crate::dock`]); what later jobs bring shows dimmed,
-//! with their job number on hover ([`soon`]).
+//! Trowel's main window (design 3.0 §4, the main mockup at 1440 × 880): caption, menu bar with
+//! the Drawing menu, ribbon, tool column, drawing set, document tabs, the canvas with the zoom
+//! buttons on it, the right column (drawing palette, legend and layers, properties) and the status
+//! bar. It draws the same engine state and runs the same commands as the classic window
+//! ([`crate::chrome`], [`crate::toolbar`], [`crate::dock`]); each thing it does has one place
+//! (design 3.0 §3, principle 1), and what later jobs bring shows dimmed, with their job number on
+//! hover ([`soon`]).
 
 use std::hash::Hash;
 
@@ -17,7 +18,6 @@ pub mod canvas_penbar;
 mod caption;
 mod card;
 mod center;
-mod control;
 pub mod drawings;
 pub mod gpkg_browser;
 pub mod home;
@@ -39,7 +39,6 @@ mod weights;
 pub(crate) const CAPTION: &str = "trowel-caption";
 pub(crate) const MENU: &str = "trowel-menu";
 pub(crate) const RIBBON: &str = "trowel-ribbon";
-pub(crate) const CONTROL: &str = "trowel-control";
 pub(crate) const STATUS: &str = "trowel-status";
 pub(crate) const TOOLS: &str = "trowel-tools";
 pub(crate) const SET: &str = "trowel-set";
@@ -48,13 +47,12 @@ pub(crate) const RIGHT: &str = "trowel-right";
 /// The parts' sizes in points, as in the mockup.
 const CAPTION_H: f32 = 32.0;
 const MENU_H: f32 = 28.0;
-const RIBBON_H: f32 = 96.0;
-const CONTROL_H: f32 = 40.0;
-const STATUS_H: f32 = 32.0;
+const RIBBON_H: f32 = 86.0;
+const STATUS_H: f32 = 28.0;
 const TOOLS_W: f32 = 56.0;
 const SET_W: f32 = 216.0;
 const RIGHT_W: f32 = 304.0;
-const TABS_H: f32 = 32.0;
+const TABS_H: f32 = 34.0;
 
 /// The id of one of Trowel's widgets: its kind and which one.
 pub(crate) fn wid(kind: &str, key: impl Hash + std::fmt::Debug) -> egui::Id {
@@ -101,7 +99,9 @@ pub(crate) fn place_symbol_at(app: &mut VectorcraftApp, ctx: &egui::Context, bas
 }
 
 /// Lay out Trowel's window. Screen mode 2 (full screen with the menu bar off) leaves out the bars
-/// above the canvas, screen mode 3 (full screen) everything but the canvas.
+/// above the canvas, screen mode 3 (full screen) everything but the canvas. There is no Control
+/// bar (design 3.0 §5): what it held has its one place in the status bar, the right column or the
+/// Window menu's panels.
 pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let mode = app.ui.screen_mode;
@@ -116,9 +116,6 @@ pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {
             menu::show(app, ui);
         }
         ribbon::show(app, ui);
-        if app.ui.control_bar {
-            control::show(app, ui);
-        }
     }
     if mode < 3 {
         if app.ui.status_bar {
@@ -480,7 +477,7 @@ fn soon(what: &str, job: &str) -> String {
 const NOTE_SECS: f64 = 4.0;
 const MESSAGE_SECS: f64 = 6.0;
 
-/// Where the note a press on something a later job brings left is kept, with when.
+/// Where the status bar's note ([`note`]) is kept, with when.
 fn note_id() -> egui::Id {
     wid("soon-note", ())
 }
@@ -499,12 +496,16 @@ fn soon_widget(ui: &Ui, id: egui::Id, r: Rect, what: &str, job: &str) -> egui::R
 /// before the colon.
 fn note_soon(ctx: &egui::Context, what: &str, job: &str) {
     let what = what.strip_suffix('…').unwrap_or(what);
-    let note = crate::i18n::fmt(tw!("{what}: coming soon ({job})"), &[("what", what), ("job", job)]);
-    let now = ctx.input(|i| i.time);
-    ctx.data_mut(|d| d.insert_temp(note_id(), (note, now)));
+    note(ctx, &crate::i18n::fmt(tw!("{what}: coming soon ({job})"), &[("what", what), ("job", job)]));
 }
 
-/// The note a press on something a later job brings left, for [`NOTE_SECS`].
+/// Say `s` in the status bar for [`NOTE_SECS`].
+fn note(ctx: &egui::Context, s: &str) {
+    let now = ctx.input(|i| i.time);
+    ctx.data_mut(|d| d.insert_temp(note_id(), (s.to_string(), now)));
+}
+
+/// The note a press on something a later job brings, or a [`note`], left, for [`NOTE_SECS`].
 fn soon_note(ctx: &egui::Context) -> Option<String> {
     let (note, at) = ctx.data(|d| d.get_temp::<(String, f64)>(note_id()))?;
     let left = NOTE_SECS - (ctx.input(|i| i.time) - at);
@@ -515,27 +516,16 @@ fn soon_note(ctx: &egui::Context) -> Option<String> {
     })
 }
 
-/// The name of tool `id` as Trowel shows it: its label without "Tool".
-fn tool_name(id: &str) -> String {
-    vectorcraft_tools::tool_info(id)
-        .map(|info| {
-            let label = tl!(info.label);
-            label.strip_suffix(tw!("Tool")).unwrap_or(label).trim().to_string()
-        })
-        .unwrap_or_default()
-}
-
 /// Where the next line goes.
 struct DrawTarget {
-    /// The layer (or isolated group) new art lands in; none when every layer is locked or hidden.
-    into: Option<vectorcraft_doc::NodeId>,
-    /// Why that is not the current layer, when the current one is locked or hidden.
+    /// Why that is not the current layer (when the current one is locked or hidden), or that no
+    /// layer takes it.
     note: Option<String>,
 }
 
 /// A locked or hidden layer takes no new art: the engine puts it in the topmost layer that is shown
 /// and unlocked instead ([`vectorcraft_engine::DocState::insertion_parent`]), or refuses it. The
-/// band, the Control bar and the legend show that layer and say why.
+/// status bar and the legend say so.
 fn draw_target(st: &vectorcraft_engine::DocState) -> DrawTarget {
     let into = st.insertion_parent().filter(|p| st.doc.is_editable(*p));
     let name = |id| st.doc.node(id).map(|n| n.display_name()).unwrap_or_default();
@@ -552,15 +542,13 @@ fn draw_target(st: &vectorcraft_engine::DocState) -> DrawTarget {
         _ if into.is_none() => Some(tw!("No layer to draw on").to_string()),
         _ => None,
     };
-    DrawTarget { into, note }
+    DrawTarget { note }
 }
 
-/// The active tool's hint at `size` in `color`, plainly as in the mockup, its parts apart by "·";
-/// `first` keeps the first part ("Click to add a corner point").
-fn hint_job(app: &VectorcraftApp, first: bool, size: f32, color: Color32) -> egui::text::LayoutJob {
+/// The active tool's hint at `size` in `color`, plainly as in the mockup, its parts apart by "·".
+fn hint_job(app: &VectorcraftApp, size: f32, color: Color32) -> egui::text::LayoutJob {
     let all: String = crate::chrome::current_hint(app).into_iter().map(|(s, _)| s).collect();
-    let mut parts = all.split('|').map(str::trim).filter(|p| !p.is_empty());
-    let shown = if first { parts.next().unwrap_or_default().to_string() } else { parts.collect::<Vec<_>>().join(" · ") };
+    let shown = all.split('|').map(str::trim).filter(|p| !p.is_empty()).collect::<Vec<_>>().join(" · ");
     egui::text::LayoutJob::simple_singleline(shown, font(size), color)
 }
 

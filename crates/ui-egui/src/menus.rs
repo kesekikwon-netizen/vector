@@ -1435,7 +1435,8 @@ pub fn checked(app: &VectorcraftApp, id: &str, p: &Value) -> Option<bool> {
         "view.snapToGrid" => v.snap_to_grid,
         "view.snapToPoint" => v.snap_to_point,
         "view.rulers" => v.rulers,
-        "window.control" => app.ui.control_bar,
+        // Trowel's window has no Control bar (design 3.0 §5).
+        "window.control" => app.ui.control_bar && !app.ui.trowel,
         "window.toolbar" => app.ui.toolbar,
         "window.toolbarAdvanced" => app.ui.toolbar_advanced,
         "window.toolbarColumns" => app.ui.toolbar_double,
@@ -1853,6 +1854,8 @@ pub fn enabled(app: &VectorcraftApp, id: &str) -> bool {
         return (c.enabled)(&app.session).is_ok() || app.system_paste && id.starts_with("edit.paste");
     }
     match id {
+        // Trowel's window has no Control bar (design 3.0 §5): what it held has one place each.
+        "window.control" => !app.ui.trowel,
         // Save is off for a clean document that already has its own file.
         "file.save" => app.session.active().is_some_and(|d| d.path.is_none() || d.converted || d.is_dirty()),
         "type.bold" | "type.italic" => crate::panels::character::text_style(app).is_some(),

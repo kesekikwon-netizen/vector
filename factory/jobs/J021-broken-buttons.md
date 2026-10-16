@@ -60,7 +60,7 @@
 | 1~6 | `cargo test -p vectorcraft-pathops -p vectorcraft-engine -p vectorcraft-ui-egui --no-fail-fast` | 종료 0, 3356 통과 0 실패 |
 | 6 | `cargo fmt --all -- --check` | 종료 0 |
 | 6 | `cargo clippy -p vectorcraft-pathops -p vectorcraft-engine -p vectorcraft-ui-egui --all-targets -- -D warnings` | 종료 0 |
-| 6 | GitHub 「Trowel CI」 | 올린 뒤 확인 (PR #1에 적음) |
+| 6 | GitHub 「Trowel CI」 run 38884017822 (`17085fc`) | 통과: cargo xtask ci (Linux) success, Windows x64 release build success |
 
 ## 검토 (review) 1차
 - 검토자: 독립 검토 에이전트, 읽기만. 범위: 작업 트리의 `crates/` 변경. 판정: **통과**(blocker·major 없음).

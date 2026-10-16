@@ -1,6 +1,7 @@
 //! The drawing set: the open drawings, the current one marked; a click shows one (from the Home
-//! screen too) and ＋ starts a new one. Its folders, templates and the scale and coordinate system
-//! at the bottom come with J004 and J006.
+//! screen too) and ＋ starts a new one. Under them, until the element box (design 3.0 D5) takes
+//! its place, the set of one-click drawing elements. The drawing's scale and coordinate system
+//! have their place in the status bar.
 
 use serde_json::json;
 
@@ -30,8 +31,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
             // The open drawings.
             let cap = head.bottom() + 10.0 + 7.0;
             list_caption(ui, r.left() + 12.0, r.right() - 12.0, cap, tw!("Open Drawings"), &t);
-            let foot = footer(app, ui, r, &t);
-            let avail_h = (foot.top() - 4.0 - (cap + 9.0)).max(0.0);
+            let avail_h = (r.bottom() - 4.0 - (cap + 9.0)).max(0.0);
             let names: Vec<String> = app.session.documents().iter().map(|d| d.title()).collect();
             let open_list_h = ((names.len().clamp(2, 3) as f32) * ROW_H + 2.0).min(avail_h);
             let rows = Rect::from_min_max(pos2(r.left(), cap + 9.0), pos2(r.right() - 1.0, cap + 9.0 + open_list_h));
@@ -71,8 +71,8 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
 
             // Always-visible Scrapboard Palette (소스판 팔레트) right below Open Drawings.
             let scrap_top = rows.bottom() + 4.0;
-            if foot.top() - 4.0 > scrap_top + 28.0 {
-                let scrap_rect = Rect::from_min_max(pos2(r.left(), scrap_top), pos2(r.right() - 1.0, foot.top() - 4.0));
+            if r.bottom() - 4.0 > scrap_top + 28.0 {
+                let scrap_rect = Rect::from_min_max(pos2(r.left(), scrap_top), pos2(r.right() - 1.0, r.bottom() - 4.0));
                 line_above(ui, scrap_rect, t.border);
                 show_scrapboard_palette(app, ui, scrap_rect, &t);
             }
@@ -155,8 +155,20 @@ fn show_scrapboard_palette(app: &mut VectorcraftApp, ui: &mut Ui, area: Rect, t:
             }
         }
 
-        // 2. 단면선 (■ 적색 기준점 + ∠) & 해발 기준점 (──┃ 93.0m)
+        // 2. 단면선 (■ 적색 기준점 + ∠) & 해발 기준점 (──┃ 93.0m), at the datum set here (it was
+        // in the ribbon's Spot Height popup; the tool column's Spot Height uses it too).
         section_head(ui, "단면선 · 해발 기준점 (■ 적색)");
+        let mut elev_m = super::datum_elevation_m(ui.ctx());
+        ui.horizontal(|ui| {
+            ui.add_space(left_pad);
+            ui.label(egui::RichText::new(tw!("Datum elevation")).font(font(11.0)).color(t.text_dim));
+            ui.add_enabled(has_doc, egui::DragValue::new(&mut elev_m).speed(0.1).range(-100.0..=2000.0).fixed_decimals(1).suffix(" m"));
+        });
+        ui.data_mut(|d| d.insert_temp(super::datum_elevation_id(), elev_m));
+        let datum_label = |orient: &str| match orient {
+            "horizontal" => format!("해발 {elev_m:.1}m"),
+            _ => format!("수직 {elev_m:.1}m"),
+        };
         for row_sec in [
             [
                 ("ah", "A–A′ 수평", "cut", "horizontal", "A", "수평 단면선 A–A′ (적색 기준점 ■ + 시선 화살표 ∠) 배치"),
@@ -165,19 +177,20 @@ fn show_scrapboard_palette(app: &mut VectorcraftApp, ui: &mut Ui, area: Rect, t:
             ],
             [
                 ("av", "A–A′ 수직", "cut", "vertical", "A", "수직 단면선 A–A′ 배치"),
-                ("dh", "해발 93.0m", "datum", "horizontal", "A", "수평 해발 기준점 (적색 수직 바 ──┃ + 93.0m) 배치"),
-                ("dv", "수직 93.0m", "datum", "vertical", "A", "수직 해발 기준점 (적색 수평 바 ┳ + 93.0m) 배치"),
+                ("dh", "", "datum", "horizontal", "A", "수평 해발 기준점 (적색 수직 바 ──┃ + 기준 해발) 배치"),
+                ("dv", "", "datum", "vertical", "A", "수직 해발 기준점 (적색 수평 바 ┳ + 기준 해발) 배치"),
             ],
         ] {
             let (_, row_r) = ui.allocate_space(vec2(ui.available_width(), 22.0));
             for (ci, (key, lbl, kind, orient, letter, tip)) in row_sec.into_iter().enumerate() {
                 let x = row_r.left() + left_pad + ci as f32 * (col3_w + 4.0);
                 let btn_r = Rect::from_min_size(pos2(x, row_r.top()), vec2(col3_w, 21.0));
-                if grid_btn(ui, wid("scrap-sec", key), btn_r, lbl, tip, false) {
+                let lbl = if kind == "datum" { datum_label(orient) } else { lbl.to_string() };
+                if grid_btn(ui, wid("scrap-sec", key), btn_r, &lbl, tip, false) {
                     let at = super::place_symbol_at(app, ui.ctx(), [0.0, 0.0]);
                     let _ = app.run(
                         "trowel.insertSectionMarker",
-                        json!({ "kind": kind, "orientation": orient, "label": letter, "elevationM": 93.0, "at": at }),
+                        json!({ "kind": kind, "orientation": orient, "label": letter, "elevationM": elev_m, "at": at }),
                     );
                 }
             }
@@ -200,7 +213,7 @@ fn show_scrapboard_palette(app: &mut VectorcraftApp, ui: &mut Ui, area: Rect, t:
                     "elevation.create",
                     json!({
                         "at": at,
-                        "datumM": 93.0,
+                        "datumM": elev_m,
                         "minorWeightPt": 0.3,
                         "majorWeightPt": 0.5,
                         "labelFontSizePt": 6.0,
@@ -218,7 +231,7 @@ fn show_scrapboard_palette(app: &mut VectorcraftApp, ui: &mut Ui, area: Rect, t:
                     "elevation.create",
                     json!({
                         "at": at,
-                        "datumM": 93.0,
+                        "datumM": elev_m,
                         "minorWeightPt": 0.2,
                         "majorWeightPt": 0.5,
                         "labelPlacement": "left",
@@ -387,62 +400,4 @@ fn show_scrapboard_palette(app: &mut VectorcraftApp, ui: &mut Ui, area: Rect, t:
             }
         }
     });
-}
-
-/// The set's footer at the bottom of `r`: the current drawing's size, its scale and coordinate
-/// system (J006). Returns its rect.
-fn footer(app: &mut VectorcraftApp, ui: &Ui, r: Rect, t: &Tokens) -> Rect {
-    let line = 11.0 * 1.6;
-    let foot = Rect::from_min_max(pos2(r.left(), r.bottom() - 8.0 - 3.0 * line - 8.0), r.max);
-    line_above(ui, foot, t.border);
-    let size = app.session.active().and_then(|d| {
-        let ab = d.doc.artboards.get(app.view().map_or(0, |v| v.artboard)).or_else(|| d.doc.artboards.first())?;
-        let u = app.session.general_unit();
-        let fmt_v = |pts: f64| {
-            let v = u.from_pt(pts);
-            let s = format!("{v:.1}");
-            s.strip_suffix(".0").unwrap_or(&s).to_string()
-        };
-        Some(format!("{} × {} {}", fmt_v(ab.rect.width()), fmt_v(ab.rect.height()), u.suffix()))
-    });
-    let scale_info = app.session.active().and_then(|d| {
-        let cfg = d.doc.scale.as_ref()?;
-        Some((format!("축척 1:{:.0}", cfg.scale.denom), format!("좌표계 EPSG:{} (TM)", cfg.crs.epsg)))
-    });
-    let mut y = foot.top() + 8.0 + line / 2.0;
-    if let Some(size) = size {
-        let x = text(ui, pos2(foot.left() + 12.0, y), Align2::LEFT_CENTER, format!("{} · ", tw!("This drawing")), font(11.0), t.text_dim).right();
-        text(ui, pos2(x, y), Align2::LEFT_CENTER, size, mono(11.0), t.text);
-    }
-    y += line;
-    let soon_top = y - line / 2.0;
-    if let Some((scale_str, crs_str)) = scale_info {
-        text(ui, pos2(foot.left() + 12.0, y), Align2::LEFT_CENTER, scale_str, mono(11.0), t.text);
-        y += line;
-        text(ui, pos2(foot.left() + 12.0, y), Align2::LEFT_CENTER, crs_str, font(11.0), t.text_dim);
-        y += line;
-    } else {
-        for l in [tw!("Scale not set"), tw!("Coordinate system not set")] {
-            text(ui, pos2(foot.left() + 12.0, y), Align2::LEFT_CENTER, l, font(11.0), t.text_dim);
-            y += line;
-        }
-    }
-    let lines = Rect::from_min_max(pos2(foot.left(), soon_top), pos2(foot.right() - 1.0, y - line / 2.0));
-    let resp = ui.interact(lines, wid("set-foot", ()), Sense::click()).on_hover_text(tw!("Scale and coordinate system"));
-    if resp.clicked() {
-        let next_denom = app
-            .session
-            .active()
-            .and_then(|d| d.doc.scale.as_ref().map(|c| c.scale.denom))
-            .map(|d| match d as u32 {
-                1 => 10.0,
-                10 => 20.0,
-                20 => 50.0,
-                50 => 100.0,
-                _ => 20.0,
-            })
-            .unwrap_or(20.0);
-        let _ = app.run("doc.setScale", json!({ "scale": next_denom, "epsg": 5186 }));
-    }
-    foot
 }

@@ -1,13 +1,6 @@
-//! Canvas Pen Bar: floating quick-action toolbar for pen tablet users (Trowel design 2.1 §12, J016 A5).
-//!
-//! Provides 7 large touch/pen action buttons centered at the bottom of the canvas:
-//! - `되돌리기` (Undo)
-//! - `다시` (Redo)
-//! - `선 끝내기` (FinishPath, primary action in terracotta accent)
-//! - `닫기` (ClosePath)
-//! - `확대` (ZoomIn)
-//! - `축소` (ZoomOut)
-//! - `맞춤` (Fit)
+//! The pen bar (design 3.0 §9): while a drawing tool is in hand, three large buttons centred at
+//! the bottom of the canvas for pen tablet users: Undo, Finish Line (Enter, in clay) and Close. The
+//! zoom has its place in the zoom buttons at the bottom right (principle 1).
 
 use egui::{Align2, Color32, CornerRadius, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use serde_json::json;
@@ -52,21 +45,25 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui, canvas: Rect, t: &Tokens) {
     struct PenBtn {
         key: &'static str,
         label: &'static str,
-        cmd: Option<&'static str>,
+        /// The key that does the same, shown after the label.
+        key_hint: Option<&'static str>,
         is_primary: bool,
     }
 
     let buttons = [
-        PenBtn { key: "undo", label: "되돌리기", cmd: Some("edit.undo"), is_primary: false },
-        PenBtn { key: "redo", label: "다시", cmd: Some("edit.redo"), is_primary: false },
-        PenBtn { key: "finish", label: "선 끝내기", cmd: None, is_primary: true },
-        PenBtn { key: "close", label: "닫기", cmd: None, is_primary: false },
-        PenBtn { key: "zoomIn", label: "확대", cmd: Some("view.zoomIn"), is_primary: false },
-        PenBtn { key: "zoomOut", label: "축소", cmd: Some("view.zoomOut"), is_primary: false },
-        PenBtn { key: "fit", label: "맞춤", cmd: Some("view.fitArtboard"), is_primary: false },
+        PenBtn { key: "undo", label: tw!("Undo"), key_hint: None, is_primary: false },
+        PenBtn { key: "finish", label: tw!("Finish Line"), key_hint: Some("Enter"), is_primary: true },
+        PenBtn { key: "close", label: tw!("Close"), key_hint: None, is_primary: false },
     ];
 
-    let btn_widths = [64.0, 52.0, 78.0, 52.0, 52.0, 52.0, 52.0];
+    let font_id = egui::FontId::proportional(11.0);
+    let hint_font = crate::theme::mono(10.0);
+    let width = |b: &PenBtn| {
+        let label = ui.painter().layout_no_wrap(b.label.to_string(), font_id.clone(), Color32::TRANSPARENT).size().x;
+        let hint = b.key_hint.map_or(0.0, |k| 6.0 + ui.painter().layout_no_wrap(k.to_string(), hint_font.clone(), Color32::TRANSPARENT).size().x);
+        4.0 + 12.0 + 4.0 + label + hint + 10.0
+    };
+    let btn_widths: Vec<f32> = buttons.iter().map(width).collect();
     let total_content_w: f32 = btn_widths.iter().sum::<f32>() + 12.0;
     let bar_w = total_content_w.min(canvas.width() - 32.0);
 
@@ -86,12 +83,12 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui, canvas: Rect, t: &Tokens) {
     let mut cur_x = bar_rect.left() + 6.0;
     let cy = bar_rect.center().y;
 
-    let mut action_to_run: Option<&'static str> = None;
+    let mut undo_clicked = false;
     let mut finish_clicked = false;
     let mut close_clicked = false;
 
     for (i, btn) in buttons.iter().enumerate() {
-        let bw = btn_widths[i];
+        let bw = btn_widths.get(i).copied().unwrap_or(52.0);
         let btn_rect = Rect::from_center_size(pos2(cur_x + bw / 2.0, cy), vec2(bw, BTN_H));
         let resp = ui.interact(btn_rect, wid("penbar", btn.key), Sense::click());
 
@@ -111,22 +108,19 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui, canvas: Rect, t: &Tokens) {
             ui.painter().rect_filled(btn_rect, CornerRadius::same(6), fill_col);
         }
 
-        // Draw icon
         let icon_box = Rect::from_min_size(pos2(btn_rect.left() + 4.0, btn_rect.center().y - 6.0), vec2(12.0, 12.0));
         paint_btn_icon(ui, btn.key, icon_box, text_col);
 
-        // Draw text
-        let font_id = egui::FontId::proportional(11.0);
-        let text_pos = pos2(btn_rect.left() + 18.0, cy);
-        ui.painter().text(text_pos, Align2::LEFT_CENTER, btn.label, font_id, text_col);
+        let label = ui.painter().text(pos2(btn_rect.left() + 20.0, cy), Align2::LEFT_CENTER, btn.label, font_id.clone(), text_col);
+        if let Some(k) = btn.key_hint {
+            ui.painter().text(pos2(label.right() + 6.0, cy), Align2::LEFT_CENTER, k, hint_font.clone(), text_col.gamma_multiply(0.8));
+        }
 
         if resp.clicked() {
-            if btn.key == "finish" {
-                finish_clicked = true;
-            } else if btn.key == "close" {
-                close_clicked = true;
-            } else if let Some(c) = btn.cmd {
-                action_to_run = Some(c);
+            match btn.key {
+                "finish" => finish_clicked = true,
+                "close" => close_clicked = true,
+                _ => undo_clicked = true,
             }
         }
 
@@ -147,8 +141,8 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui, canvas: Rect, t: &Tokens) {
         crate::menus::invoke(app, "path.close", json!({ "id": id.0 }));
     }
 
-    if let Some(cmd) = action_to_run {
-        crate::menus::invoke(app, cmd, json!({}));
+    if undo_clicked {
+        crate::menus::invoke(app, "edit.undo", json!({}));
     }
 }
 
@@ -164,15 +158,6 @@ fn paint_btn_icon(ui: &mut Ui, key: &str, r: Rect, fg: Color32) {
             p.line_segment([p0, pos2(r.left() + 6.0, r.bottom() - 2.0)], Stroke::new(1.4, fg));
             p.line_segment([p1, p2], Stroke::new(1.4, fg));
         }
-        "redo" => {
-            // Arrow pointing right
-            let p0 = pos2(r.right() - 2.0, r.center().y);
-            let p1 = pos2(r.right() - 6.0, r.top() + 2.0);
-            let p2 = pos2(r.left() + 2.0, r.center().y);
-            p.line_segment([p0, p1], Stroke::new(1.4, fg));
-            p.line_segment([p0, pos2(r.right() - 6.0, r.bottom() - 2.0)], Stroke::new(1.4, fg));
-            p.line_segment([p1, p2], Stroke::new(1.4, fg));
-        }
         "finish" => {
             // Checkmark
             let p0 = pos2(r.left() + 1.0, r.center().y + 1.0);
@@ -185,25 +170,6 @@ fn paint_btn_icon(ui: &mut Ui, key: &str, r: Rect, fg: Color32) {
             // Closed polygon loop
             let box_r = r.shrink(2.0);
             p.rect_stroke(box_r, CornerRadius::same(2), Stroke::new(1.4, fg), StrokeKind::Inside);
-        }
-        "zoomIn" => {
-            let cx = r.center().x;
-            let cy = r.center().y;
-            p.line_segment([pos2(cx - 4.5, cy), pos2(cx + 4.5, cy)], Stroke::new(1.4, fg));
-            p.line_segment([pos2(cx, cy - 4.5), pos2(cx, cy + 4.5)], Stroke::new(1.4, fg));
-        }
-        "zoomOut" => {
-            let cx = r.center().x;
-            let cy = r.center().y;
-            p.line_segment([pos2(cx - 4.5, cy), pos2(cx + 4.5, cy)], Stroke::new(1.4, fg));
-        }
-        "fit" => {
-            let box_r = r.shrink(2.5);
-            p.rect_stroke(box_r, CornerRadius::same(1), Stroke::new(1.2, fg), StrokeKind::Inside);
-            p.line_segment([pos2(r.left() + 1.0, r.top() + 1.0), pos2(r.left() + 4.0, r.top() + 1.0)], Stroke::new(1.5, fg));
-            p.line_segment([pos2(r.right() - 4.0, r.top() + 1.0), pos2(r.right() - 1.0, r.top() + 1.0)], Stroke::new(1.5, fg));
-            p.line_segment([pos2(r.left() + 1.0, r.bottom() - 1.0), pos2(r.left() + 4.0, r.bottom() - 1.0)], Stroke::new(1.5, fg));
-            p.line_segment([pos2(r.right() - 4.0, r.bottom() - 1.0), pos2(r.right() - 1.0, r.bottom() - 1.0)], Stroke::new(1.5, fg));
         }
         _ => {}
     }

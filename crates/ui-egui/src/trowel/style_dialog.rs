@@ -97,23 +97,7 @@ pub fn show_dialog(app: &mut VectorcraftApp, ctx: &egui::Context) {
                     );
                 }
 
-                if ui
-                    .button("캔버스 자동 범례표 삽입")
-                    .on_hover_text("도면에서 실제로 사용한 레이어만 추출하여 캔버스에 벡터 범례표를 삽입합니다 (0개 요소 레이어 필터링).")
-                    .clicked()
-                {
-                    let _ = app.run(
-                        "style.generateLegend",
-                        json!({
-                            "at": [50.0, 50.0],
-                            "width": 140.0,
-                            "columns": 1,
-                            "filterUnused": true,
-                            "replaceExisting": true,
-                        }),
-                    );
-                }
-
+                // Inserting a legend table has its place in the ribbon (Drawing › Legend Table).
                 if ui.button("범례표 갱신").on_hover_text("도면 요소 추가/삭제를 반영하여 범례표를 제자리에서 갱신합니다.").clicked()
                 {
                     let _ = app.run("style.updateLegend", json!({}));

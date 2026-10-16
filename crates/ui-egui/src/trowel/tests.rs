@@ -11,32 +11,8 @@ use super::*;
 use crate::VectorcraftApp;
 use crate::theme::Tokens;
 
-/// The ribbon's tiles, left to right.
-const TILES: [&str; 23] = [
-    "open",
-    "save",
-    "import",
-    "plan",
-    "section",
-    "finds",
-    "sheet",
-    "align",
-    "underlay",
-    "pen",
-    "pencil",
-    "section-line",
-    "spot-height",
-    "bucket",
-    "north",
-    "scale-bar",
-    "legend",
-    "title-block",
-    "grid",
-    "magnet",
-    "pdf",
-    "dxf",
-    "strata",
-];
+/// The ribbon's tiles, left to right (design 3.0 §5 ③: nine in four groups).
+const TILES: [&str; 9] = ["new", "open", "save", "underlay", "align", "scale", "legend", "plate", "export"];
 
 /// The tool column's slots, top to bottom, by their first tool.
 const SLOTS: [&str; 14] = [
@@ -384,29 +360,31 @@ fn r(x0: f32, y0: f32, x1: f32, y1: f32) -> Rect {
     Rect::from_min_max(pos2(x0, y0), pos2(x1, y1))
 }
 
+/// The window's parts where design 3.0 puts them (§4): the ribbon 86 high with no Control bar
+/// under it, the status bar 28, the tabs 34.
 #[test]
 fn regions_match_the_mockup_at_1600_by_988() {
     let mut h = Harness::new();
     let want = [
         (CAPTION, r(0.0, 0.0, 1600.0, 32.0)),
         (MENU, r(0.0, 32.0, 1600.0, 60.0)),
-        (RIBBON, r(0.0, 60.0, 1600.0, 156.0)),
-        (CONTROL, r(0.0, 156.0, 1600.0, 196.0)),
-        (STATUS, r(0.0, 956.0, 1600.0, 988.0)),
-        (TOOLS, r(0.0, 196.0, 56.0, 956.0)),
-        (SET, r(56.0, 196.0, 272.0, 956.0)),
-        (RIGHT, r(1296.0, 196.0, 1600.0, 956.0)),
+        (RIBBON, r(0.0, 60.0, 1600.0, 146.0)),
+        (STATUS, r(0.0, 960.0, 1600.0, 988.0)),
+        (TOOLS, r(0.0, 146.0, 56.0, 960.0)),
+        (SET, r(56.0, 146.0, 272.0, 960.0)),
+        (RIGHT, r(1296.0, 146.0, 1600.0, 960.0)),
     ];
     for (id, rect) in want {
         assert!(close(h.panel(id), rect), "{id}: {:?}, the mockup {rect:?}", h.panel(id));
     }
-    // The canvas region is 1024 × 728 under the 32-point tabs; the rulers take 16 points of it.
+    assert!(egui::PanelState::load(&h.ctx, egui::Id::new("trowel-control")).is_none(), "no Control bar");
+    // The canvas region is 1024 × 814 under the 34-point tabs; the rulers take 16 points of it.
     let canvas = h.app.canvas_rect.unwrap();
-    assert!(close(canvas, r(288.0, 244.0, 1296.0, 956.0)), "{canvas:?}");
-    // Full screen with menu bar off: no caption, menu, ribbon or Control bar.
+    assert!(close(canvas, r(288.0, 196.0, 1296.0, 960.0)), "{canvas:?}");
+    // Full screen with menu bar off: no caption, menu or ribbon.
     h.app.ui.screen_mode = 2;
     h.settle();
-    assert!(close(h.app.canvas_rect.unwrap(), r(288.0, 48.0, 1296.0, 956.0)), "{:?}", h.app.canvas_rect);
+    assert!(close(h.app.canvas_rect.unwrap(), r(288.0, 50.0, 1296.0, 960.0)), "{:?}", h.app.canvas_rect);
     // Full screen: the canvas alone.
     h.app.ui.screen_mode = 3;
     h.settle();
@@ -463,90 +441,119 @@ fn drawing_menu_sits_before_view_and_waits_for_its_jobs() {
     assert!(h.popup_buttons().iter().any(|(_, enabled)| *enabled), "View's items run");
 }
 
+/// The ribbon of design 3.0 (§4, §5 ③): nine tiles in four groups, each doing one thing to the
+/// drawing as a whole.
 #[test]
 fn ribbon_follows_the_mockup_and_runs_commands() {
     let mut h = Harness::new();
-    let keys = TILES;
     let ribbon = h.panel(RIBBON);
-    let tiles: Vec<Rect> = keys.iter().map(|k| h.rect(wid("tile", k)).unwrap_or_else(|| panic!("no tile {k}"))).collect();
-    for (k, t) in keys.iter().zip(&tiles) {
-        assert_eq!(t.width(), 52.0, "{k}");
+    let tiles: Vec<Rect> = TILES.iter().map(|k| h.rect(wid("tile", k)).unwrap_or_else(|| panic!("no tile {k}"))).collect();
+    for (k, t) in TILES.iter().zip(&tiles) {
+        assert_eq!(t.width(), 58.0, "{k}");
         assert!(ribbon.contains_rect(*t), "{k} in the ribbon");
     }
     assert!(tiles.windows(2).all(|w| w[0].right() <= w[1].left()), "left to right as in the mockup");
-    let groups = h.line_in(ribbon);
-    for g in ["File", "New Drawing", "Underlay", "Draw", "Drawing Elements", "View", "Export"] {
-        assert!(groups.contains(g), "{g} in {groups}");
+    // Four groups, their captions 11.5 points and not bold; the old groups and tiles are gone.
+    let texts = h.texts_in(ribbon);
+    for g in ["File", "Underlay", "Drawing", "Export"] {
+        assert!(texts.iter().any(|s| s == g), "{g} in {texts:?}");
+    }
+    assert_eq!(h.font_of("Underlay", ribbon), Some(font(11.5)), "a group's caption");
+    for gone in ["Draw", "Drawing Elements", "View", "Pen", "Grid", "Snap", "North Arrow"] {
+        assert!(!texts.iter().any(|s| s == gone), "{gone} left the ribbon: {texts:?}");
+    }
+    for k in ["pen", "pencil", "section-line", "spot-height", "grid", "magnet", "north", "pdf"] {
+        assert!(h.rect(wid("tile", k)).is_none(), "{k} left the ribbon");
     }
     let t = h.tokens();
     let well = |h: &Harness, k: &str| {
         let tile = h.rect(wid("tile", k)).unwrap();
-        h.fill_at(Rect::from_min_size(tile.min + vec2(4.0, 0.0), vec2(44.0, 44.0)))
+        h.fill_at(Rect::from_min_size(pos2(tile.center().x - 23.0, tile.top()), vec2(46.0, 40.0)))
     };
-    // The Pen tile picks the Pen tool and shows it in hand.
-    h.click(wid("tile", "pen"));
-    assert_eq!(h.app.session.tool_id(), "pen");
-    assert_eq!(well(&h, "pen"), Some(t.tool_active));
-    // Grid shows the grid, and shows itself on.
-    assert!(!h.app.ui.view.grid);
-    h.click(wid("tile", "grid"));
-    assert!(h.app.ui.view.grid);
-    assert_eq!(well(&h, "grid"), Some(t.row_selected));
-    // Save turns clay while the document has changes.
-    assert_eq!(well(&h, "save"), Some(t.button));
+    // A well has no ground at rest; Save turns clay while the document has changes.
+    assert_eq!(well(&h, "save"), None);
     h.app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 50, "height": 40})).unwrap();
     h.settle();
     assert_eq!(well(&h, "save"), Some(t.action));
-    // A tile a later job brings is dimmed and does nothing.
-    assert_eq!(well(&h, "align"), Some(t.panel_darker));
+    // New Drawing: the tile opens the New dialog, its ▾ the four kinds of drawing.
+    h.click(wid("tile", "new"));
+    assert!(h.app.ui.dialog.is_some(), "the New dialog");
+    h.app.ui.dialog = None;
+    h.click(wid("tile-more", "new"));
+    let items = h.popup_buttons();
+    assert_eq!(items.len(), 4, "plan, section, finds, plate: {items:?}");
+    assert!(items.iter().all(|(_, enabled)| *enabled));
+    let docs = h.app.session.documents().len();
+    h.click_at(items[1].0.center());
+    assert_eq!(h.app.session.documents().len(), docs + 1, "a section drawing");
+    assert_eq!(h.app.session.active().unwrap().doc.scale.as_ref().map(|s| s.scale.denom), Some(20.0));
+    // Align waits for its job: no ground, a dimmed icon, a note and nothing else.
+    assert_eq!(well(&h, "align"), None);
     let docs = h.app.session.documents().len();
     h.click(wid("tile", "align"));
-    assert_eq!((h.app.session.documents().len(), h.app.session.tool_id()), (docs, "pen"));
+    assert_eq!(h.app.session.documents().len(), docs);
     assert!(h.app.ui.dialog.is_none());
-    // Find a command opens the command palette.
+    assert!(h.status_line().contains("Align: coming soon (J008)"), "{}", h.status_line());
+    // Scale · CRS: the scale and coordinate system in a dialog, with the drawing's own.
+    h.click(wid("tile", "scale"));
+    let d = h.app.ui.dialog.take().expect("the scale dialog");
+    assert_eq!(d.fields.get("__command"), Some(&json!("doc.setScale")));
+    assert_eq!((d.fields.get("scale"), d.fields.get("epsg")), (Some(&json!(20.0)), Some(&json!(5186))));
+    // Legend Table: a table of the rows in use, near the middle of the view.
+    let (before, seq) = (h.node_count(), h.app.ui.status_seq);
+    h.click(wid("tile", "legend"));
+    assert_eq!(h.app.ui.status_seq, seq, "{}", h.app.ui.status);
+    assert!(h.node_count() > before, "a legend table");
+    // Plate: the plate dialog.
+    h.click(wid("tile", "plate"));
+    assert_eq!(h.ctx.data(|d| d.get_temp::<bool>(wid("plate-dialog-open", ()))), Some(true));
+    // Export: the whole tile lists PDF, DXF, SVG and Strata.
+    h.click(wid("tile", "export"));
+    let items = h.popup_buttons();
+    assert_eq!(items.len(), 4, "{items:?}");
+    let shown = h.texts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join("|");
+    for item in ["PDF…", "DXF (keeps coordinates)…", "SVG…", "Strata Survey Data…"] {
+        assert!(shown.contains(item), "{item} in {shown}");
+    }
+    h.key(egui::Key::Escape);
+    // Find a command opens the command palette; its shortcut shows at its right.
+    let find = h.rect(wid("find", ())).unwrap();
+    assert_eq!(find.size(), vec2(210.0, 32.0));
+    // Its shortcut shows at its right when the label leaves room ("명령 찾기" does), and on hover.
+    let sc = crate::menus::pretty_shortcut(crate::menus::shortcut_of("help.commandPalette").unwrap());
+    h.rest_at(find.center());
+    let tip = format!("Search commands and tools ({sc})");
+    assert!(h.texts.iter().any(|p| p.text == tip), "{tip}");
     h.click(wid("find", ()));
     assert!(h.app.ui.palette_open);
 }
 
+/// The Control bar under the ribbon is gone from Trowel's window (design 3.0 §5): Window › Control
+/// is off there. What it held has one place each: the layer and the next line's look in the legend
+/// and the drawing palette, Snap in the status bar. The classic window keeps its Control bar.
 #[test]
-fn control_bar_shows_the_layer_and_next_weight() {
+fn the_control_bar_is_gone_in_trowel() {
     let mut h = Harness::new();
-    let first = h.layer_ids()[0];
-    h.app.run("layer.new", json!({"name": "Pit outline"})).unwrap();
     h.app.select_tool("pen");
     h.settle();
-    let bar = h.panel(CONTROL);
-    let line = h.line_in(bar);
-    for want in ["Pen", "Pit outline", "1 pt", "Snap", "Tolerance"] {
-        assert!(line.contains(want), "{want} in {line}");
+    assert!(egui::PanelState::load(&h.ctx, egui::Id::new("trowel-control")).is_none());
+    for id in ["ctl-layer", "ctl-snap", "ctl-tolerance"] {
+        assert!(h.rect(wid(id, ())).is_none(), "{id}");
     }
-    // The legend field lists the layers, in rows about as wide as the field so a padlock or eye at
-    // the right stays by its name; picking one makes it current.
-    h.click(wid("ctl-layer", ()));
-    let row = h.rect(wid("ctl-layer-row", first.0)).expect("the list");
-    assert!((220.0..=280.0).contains(&row.width()), "{row:?}");
-    h.click(wid("ctl-layer-row", first.0));
-    assert_eq!(h.current_layer(), Some(first));
-    assert!(h.line_in(bar).contains("Layer 1"), "{}", h.line_in(bar));
-    // The Snap toggle is View › Snap to Point.
+    assert!(!crate::menus::enabled(&h.app, "window.control"));
+    assert_eq!(crate::menus::checked(&h.app, "window.control", &json!({})), Some(false));
     let snap = h.app.ui.view.snap_to_point;
-    h.click(wid("ctl-snap", ()));
-    assert_eq!(h.app.ui.view.snap_to_point, !snap);
-    // Other tools keep the classic Control bar: with nothing selected, Document Setup. So do the
-    // anchor tools, whose options are there.
-    for tool in ["selection", "anchorPoint", "addAnchor", "smooth"] {
-        h.app.select_tool(tool);
-        h.settle();
-        let line = h.line_in(bar);
-        assert!(line.contains("Document Setup") && line.contains("Snap") && !line.contains("Legend"), "{tool}: {line}");
-    }
+    h.click(wid("status", "snap"));
+    assert_eq!(h.app.ui.view.snap_to_point, !snap, "Snap in the status bar");
+    h.app.ui.trowel = false;
+    assert!(crate::menus::enabled(&h.app, "window.control"), "the classic window's Control bar");
+    assert_eq!(crate::menus::checked(&h.app, "window.control", &json!({})), Some(h.app.ui.control_bar));
 }
 
 /// Smaller windows keep every tile and tool and the fill and stroke in reach: a 1920 × 1080 screen
 /// at 125 % less the task bar, a 1440 × 900 laptop's, a 1366 × 768 one's, the smallest window. The
-/// ribbon narrows its tiles, then folds Find a Command to its magnifier, then scrolls (the mouse
-/// wheel too); the tool column tightens, then scrolls above the fill and stroke, which stay at its
-/// foot.
+/// ribbon's nine tiles fit them all, Find a Command folding to its magnifier in the smallest; the
+/// tool column tightens, then scrolls above the fill and stroke, which stay at its foot.
 #[test]
 fn small_windows_keep_every_tile_and_tool_in_reach() {
     for (w, height) in [(1536.0, 816.0), (1440.0, 900.0), (1366.0, 728.0), (800.0, 500.0)] {
@@ -554,20 +561,14 @@ fn small_windows_keep_every_tile_and_tool_in_reach() {
         let (ribbon, column) = (h.panel(RIBBON), h.panel(TOOLS));
         let find = h.rect(wid("find", ())).unwrap_or_else(|| panic!("{w}: Find a Command"));
         assert!(ribbon.contains_rect(find), "{w}: {find:?} in {ribbon:?}");
-        // Find a Command keeps its field while narrower tiles leave it room (from 1383 points).
-        assert_eq!(find.width(), if w >= 1383.0 { 150.0 } else { 32.0 }, "{w}: Find a Command's width");
+        // Find a Command keeps its field while the tiles leave it room (from 866 points).
+        assert_eq!(find.width(), if w >= 866.0 { 210.0 } else { 32.0 }, "{w}: Find a Command's width");
         let tile_shown = |h: &Harness, k: &str| {
             let r = h.rect(wid("tile", k)).unwrap_or_else(|| panic!("{w}: no tile {k}"));
             ribbon.contains_rect(r) && r.right() <= find.left()
         };
-        if w >= 1366.0 {
-            let hidden: Vec<_> = TILES.iter().filter(|k| !tile_shown(&h, k)).collect();
-            assert!(hidden.is_empty(), "{w}: tiles cut off {hidden:?}");
-        } else {
-            assert!(tile_shown(&h, "open") && !tile_shown(&h, "strata"), "{w}: the ribbon scrolls");
-            h.wheel(ribbon.center(), vec2(0.0, -4000.0));
-            assert!(tile_shown(&h, "strata"), "{w}: the wheel brings the last tile in");
-        }
+        let hidden: Vec<_> = TILES.iter().filter(|k| !tile_shown(&h, k)).collect();
+        assert!(hidden.is_empty(), "{w}: tiles cut off {hidden:?}");
         // The fill and stroke stay at the foot of the column, the tools above them.
         let fill = h.rect(wid("proxy", ()).with("fill-proxy")).unwrap_or_else(|| panic!("{w}: the fill and stroke"));
         assert!(column.contains_rect(fill), "{w}: {fill:?} in {column:?}");
@@ -609,6 +610,9 @@ fn a_short_window_scrolls_the_right_column_without_overlap() {
     let mut h = Harness::sized(800.0, 500.0);
     let right = h.panel(RIGHT);
     h.wheel(h.rect(wid("weight", "0.1")).unwrap().center(), vec2(0.0, -4000.0));
+    // The pointer goes on to the canvas, so no tooltip of what scrolled under it floats there.
+    h.frame(vec![Event::PointerMoved(pos2(380.0, 300.0))]);
+    h.settle();
     let more = h.rect(wid("props-more", ())).expect("the properties' ⋯");
     assert!(right.contains_rect(more), "{more:?} in {right:?}");
     let clash = h.overlapping_texts(right);
@@ -648,22 +652,15 @@ fn the_legend_list_stays_above_its_footer() {
     }
 }
 
-/// The tab strip in a narrow window, or with a long name, never draws a tab over the drawing's
-/// name and "Not saved" at its right. The name there (its tab shows it too) gives way first when the
-/// tabs don't all fit, then "Not saved" leaves its dot when the current tab doesn't; past that the
-/// current tab's name is cut short with "…".
+/// The tab strip in a narrow window, or with a long name, never draws a tab over another or over
+/// ＋, and nothing at its right (design 3.0 §5 ⑥: no drawing name, no "Not saved"): the current
+/// tab's name is cut short with "…" when even it doesn't fit.
 #[test]
-fn the_tabs_and_the_name_at_their_right_never_overlap() {
+fn the_tabs_never_overlap() {
     let long = "Excavation area 3, trench 12, north section, second season";
-    // The window, the drawing opened after "Site 1" (the current one), and what shows at the right:
-    // the name, "Not saved", whether the current tab's name is cut short.
-    let cases = [
-        (1600.0, 988.0, None, true, true, false),
-        (1366.0, 728.0, Some(long), false, true, false),
-        (800.0, 500.0, Some("Trench 12 north"), false, false, false),
-        (800.0, 500.0, Some("Trench 12 north section"), false, false, true),
-    ];
-    for (w, height, other, name_shown, note_shown, cut) in cases {
+    // The window, the drawing opened after "Site 1" (the current one), whether its name is cut.
+    let cases = [(1600.0, 988.0, None, false), (1366.0, 728.0, Some(long), false), (800.0, 500.0, Some(long), true)];
+    for (w, height, other, cut) in cases {
         let mut h = Harness::sized(w, height);
         if let Some(name) = other {
             h.app.run("file.new", json!({"name": name, "width": 400, "height": 300})).unwrap();
@@ -671,19 +668,21 @@ fn the_tabs_and_the_name_at_their_right_never_overlap() {
         let name = other.unwrap_or("Site 1");
         h.app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 50, "height": 40})).unwrap();
         h.settle();
-        let (set, right, control) = (h.panel(SET), h.panel(RIGHT), h.panel(CONTROL));
-        let strip = r(set.right(), control.bottom(), right.left(), control.bottom() + 32.0);
+        let (set, right, ribbon) = (h.panel(SET), h.panel(RIGHT), h.panel(RIBBON));
+        let strip = r(set.right(), ribbon.bottom(), right.left(), ribbon.bottom() + 34.0);
         let clash = h.overlapping_texts(strip);
         assert!(clash.is_empty(), "{w} {name}: {clash:?}");
-        // Nor does a tab (its ×, its underline) run under what is at the right.
         let docs = h.app.session.documents().len();
-        let tabs: Vec<Rect> = std::iter::once(wid("tab-home", ())).chain((0..docs).map(|i| wid("tab", i))).filter_map(|id| h.rect(id)).collect();
-        for p in h.texts.iter().filter(|p| p.shown.is_positive() && strip.contains_rect(p.shown)) {
-            if !tabs.iter().any(|t| t.expand(0.5).contains_rect(p.rect)) {
-                assert!(tabs.iter().all(|t| !t.intersects(p.shown)), "{w} {name}: a tab under {:?}: {tabs:?}", p.text);
+        let mut tabs: Vec<Rect> = (0..docs).filter_map(|i| h.rect(wid("tab", i))).collect();
+        tabs.push(h.rect(wid("tab-new", ())).expect("＋"));
+        for (i, a) in tabs.iter().enumerate() {
+            assert!(strip.contains_rect(*a), "{w} {name}: {a:?} in {strip:?}");
+            for b in tabs.iter().skip(i + 1) {
+                assert!(a.intersect(*b).width() <= 0.0, "{w} {name}: {a:?} over {b:?}");
             }
         }
-        // The current tab shows its name, inside it; cut short only when even the dot leaves no room.
+        assert!(h.rect(wid("tab-home", ())).is_none(), "{w}: no Home tab");
+        // The current tab shows its name, inside it, cut short only when it doesn't fit.
         let tab = h.rect(wid("tab", h.app.session.active_index().unwrap())).unwrap();
         let elided: Vec<bool> = h
             .shapes
@@ -695,9 +694,8 @@ fn the_tabs_and_the_name_at_their_right_never_overlap() {
             .collect();
         assert_eq!(elided, [cut], "{w} {name}: the current tab's name");
         let shown = h.texts_in(strip);
-        assert_eq!(shown.iter().filter(|s| *s == name).count(), if name_shown { 2 } else { 1 }, "{w} {name}: {shown:?}");
-        assert_eq!(shown.iter().any(|s| s == "Not saved"), note_shown, "{w} {name}: {shown:?}");
-        assert_eq!(h.rect(wid("tab-unsaved", ())).is_some(), !note_shown, "{w} {name}: the dot says it on hover");
+        assert!(!shown.iter().any(|s| s == "Not saved"), "{w} {name}: {shown:?}");
+        assert_eq!(shown.iter().filter(|s| *s == name).count(), 1, "{w} {name}: once, in its tab: {shown:?}");
     }
 }
 
@@ -756,7 +754,9 @@ fn drawing_set_lists_open_documents_and_switches() {
     let set = h.panel(SET);
     let line = h.line_in(set);
     assert!(line.contains("Drawing Set") && line.contains("Site 1") && line.contains("Site 2"), "{line}");
-    assert!(line.contains("Scale not set"), "{line}");
+    // The scale and coordinate system are the status bar's (design 3.0 §5 ⑤): no footer here.
+    assert!(!line.contains("Scale not set") && !line.contains("This drawing"), "{line}");
+    assert!(h.rect(wid("set-foot", ())).is_none());
     let (a, b) = (h.rect(wid("set-row", 0usize)).unwrap(), h.rect(wid("set-row", 1usize)).unwrap());
     assert!(set.contains_rect(a) && a.bottom() <= b.top());
     h.click(wid("set-row", 0usize));
@@ -773,48 +773,63 @@ fn drawing_set_lists_open_documents_and_switches() {
     assert!(h.app.ui.dialog.is_some(), "the New Document dialog");
 }
 
+/// The tabs switch drawings; one with changes not saved has a clay dot by its name ("Not saved" on
+/// hover), the only place that shows it besides the caption's *; × closes a tab, ＋ is a new drawing.
 #[test]
 fn tabs_switch_documents_and_show_unsaved() {
     let mut h = Harness::new();
     h.app.run("file.new", json!({"name": "Site 2", "width": 200, "height": 100})).unwrap();
     h.settle();
-    let canvas = h.app.canvas_rect.unwrap();
-    let strip = r(272.0, 196.0, 1296.0, canvas.top() - 16.0);
+    let strip = r(272.0, 146.0, 1296.0, 180.0);
     let line = h.line_in(strip);
-    assert!(line.contains("Home") && line.contains("Site 1") && line.contains("Site 2"), "{line}");
-    assert!(!line.contains("Not saved"), "{line}");
+    assert!(line.contains("Site 1") && line.contains("Site 2") && !line.contains("Home"), "{line}");
+    assert!(h.rect(wid("tab-unsaved", 0usize)).is_none() && h.rect(wid("tab-unsaved", 1usize)).is_none());
     h.click(wid("tab", 0usize));
     assert_eq!(h.app.session.active_index(), Some(0));
     h.app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 50, "height": 40})).unwrap();
     h.settle();
-    assert!(h.line_in(strip).contains("Not saved"), "{}", h.line_in(strip));
-    h.click(wid("tab-home", ()));
-    assert!(crate::menus::home_showing(&h.app));
+    let dot = h.rect(wid("tab-unsaved", 0usize)).expect("Site 1's dot");
+    let tab = h.rect(wid("tab", 0usize)).unwrap();
+    assert!(tab.contains_rect(dot), "{dot:?} in {tab:?}");
+    let t = h.tokens();
+    let dots = h.shapes.iter().filter(|c| matches!(&c.shape, egui::Shape::Circle(s) if tab.contains(s.center) && s.fill == t.action)).count();
+    assert_eq!(dots, 1, "a clay dot");
+    assert!(!h.line_in(strip).contains("Not saved"), "{}", h.line_in(strip));
+    assert!(!h.status_line().contains("not saved"), "{}", h.status_line());
     h.click(wid("tab", 1usize));
     assert_eq!(h.app.session.active_index(), Some(1));
     // The × of a tab closes it (Site 2 has no changes: no question).
     h.hover(wid("tab", 1usize));
     h.click(wid("tab-close", 1usize));
     assert_eq!(h.app.session.documents().len(), 1);
+    // ＋ is a new drawing.
+    h.click(wid("tab-new", ()));
+    assert!(h.app.ui.dialog.is_some(), "the New dialog");
 }
 
+/// Over the canvas float only the zoom buttons at the bottom right, 34 × 30 each, 14 points in
+/// (design 3.0 §5 ⑥); the tool, layer, hint and zoom readout are the status bar's. Presses on them
+/// don't reach the tool under them.
 #[test]
-fn canvas_overlays_zoom_and_name_the_tool() {
+fn canvas_overlays_only_the_zoom_buttons() {
     let mut h = Harness::new();
-    h.app.select_tool("pen");
+    h.app.select_tool("selection");
     h.settle();
     let canvas = h.app.canvas_rect.unwrap();
+    assert!(h.texts_in(canvas).iter().all(|s| s == "Fit"), "only the zoom buttons: {:?}", h.texts_in(canvas));
+    let zin = h.rect(wid("zoom", "in")).unwrap();
+    assert_eq!(zin.size(), vec2(34.0, 30.0));
+    let fit = h.rect(wid("zoom", "fit")).unwrap();
+    assert!((canvas.right() - fit.right() - 14.0).abs() < 0.5 && (canvas.bottom() - fit.bottom() - 14.0).abs() < 0.5, "{fit:?} in {canvas:?}");
+    for gone in ["band", "readout"] {
+        assert!(h.rect(wid(gone, ())).is_none(), "{gone}");
+    }
+    h.app.select_tool("pen");
+    h.settle();
     let line = h.line_in(canvas);
-    assert!(line.contains("Pen · Layer 1"), "{line}");
-    assert!(line.contains("to add a corner point"), "the Pen's hint: {line}");
+    assert!(!line.contains("Pen · Layer 1") && !line.contains("to add a corner point") && !line.contains('%'), "{line}");
     let zoom = |h: &Harness| h.app.view().unwrap().zoom;
     let z0 = zoom(&h);
-    // The screen readout: a whole percentage.
-    assert!(line.contains(&format!("{:.0} %", z0 * 100.0)) && !line.contains(&format!("{:.2}", z0 * 100.0)), "{line}");
-    for k in ["in", "out", "fit"] {
-        assert!(canvas.contains_rect(h.rect(wid("zoom", k)).unwrap()), "{k}");
-    }
-    // Presses on what floats over the canvas don't reach the Pen under it.
     let nodes = |h: &Harness| h.app.session.active().unwrap().doc.node_count();
     let n = nodes(&h);
     h.click(wid("zoom", "in"));
@@ -824,13 +839,11 @@ fn canvas_overlays_zoom_and_name_the_tool() {
     assert!(zoom(&h) < z0);
     h.click(wid("zoom", "fit"));
     assert!((zoom(&h) - z0).abs() < 1e-6, "back to the fitted view");
-    h.click(wid("band", ()));
-    h.click(wid("readout", ()));
-    assert_eq!(nodes(&h), n, "no point drawn under the zoom buttons, the band or the readout");
+    assert_eq!(nodes(&h), n, "no point drawn under the zoom buttons");
 }
 
-/// The tool's hint reads plainly, as in the mockup: no bold keys, its parts apart by "·"; on the
-/// canvas the first part, in the status bar all of them.
+/// The tool's hint reads plainly, as in the mockup: no bold keys, its parts apart by "·", in the
+/// status bar only (the band on the canvas is gone, design 3.0 §5 ⑥).
 #[test]
 fn hints_read_plainly_as_in_the_mockup() {
     let mut h = Harness::new();
@@ -850,8 +863,7 @@ fn hints_read_plainly_as_in_the_mockup() {
             })
             .collect()
     };
-    let band = hint(&h, h.app.canvas_rect.unwrap());
-    assert_eq!(band, [("Click to add a corner point".to_string(), false)], "the first part only");
+    assert!(hint(&h, h.app.canvas_rect.unwrap()).is_empty(), "nothing on the canvas");
     let status = hint(&h, h.panel(STATUS));
     assert_eq!(status.len(), 1, "{status:?}");
     let (text, bold) = &status[0];
@@ -930,8 +942,8 @@ fn legend_rows_show_hide_lock_and_pick_the_layer() {
 }
 
 /// A locked or hidden layer takes no new lines (the engine draws on the topmost layer that is shown
-/// and unlocked instead), so when the current one is, the band, the Control bar and the legend say
-/// where lines go rather than naming a layer they won't land in.
+/// and unlocked instead), so when the current one is, the status bar and the legend say where lines
+/// go rather than naming a layer they won't land in.
 #[test]
 fn a_locked_or_hidden_current_layer_shows_where_lines_go() {
     let mut h = Harness::new();
@@ -939,33 +951,27 @@ fn a_locked_or_hidden_current_layer_shows_where_lines_go() {
     let pits = NodeId(h.app.run("layer.new", json!({"name": "Pits"})).unwrap()["id"].as_u64().unwrap());
     h.app.select_tool("pen");
     h.settle();
-    let (canvas, bar, right) = (h.app.canvas_rect.unwrap(), h.panel(CONTROL), h.panel(RIGHT));
+    let (bar, right) = (h.panel(STATUS), h.panel(RIGHT));
     let t = h.tokens();
-    assert!(h.line_in(canvas).contains("Pen · Pits"), "{}", h.line_in(canvas));
+    assert!(!h.line_in(bar).contains("Pits is"), "{}", h.line_in(bar));
     assert_eq!(h.color_of("Pits", right), Some(t.text));
     h.click(wid("legend-lock", pits.0));
     assert_eq!(h.current_layer(), Some(pits), "still the current layer");
-    let line = h.line_in(canvas);
-    assert!(line.contains("Pen · Layer 1") && line.contains("Pits is locked: drawing on Layer 1"), "{line}");
-    assert!(h.line_in(bar).contains("Layer 1") && !h.line_in(bar).contains("Pits"), "{}", h.line_in(bar));
+    let note = "Pits is locked: drawing on Layer 1";
+    assert!(h.line_in(bar).contains(note), "{}", h.line_in(bar));
+    assert_eq!(h.color_of(note, bar), Some(t.clay_text));
     assert_eq!(h.color_of("Pits", right), Some(t.clay_text), "the legend marks the current row");
     let id = h.app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 50, "height": 40})).unwrap()["id"].as_u64().unwrap();
-    assert_eq!(h.app.session.active().unwrap().doc.layer_containing(NodeId(id)), Some(first), "where the band said");
+    assert_eq!(h.app.session.active().unwrap().doc.layer_containing(NodeId(id)), Some(first), "where the status bar said");
     // Hidden likewise.
     h.app.run("layer.setCurrent", json!({ "id": pits.0 })).unwrap();
     h.click(wid("legend-lock", pits.0));
     h.click(wid("legend-eye", pits.0));
     assert_eq!(h.current_layer(), Some(pits));
-    assert!(h.line_in(canvas).contains("Pits is hidden: drawing on Layer 1"), "{}", h.line_in(canvas));
-    // With every layer locked or hidden nothing is drawn, and the band says so; the legend field
-    // too, from its left, with no layer colour or weight.
+    assert!(h.line_in(bar).contains("Pits is hidden: drawing on Layer 1"), "{}", h.line_in(bar));
+    // With every layer locked or hidden nothing is drawn, and the status bar says so.
     h.click(wid("legend-lock", first.0));
-    let line = h.line_in(canvas);
-    assert!(line.contains("Pits is hidden: no layer to draw on") && !line.contains("Pen · Layer 1"), "{line}");
-    let field = h.rect(wid("ctl-layer", ())).unwrap();
-    assert_eq!(h.texts_in(field), ["No layer to draw on"]);
-    let says = h.texts.iter().find(|p| p.text == "No layer to draw on" && field.contains_rect(p.rect)).unwrap().rect;
-    assert!(says.left() - field.left() < 12.0, "from the field's left: {says:?} in {field:?}");
+    assert!(h.line_in(bar).contains("Pits is hidden: no layer to draw on"), "{}", h.line_in(bar));
     assert!(h.app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 50, "height": 40})).is_err());
 }
 
@@ -1057,7 +1063,7 @@ fn underlay_tile_places_a_template_then_shows_and_hides_it() {
     h.settle();
     let t = h.tokens();
     let tile = h.rect(wid("tile", "underlay")).unwrap();
-    let well = Rect::from_min_size(pos2(tile.center().x - 22.0, tile.top()), vec2(44.0, 44.0));
+    let well = Rect::from_min_size(pos2(tile.center().x - 23.0, tile.top()), vec2(46.0, 40.0));
     assert_eq!(h.fill_at(well), Some(t.row_selected), "shown");
     let visible = |h: &Harness| h.app.session.active().unwrap().doc.node(NodeId(id)).unwrap().visible;
     h.click(wid("tile", "underlay"));
@@ -1083,48 +1089,41 @@ fn panels_pop_out_beside_the_right_column() {
     assert!(h.app.ui.open_panel.is_none(), "put away");
 }
 
-/// The snapping tolerance is a field like the mockup's: a click lists 1 to 8 px, and a pick sets it.
+/// Snap's ▾ in the status bar lists the tolerance, 1 to 8 px, and a pick sets it.
 #[test]
 fn snap_tolerance_is_picked_from_a_list() {
     let mut h = Harness::new();
     h.app.select_tool("pen");
     h.settle();
-    let field = h.rect(wid("ctl-tolerance", ())).unwrap();
-    assert_eq!(h.texts_in(field), ["2", "px"]);
-    h.click(wid("ctl-tolerance", ()));
+    assert!(h.status_line().contains("Snap 2px"), "{}", h.status_line());
+    let snap = h.app.ui.view.snap_to_point;
+    h.click(wid("status-more", "snap"));
     let items = h.popup_buttons();
     assert_eq!(items.len(), 8, "{items:?}");
     h.click_at(items[3].0.center());
     assert_eq!(h.app.session.prefs.snap_to_point_tolerance, 4.0);
-    let field = h.rect(wid("ctl-tolerance", ())).unwrap();
-    assert_eq!(h.texts_in(field), ["4", "px"]);
+    assert!(h.status_line().contains("Snap 4px"), "{}", h.status_line());
+    assert_eq!(h.app.ui.view.snap_to_point, snap, "the ▾ doesn't turn Snap on or off");
+    h.click(wid("status", "snap"));
+    assert_eq!(h.app.ui.view.snap_to_point, !snap, "the rest of the cell does");
 }
 
-/// In a small window the drawing tools' Control bar is cut at Snap rather than running under it.
+/// In the smallest window the status bar's cells keep apart and in reach, the hint giving way.
 #[test]
-fn control_bar_keeps_snap_in_reach_in_a_small_window() {
+fn status_bar_keeps_its_cells_in_a_small_window() {
     let mut h = Harness::sized(800.0, 500.0);
     h.app.select_tool("pen");
+    h.app.run("doc.setScale", json!({"scale": 30.0, "epsg": 5186})).unwrap();
     h.settle();
-    // Nothing else shows over Snap and its tolerance…
-    let toggle = h.rect(wid("ctl-snap", ())).unwrap();
-    let bar = h.panel(CONTROL);
-    let snap_area = Rect::from_min_max(pos2(toggle.left(), bar.top()), bar.max);
-    let under: Vec<String> = h
-        .shapes
-        .iter()
-        .filter_map(|c| match &c.shape {
-            egui::Shape::Text(t) if !["Snap", "Tolerance", "2", "px"].contains(&t.galley.text()) => {
-                let shown = c.clip_rect.intersect(t.visual_bounding_rect());
-                (shown.is_positive() && shown.intersects(snap_area)).then(|| t.galley.text().to_string())
-            }
-            _ => None,
-        })
-        .collect();
-    assert!(under.is_empty(), "over Snap: {under:?}");
-    // …and a click on it reaches it.
+    let bar = h.panel(STATUS);
+    let clash = h.overlapping_texts(bar);
+    assert!(clash.is_empty(), "{clash:?}");
+    for (kind, key) in [("status", "grid"), ("status", "snap"), ("status", "position"), ("status", "scale"), ("status", "zoom")] {
+        let c = h.rect(wid(kind, key)).unwrap_or_else(|| panic!("{key}"));
+        assert!(bar.contains_rect(c), "{key}: {c:?} in {bar:?}");
+    }
     let snap = h.app.ui.view.snap_to_point;
-    h.click(wid("ctl-snap", ()));
+    h.click(wid("status", "snap"));
     assert_eq!(h.app.ui.view.snap_to_point, !snap);
 }
 
@@ -1143,50 +1142,52 @@ fn properties_summarise_the_selection() {
     assert_eq!(h.app.ui.open_panel.as_deref(), Some("properties"));
 }
 
+/// The status bar of design 3.0 (§5 ⑩): at the right the grid, Snap, where the pointer is, the
+/// scale and coordinate system and the zoom; no tool name and no count of drawings not saved.
 #[test]
-fn status_bar_shows_tool_snap_unsaved_and_position() {
+fn status_bar_shows_grid_snap_position_scale_and_zoom() {
     let mut h = Harness::new();
     h.app.select_tool("pen");
     h.settle();
     let bar = h.panel(STATUS);
+    assert_eq!(bar.height(), 28.0);
     let line = h.line_in(bar);
-    let snap = if h.app.ui.view.snap_to_point { "Snap on" } else { "Snap off" };
-    assert!(line.contains("Pen") && line.contains(snap) && line.contains("Scale and coordinate system not set"), "{line}");
-    assert!(!line.contains("not saved"), "{line}");
+    let zoom = super::status::percent(h.app.view().unwrap().zoom);
+    for want in ["Grid", "Snap 2px", "X", "· Y", "Scale not set", zoom.as_str()] {
+        assert!(line.contains(want), "{want} in {line}");
+    }
+    let cells: Vec<f32> = ["grid", "snap", "position", "scale", "zoom"].iter().map(|k| h.rect(wid("status", k)).unwrap().left()).collect();
+    assert!(cells.windows(2).all(|w| w[0] < w[1]), "grid, snap, position, scale, zoom: {cells:?}");
     h.app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 50, "height": 40})).unwrap();
-    // The pointer over the canvas: its position in the document.
+    // The pointer over the canvas: its position in the document; it stays when the pointer leaves.
     let at = h.app.canvas_rect.unwrap().center();
     h.frame(vec![Event::PointerMoved(at)]);
     h.settle();
     let p = h.app.hover_doc.expect("over the canvas");
     let u = h.app.session.general_unit();
     let line = h.line_in(bar);
-    assert!(line.contains("1 not saved"), "{line}");
+    assert!(!line.contains("Pen") && !line.contains("not saved"), "{line}");
     assert!(line.contains(&u.readout(p.x)) && line.contains(&u.readout(p.y)), "{line}");
+    h.click(wid("status", "position"));
+    assert!(h.status_line().contains("Coordinates copied"), "{}", h.status_line());
+    assert!(h.status_line().contains(&u.readout(p.x)), "{}", h.status_line());
 }
 
+/// With a scale and coordinate system the status bar shows them ("1:20 · EPSG:5186") and TM
+/// coordinates; its ▾ lists the scales (the coordinate system stays) and the dialog.
 #[test]
 fn status_bar_shows_scale_and_tm_coordinates() {
     let mut h = Harness::new();
     h.settle();
     let bar = h.panel(STATUS);
-    assert!(h.line_in(bar).contains("Scale and coordinate system not set"));
+    assert!(h.line_in(bar).contains("Scale not set"));
 
     // Set scale 1:20 and bind origin to CP1 (152840.123, 512340.456)
-    h.app.run("doc.setScale", json!({"scale": "1:20"})).unwrap();
-    h.app
-        .run(
-            "doc.setOrigin",
-            json!({
-                "canvas": [100.0, 100.0],
-                "world": [152840.123, 512340.456]
-            }),
-        )
-        .unwrap();
+    h.app.run("doc.setScale", json!({"scale": "1:20", "epsg": 5186})).unwrap();
+    h.app.run("doc.setOrigin", json!({ "canvas": [100.0, 100.0], "world": [152840.123, 512340.456] })).unwrap();
     h.settle();
-
     let line = h.line_in(bar);
-    assert!(line.contains("1:20 · TM"), "{line}");
+    assert!(line.contains("1:20 · EPSG:5186"), "{line}");
 
     // Hover over canvas -> live TM coordinates readout
     let at = h.app.canvas_rect.unwrap().center();
@@ -1198,11 +1199,20 @@ fn status_bar_shows_scale_and_tm_coordinates() {
     let line = h.line_in(bar);
     assert!(line.contains(&exp_x) && line.contains(&exp_y), "{line}");
 
-    // Switch scale to 1:50
-    h.app.run("doc.setScale", json!({"scale": 50.0})).unwrap();
-    h.settle();
-    let line = h.line_in(bar);
-    assert!(line.contains("1:50 · TM"), "{line}");
+    // Pick 1:50 from the list: the coordinate system stays.
+    h.click(wid("status", "scale"));
+    let items = h.popup_buttons();
+    assert_eq!(items.len(), 10, "nine scales and the dialog: {items:?}");
+    h.click_text("1:50", Rect::from_min_size(Pos2::ZERO, h.screen));
+    let cfg = h.app.session.active().unwrap().doc.scale.clone().unwrap();
+    assert_eq!((cfg.scale.denom, cfg.crs.epsg), (50.0, 5186));
+    assert!(h.line_in(bar).contains("1:50 · EPSG:5186"), "{}", h.line_in(bar));
+    // The last item opens the dialog.
+    h.click(wid("status", "scale"));
+    let items = h.popup_buttons();
+    h.click_at(items[9].0.center());
+    let d = h.app.ui.dialog.as_ref().expect("the scale dialog");
+    assert_eq!(d.fields.get("scale"), Some(&json!(50.0)));
 }
 
 /// Trowel's colours come from the theme tokens, as everywhere in the app.
@@ -1240,8 +1250,9 @@ fn every_trowel_icon_is_bundled() {
             names.insert(rest[..rest.find('"').unwrap()].to_string());
         }
     }
-    // The scan finds the window's icons (37 before Find Number and Posthole Depth left, design 3.0 D1).
-    assert!(names.len() >= 35, "{names:?}");
+    // The scan finds the window's icons (37 before Find Number and Posthole Depth left, design 3.0
+    // D1; 32 once the ribbon's 23 tiles became 9, D2).
+    assert!(names.len() >= 30, "{names:?}");
     let missing: Vec<_> = names.iter().filter(|n| !crate::icons::exists(n)).collect();
     assert!(missing.is_empty(), "icons not bundled: {missing:?}");
 }
@@ -1931,33 +1942,6 @@ fn drawing_menu_opens_the_weights_card_and_reverts() {
     assert!(h.rect(wid("weights-card", ())).is_some(), "Weights at Once opens");
 }
 
-/// The Control bar's legend field lists the rows with their look (a layer without a row, its
-/// colour) and shows the chosen one's; picking one there makes it the layer drawn on with its
-/// look and moves nothing (criterion 13).
-#[test]
-fn control_bar_lists_rows_with_their_look() {
-    use vectorcraft_doc::LineType;
-    let mut h = Harness::new();
-    let first = h.layer_ids()[0];
-    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.8, "line": "dashed"}));
-    h.app.run("layer.setCurrent", json!({ "id": first.0 })).unwrap();
-    h.app.select_tool("pen");
-    let line = draw_rect(&mut h, 10.0);
-    h.app.run("select.set", json!({ "ids": [line.0] })).unwrap();
-    h.settle();
-    let colour = |h: &Harness, id: NodeId| crate::panels::layers::layer_colour(&h.app.session.active().unwrap().doc, id);
-    let patch_in = |h: &Harness, area: Rect, id: NodeId| h.rects_in(area).iter().any(|(_, _, s)| s.color == colour(h, id));
-    h.click(wid("ctl-layer", ()));
-    assert!(patch_in(&h, h.rect(wid("ctl-layer-row", first.0)).unwrap(), first), "a layer without a row: its colour");
-    assert!(!patch_in(&h, h.rect(wid("ctl-layer-row", pits.0)).unwrap(), pits), "a row: its look");
-    h.click(wid("ctl-layer-row", pits.0));
-    assert_eq!(h.current_layer(), Some(pits));
-    let pen = h.app.session.new_art_stroke();
-    assert_eq!((pen.width, LineType::of(&pen)), (0.8, LineType::Dashed));
-    assert_eq!(h.app.session.active().unwrap().doc.layer_containing(line), Some(first), "nothing moves");
-    assert!(!patch_in(&h, h.rect(wid("ctl-layer", ())).unwrap(), pits), "the field shows the row's look");
-}
-
 // ---------- J005 rework 1: what the code and UI reviews found ----------
 
 /// The legend weight of row `id`.
@@ -2403,7 +2387,7 @@ fn dimmed_controls_say_why_on_hover() {
 }
 
 /// A click on a locked or hidden row says why it isn't drawn with and leaves the current layer as
-/// it was; so does picking it in the Control bar's list (UI review U8).
+/// it was (UI review U8).
 #[test]
 fn a_locked_or_hidden_row_is_not_picked() {
     let mut h = Harness::new();
@@ -2418,13 +2402,6 @@ fn a_locked_or_hidden_row_is_not_picked() {
     h.app.run("layer.setProps", json!({ "ids": [pits.0], "locked": false, "visible": false })).unwrap();
     h.later(1.0);
     h.click(wid("legend-row", pits.0));
-    assert_eq!(h.current_layer(), Some(first));
-    assert!(h.status_line().contains("Pits is hidden: show it to draw with it"), "{}", h.status_line());
-    h.app.select_tool("pen");
-    h.app.status("");
-    h.settle();
-    h.click(wid("ctl-layer", ()));
-    h.click(wid("ctl-layer-row", pits.0));
     assert_eq!(h.current_layer(), Some(first));
     assert!(h.status_line().contains("Pits is hidden: show it to draw with it"), "{}", h.status_line());
 }
@@ -2483,25 +2460,6 @@ fn cards_match_the_mockup_sizes() {
     let head = h.texts.iter().find(|p| p.text == "Legend Row" && card.contains_rect(p.rect)).unwrap().rect;
     let first = h.texts.iter().find(|p| p.text == "Pits" && card.contains_rect(p.rect)).unwrap().rect;
     assert!((first.center().y - head.center().y - (30.0 / 2.0 + 34.0 / 2.0)).abs() < 1.0, "head 30, lines 34: {head:?} {first:?}");
-}
-
-/// The Control bar's legend list shows the rows in the legend's order: the Strata rows' section,
-/// then the drawing's, favourites first in each (UI review U22).
-#[test]
-fn control_bar_lists_rows_in_the_legend_order() {
-    let mut h = Harness::new();
-    let first = h.layer_ids()[0];
-    let a = legend_row(&mut h, "A", json!({"weight": 0.5, "strata": "feature_line"}));
-    let b = legend_row(&mut h, "B", json!({"weight": 0.5, "favourite": true}));
-    let c = legend_row(&mut h, "C", json!({"weight": 0.2}));
-    h.app.select_tool("pen");
-    h.settle();
-    let all = [first, a, b, c];
-    assert_eq!(row_order(&h, &all), [a, b, c, first]);
-    h.click(wid("ctl-layer", ()));
-    let mut listed: Vec<(f32, NodeId)> = all.iter().map(|id| (h.rect(wid("ctl-layer-row", id.0)).unwrap().top(), *id)).collect();
-    listed.sort_by(|x, y| x.0.total_cmp(&y.0));
-    assert_eq!(listed.into_iter().map(|(_, id)| id).collect::<Vec<_>>(), [a, b, c, first]);
 }
 
 /// In a small window a card pushed up to clear the status bar stops under the tab row and scrolls
@@ -2688,7 +2646,8 @@ fn test_headless_start_screen_frame_rendering() {
 
     // Status Bar Readout
     assert!(text_dump.contains("「이어서 그리기」를 누르면 하던 도면이 그대로 열립니다."), "Must contain status bar message");
-    assert!(text_dump.contains("도면집 3개"), "Must contain status bar count");
+    // No made-up count of drawing sets in the status bar (design 3.0 §5 ⑩).
+    assert!(!h.line_in(h.panel(STATUS)).contains("도면집"), "{}", h.line_in(h.panel(STATUS)));
     assert!(text_dump.contains("Trowel 0.2"), "Must contain status bar version");
 }
 
@@ -3208,17 +3167,23 @@ fn test_canvas_penbar_adversarial_suite() {
     let delay = h.ctx.options(|o| o.input_options.max_double_click_delay);
     assert_eq!(delay, 0.5, "CanvasPenBar must configure egui max_double_click_delay to 0.5s");
 
-    // 3. Action button commands dispatch via menus::invoke without crash
-    let cmds = [
-        ("edit.undo", json!({})),
-        ("edit.redo", json!({})),
-        ("view.zoomIn", json!({})),
-        ("view.zoomOut", json!({})),
-        ("view.fitArtboard", json!({})),
-    ];
-    for (cmd, params) in cmds {
-        crate::menus::invoke(&mut h.app, cmd, params);
+    // 3. Three buttons only (design 3.0 §5 ⑥, §9): Undo, Finish Line (Enter) and Close; redo and
+    // the zoom buttons are the menu's and the canvas corner's.
+    let shown: Vec<String> = out
+        .shapes
+        .iter()
+        .filter_map(|c| match &c.shape {
+            egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+            _ => None,
+        })
+        .collect();
+    for want in ["Undo", "Finish Line", "Enter", "Close"] {
+        assert!(shown.iter().any(|s| s == want), "{want} in {shown:?}");
     }
+    for gone in ["Redo", "Zoom In", "Zoom Out", "Fit"] {
+        assert!(!shown.iter().any(|s| s == gone), "{gone} left the pen bar: {shown:?}");
+    }
+    crate::menus::invoke(&mut h.app, "edit.undo", json!({}));
 }
 
 #[test]
@@ -3502,8 +3467,8 @@ fn test_trowel_ux_dedup_units_and_one_click_workflows() {
     assert_eq!(h.app.session.tool_id(), "selection", "1-click symbol insertion auto-switches to selection tool");
 }
 
-/// Design 3.0 D1: every one-click button of the drawing set, the ribbon's element popups and the
-/// tool column draws something and reports no error. (Five of the set's standard lines sent names
+/// Design 3.0 D1: every one-click button of the drawing set and the tool column draws something and
+/// reports no error (the ribbon's element popups left with D2). (Five of the set's standard lines sent names
 /// the engine doesn't know and did nothing; Spot Height sent `x`, `y` without `at`.)
 #[test]
 fn every_one_click_button_draws_without_error() {
@@ -3572,54 +3537,18 @@ fn every_one_click_button_draws_without_error() {
     h.click(wid("scrap-preset", "all12"));
     assert_eq!(h.app.ui.status_seq, seq, "{}", h.app.ui.status);
 
-    // The ribbon's element popups.
-    let popups: [(&str, &[&str]); 5] = [
-        ("scale-bar", &["1/10", "1/20", "1/30", "1/40", "1/50", "1/60", "1/80", "1/100", "1/200"]),
-        ("section-line", &["A–A′ (가로)", "B–B′ (세로)", "C–C′ (가로)", "a–a′ (가로)", "b–b′ (세로)", "──┃ 93.0m (가로단면)", "┳ 93.0m (세로단면)"]),
-        (
-            "spot-height",
-            &[
-                "자동 해발선: 단면선 아래쪽 + 우측 붉은 눈금 (──┃)",
-                "자동 해발선: 빈 곳(위쪽) + 좌측 숫자 (기본)",
-                "붉은 눈금 ──┃ 93.0m 찍기",
-                "세로 눈금 ┳ 93.0m 찍기",
-            ],
-        ),
-        ("north", &["방위표 넣기", "-45°", "-30°", "-15°", "+0°", "+15°", "+30°", "+45°", "+90°"]),
-        (
-            "legend",
-            &[
-                "토층설명 7p 텍스트 넣기 (I : 흑갈색 사질점토…)",
-                "교란 (6p)",
-                "조사경계 (6p+파선)",
-                "격자 기호 (A1~C3)",
-                "현장 선굵기 규격 주기",
-                "I",
-                "II",
-                "III",
-                "IV",
-                "V",
-                "VI",
-                "VII",
-                "VIII",
-                "IX",
-                "X",
-            ],
-        ),
-    ];
-    for (tile, buttons) in popups {
-        h.click(wid("tile", tile));
-        let area = h.ctx.memory(|m| m.area_rect(wid("trowel-tile-window", tile))).unwrap_or_else(|| panic!("{tile}'s popup"));
-        for b in buttons {
-            let (before, seq) = (h.node_count(), h.app.ui.status_seq);
-            h.click_text(b, area);
-            check(&mut h, &format!("{tile} › {b}"), before, seq);
-        }
+    // The datum the set's level-line and section buttons use is typed in its own field.
+    let set = h.panel(SET);
+    assert!(h.texts_in(set).iter().any(|s| s == "Datum elevation"), "the drawing set's Datum elevation");
+    for k in ["scale-bar", "section-line", "spot-height", "north", "legend"] {
+        assert!(h.ctx.memory(|m| m.area_rect(wid("trowel-tile-window", k))).is_none(), "{k}: no ribbon popup");
     }
 
-    // The tool column: Spot Height at the elevation the ribbon's popup set; Slope Hachure along the
-    // selected top line.
+    // The tool column: Spot Height at the elevation the drawing set's field set; Slope Hachure along
+    // the selected top line.
     h.ctx.data_mut(|d| d.insert_temp(super::datum_elevation_id(), 95.5));
+    h.settle();
+    assert!(h.texts_in(set).iter().any(|s| s == "해발 95.5m"), "the datum buttons show it: {:?}", h.texts_in(set));
     let (before, seq) = (h.node_count(), h.app.ui.status_seq);
     h.click(wid("arch", "spot-height"));
     check(&mut h, "spot height", before, seq);
