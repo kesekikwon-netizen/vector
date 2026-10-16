@@ -16,7 +16,10 @@
 //!   (`stratigraphy.boundary`: the line, its layer number and a description line), Backspace takes
 //!   the last point back, Esc stops.
 //!
-//! A click that finds no line asks the UI to say what to click ([`HINT`]).
+//! A click that finds no line asks the UI to say what to click ([`HINT`]); the marks these tools
+//! put in (level lines, A–A′ …) are not lines to click ([`vectorcraft_doc::section_marks::is_mark`]).
+//! Between clicks the tools aren't [`Tool::busy`] (only while the button is down), so the
+//! keyboard's Backspace, Enter and Esc reach them ([`Tool::claims_key`]) and the shortcuts work.
 
 use serde_json::json;
 use vectorcraft_doc::{NodeId, NodeKind};
@@ -46,10 +49,15 @@ pub fn create(id: &str) -> Option<Box<dyn Tool>> {
 
 /// How near (screen pixels) a click must be to a line to pick it, at least.
 const PICK_PX: f64 = 5.0;
-/// The two points of a section mark must be this far apart (screen pixels).
+/// The two points of a section mark must be this far apart (screen pixels), and at least
+/// [`MIN_SPAN_PT`] on paper (as `trowel.insertSectionMarker` takes them).
 const MIN_SPAN_PX: f64 = 4.0;
+const MIN_SPAN_PT: f64 = 1.0;
 /// Freehand points of a strata line are at least this far apart (screen pixels).
 const STEP_PX: f64 = 3.0;
+/// A press this near the strata line's last point (screen pixels, as near as a double-click's two
+/// presses) ends the line once released.
+const FINISH_PX: f64 = 6.0;
 /// The most points a strata line takes (`stratigraphy.boundary`'s cap).
 const MAX_POINTS: usize = 100_000;
 
@@ -57,12 +65,14 @@ fn xy(p: Point) -> [f64; 2] {
     [p.x, p.y]
 }
 
-/// The path whose line is under `p` (not one whose inside is): its id.
+/// The path whose line is under `p` (not one whose inside is, nor a mark the tools put in): its
+/// id.
 fn path_at(cx: &ToolContext, p: Point) -> Option<NodeId> {
     let mut opt = cx.hit_options();
     opt.path_only = true;
     opt.tol = opt.tol.max(cx.tol(PICK_PX));
-    let hit = vectorcraft_doc::hit::hit_test(cx.doc, p, opt)?;
+    let mark = |id: NodeId| cx.doc.node(id).is_some_and(vectorcraft_doc::section_marks::is_mark);
+    let hit = vectorcraft_doc::hit::hit_test_skipping(cx.doc, p, opt, &mark)?;
     matches!(cx.doc.node(hit.leaf)?.kind, NodeKind::Path { .. }).then_some(hit.leaf)
 }
 
@@ -82,6 +92,8 @@ pub struct SectionCutTool {
     /// The button is down on the first point: a drag places the second.
     pressed: bool,
     dragged: bool,
+    /// The letter the marks will take, found once the first point is down.
+    letter: String,
 }
 
 impl SectionCutTool {
@@ -90,7 +102,7 @@ impl SectionCutTool {
         if m.shift { start + constrain_angle_from(p - start, 45.0, cx.constrain_angle) } else { p }
     }
     fn far_enough(&self, cx: &ToolContext) -> bool {
-        self.start.is_some_and(|a| a.distance(self.end) >= cx.tol(MIN_SPAN_PX))
+        self.start.is_some_and(|a| a.distance(self.end) >= cx.tol(MIN_SPAN_PX).max(MIN_SPAN_PT))
     }
     fn reset(&mut self) {
         self.start = None;
@@ -111,7 +123,7 @@ impl Tool for SectionCutTool {
         "sectionCut"
     }
     fn busy(&self) -> bool {
-        self.start.is_some()
+        self.pressed
     }
     fn pointer(&mut self, cx: &ToolContext, ev: &PointerEvent) -> Vec<Action> {
         match (ev.kind, self.start) {
@@ -125,6 +137,7 @@ impl Tool for SectionCutTool {
                 self.end = ev.pos;
                 self.pressed = true;
                 self.dragged = false;
+                self.letter = vectorcraft_doc::section_marks::next_letter(cx.doc);
                 vec![]
             }
             (PointerKind::Drag | PointerKind::Up, Some(a)) if self.pressed => {
@@ -153,7 +166,7 @@ impl Tool for SectionCutTool {
         vec![]
     }
     fn claims_key(&self, _cx: &ToolContext, key: ToolKey) -> bool {
-        self.busy() && key == ToolKey::Escape
+        self.start.is_some() && key == ToolKey::Escape
     }
     fn deactivate(&mut self, _cx: &ToolContext) -> Vec<Action> {
         self.reset();
@@ -163,8 +176,7 @@ impl Tool for SectionCutTool {
         let Some(a) = self.start else { return vec![] };
         let mut o = vec![Overlay::Anchor { p: a, color: FEEDBACK, filled: true, size: 5.0 }];
         if self.far_enough(cx) {
-            let b = self.end;
-            let letter = vectorcraft_doc::section_marks::next_letter(cx.doc);
+            let (b, letter) = (self.end, &self.letter);
             o.push(Overlay::Line { a, b, color: FEEDBACK, dashed: true });
             o.push(Overlay::Anchor { p: b, color: FEEDBACK, filled: false, size: 5.0 });
             o.push(Overlay::Label { p: b, text: format!("{letter}–{letter}′"), color: FEEDBACK });
@@ -293,14 +305,17 @@ impl Tool for StrataLineTool {
         "strataLine"
     }
     fn busy(&self) -> bool {
-        !self.points.is_empty()
+        self.pressed
     }
     fn pointer(&mut self, cx: &ToolContext, ev: &PointerEvent) -> Vec<Action> {
         self.hover = Some(ev.pos);
         match ev.kind {
             PointerKind::Down => {
                 self.pressed = true;
-                self.on_last = !self.add(cx, ev.pos);
+                self.on_last = self.points.last().is_some_and(|l| l.distance(ev.pos) < cx.tol(FINISH_PX));
+                if !self.on_last {
+                    self.add(cx, ev.pos);
+                }
                 vec![]
             }
             PointerKind::Drag if self.pressed => {
@@ -332,7 +347,7 @@ impl Tool for StrataLineTool {
         }
     }
     fn claims_key(&self, _cx: &ToolContext, key: ToolKey) -> bool {
-        self.busy() && matches!(key, ToolKey::Enter | ToolKey::Escape | ToolKey::Backspace | ToolKey::Delete)
+        !self.points.is_empty() && matches!(key, ToolKey::Enter | ToolKey::Escape | ToolKey::Backspace | ToolKey::Delete)
     }
     /// Switching tools keeps what was drawn, as the Pen does.
     fn deactivate(&mut self, _cx: &ToolContext) -> Vec<Action> {
@@ -385,15 +400,17 @@ mod tests {
         let mut t = SectionCutTool::default();
         // Two clicks: the first places the first point and the preview follows the pointer.
         assert!(click(&mut t, &cx, 50.0, 300.0).is_empty());
-        assert!(t.busy());
+        // Waiting for the second point, it isn't busy (the keyboard's shortcuts work) but takes Esc.
+        assert!(!t.busy() && t.claims_key(&cx, ToolKey::Escape));
         t.pointer(&cx, &ev(PointerKind::Move, 250.0, 310.0));
         let o = t.overlays(&cx);
         assert!(o.iter().any(|o| matches!(o, Overlay::Line { dashed: true, .. })), "{o:?}");
         assert!(o.iter().any(|o| matches!(o, Overlay::Label { text, .. } if text == "A–A′")), "{o:?}");
         assert_eq!(click(&mut t, &cx, 250.0, 310.0), vec![marker([50.0, 300.0], [250.0, 310.0])]);
-        assert!(!t.busy() && t.overlays(&cx).is_empty());
-        // One drag.
+        assert!(!t.claims_key(&cx, ToolKey::Escape) && t.overlays(&cx).is_empty());
+        // One drag, busy while the button is down.
         let mut a = t.pointer(&cx, &ev(PointerKind::Down, 10.0, 10.0));
+        assert!(t.busy());
         a.extend(t.pointer(&cx, &ev(PointerKind::Drag, 60.0, 40.0)));
         a.extend(t.pointer(&cx, &ev(PointerKind::Up, 110.0, 70.0)));
         assert_eq!(a, vec![marker([10.0, 10.0], [110.0, 70.0])]);
@@ -415,16 +432,29 @@ mod tests {
         click(&mut t, &cx, 50.0, 50.0);
         // A second click on the first point, or a tiny drag, places nothing.
         assert!(click(&mut t, &cx, 51.0, 50.0).is_empty());
-        assert!(t.busy());
         assert!(t.claims_key(&cx, ToolKey::Escape));
         assert!(t.key(&cx, ToolKey::Escape, Mods::default()).is_empty());
         assert!(!t.busy() && !t.claims_key(&cx, ToolKey::Escape));
         let mut a = t.pointer(&cx, &ev(PointerKind::Down, 10.0, 10.0));
         a.extend(t.pointer(&cx, &ev(PointerKind::Drag, 11.0, 11.0)));
         a.extend(t.pointer(&cx, &ev(PointerKind::Up, 11.0, 11.0)));
-        assert!(a.is_empty() && t.busy(), "a short drag is a click");
+        assert!(a.is_empty() && t.claims_key(&cx, ToolKey::Escape), "a short drag is a click");
         assert!(t.deactivate(&cx).is_empty());
-        assert!(!t.busy());
+        assert!(!t.claims_key(&cx, ToolKey::Escape));
+    }
+
+    /// Zoomed in past 400 %, two points 4 px apart are under a point apart on paper: the tool
+    /// waits for one the command takes, keeping the first.
+    #[test]
+    fn section_cut_points_are_a_point_apart_on_paper() {
+        let (d, _) = doc_with_rect();
+        let (s, p) = (Selection::default(), paint());
+        let mut cx = cx(&d, &s, &p);
+        cx.zoom = 8.0;
+        let mut t = SectionCutTool::default();
+        click(&mut t, &cx, 10.0, 10.0);
+        assert!(click(&mut t, &cx, 10.6, 10.0).is_empty(), "4.8 px but 0.6 pt");
+        assert_eq!(click(&mut t, &cx, 11.0, 10.0), vec![marker([10.0, 10.0], [11.0, 10.0])]);
     }
 
     #[test]
@@ -458,6 +488,30 @@ mod tests {
         assert!(t.overlays(&cx).is_empty());
         assert_eq!(click(t.as_mut(), &cx, 150.0, 150.0), vec![Action::Dialog(HINT.into(), json!({"tool": "levelLines"}))]);
         assert_eq!(click(t.as_mut(), &cx, 400.0, 400.0), vec![Action::Dialog(HINT.into(), json!({"tool": "levelLines"}))]);
+    }
+
+    /// The level lines a click made, a datum tick or an A–A′ mark are not ground lines: a click on
+    /// one over the ground line takes the ground line, on its own nothing.
+    #[test]
+    fn marks_are_not_lines_to_click() {
+        let (mut d, id) = doc_with_rect();
+        let l = d.layers[0].id;
+        for (name, y) in [("단면 해발 눈금 (32.5m)", 101.0), ("단면 기호 A–A′", 300.0)] {
+            let (gid, pid) = (d.alloc_id(), d.alloc_id());
+            let line = vectorcraft_doc::Node::path(
+                pid,
+                vectorcraft_geom::PathData::single(vectorcraft_geom::SubPath::polyline(&[Point::new(0.0, y), Point::new(400.0, y)], false)),
+                vectorcraft_doc::Appearance::default_art(),
+            );
+            let mut g = vectorcraft_doc::Node::group(gid, vec![std::sync::Arc::new(line)]);
+            g.name = Some(name.into());
+            d.insert(Some(l), usize::MAX, g).unwrap();
+        }
+        let (s, p) = (Selection::default(), paint());
+        let cx = cx(&d, &s, &p);
+        let mut t = create("levelLines").unwrap();
+        assert_eq!(click(t.as_mut(), &cx, 150.0, 101.0), vec![Action::Dialog(ASK_LEVEL.into(), json!({"profileId": id.0, "at": [150.0, 101.0]}))]);
+        assert_eq!(click(t.as_mut(), &cx, 50.0, 300.0), vec![Action::Dialog(HINT.into(), json!({"tool": "levelLines"}))]);
     }
 
     #[test]
@@ -497,8 +551,9 @@ mod tests {
         for x in [51.0, 60.0, 70.0] {
             t.pointer(&cx, &ev(PointerKind::Drag, x, 20.0));
         }
+        assert!(t.busy(), "while the button is down");
         t.pointer(&cx, &ev(PointerKind::Up, 70.0, 20.0));
-        assert!(t.busy() && t.claims_key(&cx, ToolKey::Enter) && t.claims_key(&cx, ToolKey::Backspace));
+        assert!(!t.busy() && t.claims_key(&cx, ToolKey::Enter) && t.claims_key(&cx, ToolKey::Backspace));
         t.pointer(&cx, &ev(PointerKind::Move, 90.0, 30.0));
         let o = t.overlays(&cx);
         assert!(o.iter().any(|o| matches!(o, Overlay::Line { dashed: true, .. })), "the next segment: {o:?}");
@@ -508,7 +563,7 @@ mod tests {
             t.key(&cx, ToolKey::Enter, Mods::default()),
             vec![Action::Exec("stratigraphy.boundary".into(), json!({"points": [[10.0, 10.0], [50.0, 20.0], [60.0, 20.0]]}))]
         );
-        assert!(!t.busy() && !t.claims_key(&cx, ToolKey::Enter));
+        assert!(!t.claims_key(&cx, ToolKey::Enter) && !t.claims_key(&cx, ToolKey::Backspace));
     }
 
     #[test]
@@ -524,16 +579,20 @@ mod tests {
             click(&mut t, &cx, 101.0, 10.0),
             vec![Action::Exec("stratigraphy.boundary".into(), json!({"points": [[10.0, 10.0], [100.0, 10.0]]}))]
         );
-        assert!(t.pointer(&cx, &ev(PointerKind::DoubleClick, 101.0, 10.0)).is_empty() && !t.busy());
+        assert!(t.pointer(&cx, &ev(PointerKind::DoubleClick, 101.0, 10.0)).is_empty() && !t.claims_key(&cx, ToolKey::Enter));
+        // A double-click's second press a little off (5 px) ends it too.
+        click(&mut t, &cx, 10.0, 10.0);
+        click(&mut t, &cx, 100.0, 10.0);
+        assert_eq!(click(&mut t, &cx, 104.0, 13.0).len(), 1, "within the double-click distance");
         // Two quick clicks at two points are a double-click to the window: they add both.
         click(&mut t, &cx, 10.0, 10.0);
         click(&mut t, &cx, 60.0, 10.0);
         assert!(t.pointer(&cx, &ev(PointerKind::DoubleClick, 60.0, 10.0)).is_empty());
-        assert!(t.busy());
+        assert!(t.claims_key(&cx, ToolKey::Enter));
         // A press on the last point dragged on goes on freehand.
         t.pointer(&cx, &ev(PointerKind::Down, 60.0, 10.0));
         t.pointer(&cx, &ev(PointerKind::Drag, 80.0, 10.0));
-        assert!(t.pointer(&cx, &ev(PointerKind::Up, 80.0, 10.0)).is_empty() && t.busy());
+        assert!(t.pointer(&cx, &ev(PointerKind::Up, 80.0, 10.0)).is_empty() && t.claims_key(&cx, ToolKey::Enter));
         t.key(&cx, ToolKey::Escape, Mods::default());
         // One point is no line; Esc drops what there is.
         click(&mut t, &cx, 10.0, 10.0);
@@ -541,7 +600,7 @@ mod tests {
         click(&mut t, &cx, 10.0, 10.0);
         click(&mut t, &cx, 30.0, 10.0);
         assert!(t.key(&cx, ToolKey::Escape, Mods::default()).is_empty());
-        assert!(!t.busy());
+        assert!(!t.claims_key(&cx, ToolKey::Escape));
         // Switching tools keeps the line.
         click(&mut t, &cx, 10.0, 10.0);
         click(&mut t, &cx, 30.0, 10.0);

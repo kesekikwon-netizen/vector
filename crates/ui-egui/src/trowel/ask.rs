@@ -53,6 +53,12 @@ pub(crate) fn open(app: &mut VectorcraftApp, kind: &str, p: &Value) {
             app.status(hint);
             return;
         }
+        // A drawing with map coordinates reads its heights from its northings (`trowel.levelLines`
+        // refuses it): said before a height is typed.
+        (ASK_LEVEL, _, _) if app.session.active().and_then(|st| st.doc.scale.as_ref()).is_some_and(|sc| sc.world_origin.1.abs() >= 1e-6) => {
+            app.status_error(tw!("This drawing has map coordinates: draw level lines in a section drawing"));
+            return;
+        }
         (ASK_LEVEL, Some(at), Some(profile)) => AskFor::Level { profile, at },
         (ASK_SPOT, Some(at), _) => AskFor::Spot { at },
         _ => return,

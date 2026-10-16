@@ -1,4 +1,4 @@
-상태: verify
+상태: rework
 
 # J024 (디자인 3.0 D4): 도구 열 고고학 4칸
 
@@ -124,7 +124,7 @@
 | `cargo test -p vectorcraft-engine --lib tests_archaeology` (린트 고침 뒤) | 0 | 4 통과 | `j024/test-arch.log` |
 | `cargo xtask assets` / `brands` / `layers` | 0 / 0 / 0 | 자산 359개 모두 출처 있음 · 다른 회사 이름 없음 · 계층 위반 없음 | `j024/xtask-*.log` |
 | `twmissing.py` / `twunused.py` | 0 | 글자열 254개 중 번역 빠짐 0 / 안 쓰는 줄 7개(D4 전부터) | 터미널 |
-| GitHub 「Trowel CI」(`cargo xtask ci`, wasm 포함) | - | 커밋 push 뒤 확인 | - |
+| GitHub 「Trowel CI」 run 38937920345 (커밋 `8dff460`, `cargo xtask ci`, wasm 포함) | - | **실패**: 앱 crate E0451(아래 절에서 고침) | GitHub Actions |
 
 - 처음 clippy 실패 두 건은 이번 변경에서 생긴 것이고 고쳤다. 기존 실패는 없었다.
 - 린트 고침 두 건 뒤에 다시 돌린 것은 clippy 전체와 엔진 고고학 시험 4개다. 화면 시험 1,060은 고치기 전 코드에서 돌렸다(고친 두 곳은 엔진 안이고 동작이 같다: 너비 비교의 NaN 처리, 시험 안의 if 합치기).
@@ -140,4 +140,68 @@
 | `cargo clippy --workspace --all-targets -- -D warnings` | 0 | 경고 없음(앱 crate 포함) | `j024/clippy-ws.log` |
 | `cargo test -p vectorcraft-ui-egui` | 0 | 1,061 + 6 통과 · 0 실패 | `j024/test-ui2.log` |
 | `cargo test -p vectorcraft` | 0 | 66 통과 | `j024/test-app.log` |
+| GitHub 「Trowel CI」 run 38941924987 (커밋 `0bd0e41`) | - | **성공**(Linux `cargo xtask ci` + Windows 빌드) | GitHub Actions |
+
+### 완료 기준 7 확인 2 · 기준 8 (새로 띄운 앱, `0bd0e41` 릴리스 빌드)
+- 방법: 새 HOME으로 앱을 띄우고(1440×880, 한국어) control 채널로 키·누르기만 보냈다(`ui.key`/`ui.click`/`ui.text`, 지표선 하나만 `path.create`). 스크립트 scratchpad `shots/scene_d4.py`, 결과 `shots/d4r0/`.
+- 결과(`d4-scene.json`)
+  - 키 1/2/4/3 → `sectionCut`/`levelLines`/`strataLine`/`spotHeight`.
+  - 빈 곳 누르기 → 상태줄 「지표선을 누르세요」.
+  - 생긴 것: 「단면 기호 A–A′」(화살표·붉은 막대·A/A′), 해발선 묶음과 「단면 해발 눈금 (32.5m)」, 「토층선 Ⅰ」·「토층선 Ⅱ」와 「층위 번호 Ⅰ/Ⅱ」, 「토층설명 7p」 칸 안 「토층설명 Ⅰ/Ⅱ」, 「표고 33.2m」.
+  - 높이 칸은 Enter로 닫힘. 표고 칸에는 소스판 기준 해발(93.0)이 미리 들어 있었다(화면 `d4-spot-ask.png`).
+- 기준 8 비교(`shots/d4r0/d4-compare-tools.png`, 앱 도구 열과 4장 시안 `.a-tools` 2배)
+  - 가름줄 y: 앱 80/261/442/606, 시안 81/262/443/607(시안 맨 위 1 px 테두리 때문).
+  - 칸 위치·크기는 1–3 px 안. 「고고학」 글자 같음.
+  - **남은 차이**: (1) 클래식 도구 아이콘(V A P N \ M T R S C K I H Z)은 VectorCraft 그림이라 시안 그림과 다르다(D4 범위 밖). (2) 앱 아이콘 선이 조금 굵어 보인다. 그래서 「통과」가 아니라 「차이 2건 남음」이다.
+
+## 검토 (review) — 2026-10-16
+### 코드 검토 (code-reviewer, 대상 `f1959cb..0bd0e41`) — 판정 **수정 필요**
+기록 scratchpad `review/j024-code.md`, 재현 `review/j024-repro/`.
+
+| # | 지적 | 무게 | 처리 |
+|---|---|---|---|
+| 0 | `8dff460`이 앱 crate 빌드를 깸(E0451) | 막는 것 | `0bd0e41`에서 고침(검토자 확인) |
+| 1 | 토층선이 점을 가진 동안 `busy()`라서 키보드 Backspace/Delete/Enter/Esc가 도구에 안 감 | 막는 것 | 재작업 1 |
+| 2 | `stratigraphy.boundary`가 격자 표·9 pt 인라인 칸에도 7 pt 줄을 끼워 넣음 | 고칠 것 | 재작업 1 |
+| 3 | 로마 숫자가 Ⅹ 뒤 「11」 | 고칠 것 | 재작업 1 |
+| 4 | 해발선 도구가 해발선·표시도 지표선으로 집음 | 고칠 것 | 재작업 1 |
+| 5 | 기준 7(확인 2)·8·9 증거 없음 | 고칠 것 | 위 절에 기록 |
+| 6 | 해발 기준점 글자 형식이 모든 호출자에서 바뀜 | 사소 | 재작업 1(`format:'auto'`일 때만) |
+| 7 | 좌표 인자 유한성·범위 검사 없음 | 사소 | 재작업 1 |
+| 8 | 단면선 최소 간격 도구 4 px / 엔진 1 pt | 사소 | 재작업 1 |
+| 9 | 두 번 누르기 판정 3 px | 사소 | 재작업 1(6 px) |
+| 10 | TM 도면 거절을 높이 입력 뒤 영어로 알림 | 사소 | 재작업 1 |
+| 11 | 미리 보기 매 프레임 문서 전체 훑기 | 사소 | 재작업 1 |
+| 12 | 느슨한·빈 단언 | 사소 | 재작업 1 |
+
+- 사고: 검토자가 재현 시험을 같은 작업 트리의 `trowel/tests.rs`에 잠깐 붙였다가 지웠다. `0bd0e41`에 `zz_review`가 없고 구현자 편집이 남아 있는 것을 구현자가 확인했다(diff 대조). 앞으로 검토자는 작업 트리를 건드리지 않는다.
+
+## 재작업 1 (rework) — 2026-10-16, 기준 `0bd0e41`
+- 1 키보드: 단면선·토층선의 `busy()`를 「단추를 누르고 있는 동안」으로 바꿨다(펜과 같은 뜻). 점 사이 대기는 `claims_key`로 나타낸다. 그래서 `shortcuts.rs`의 `if busy { … return; }`에 키가 막히지 않고, 점 사이에는 한 글자 단축키(1–4, Z)도 된다.
+  - 시험 기대값 변경: 도구 시험이 「점이 있으면 `busy()`」를 보던 곳을 `claims_key`로 바꿨다. 근거: 검토 1(실제 키 경로에서 Backspace가 버려짐)과 `Tool::busy`의 뜻(누르고 끄는 중). 새 화면 시험 `the_keyboard_reaches_the_strata_line_while_it_is_drawn`(세 점 → Backspace → Enter면 점 2개, Esc는 아무것도 안 만듦, 점 사이 Z는 돋보기로 바꾸고 그때까지의 선을 남김).
+- 2 설명 칸: 토층 표가 인라인일 때만 그 칸을 쓰고, 크기는 표의 `font_size_pt`(2–72, 아니면 7), 간격은 `max(크기×1.65, 11.55)`, 다음 줄은 마지막 글자 줄 아래에 둔다. 격자 표가 있으면 표 배치는 그대로 두고 「토층설명 7p」 칸을 찾거나 새로 만든다. 시험 `strata_boundaries_past_ten_and_with_a_table_already_there`.
+- 3 번호: 10을 넘으면 `XI`, `XII` …(`stratigraphy.number`와 같은 `to_ascii_roman`). 같은 시험.
+- 4 표시 건너뛰기: `vectorcraft_doc::section_marks::is_mark`(해발선 묶음, 단면 기호, 해발 눈금, 표고, 토층선 번호·설명, 축척 막대, 방위표, 비탈면 빗금)를 도구의 선 집기(`hit_test_skipping`, 이번에 `pub`)가 건너뛰고, 엔진 `trowel.levelLines`도 그런 `profileId`를 거절한다. 시험 `marks_are_not_lines_to_click`, `level_lines_refuse_marks_and_points_off_the_canvas`, `marks_are_told_from_drawn_lines`.
+- 6 기준점 글자: `trowel.insertSectionMarker`에 `format?: 'fixed'|'auto'`를 더했다. 기본은 예전처럼 소수 한 자리(「32.5m」), `trowel.levelLines`만 `auto`를 준다. 요소함의 기준점 버튼은 예전 그대로다. 시험 `datum_ticks_keep_one_decimal_unless_asked`.
+- 7 범위: `p0`·`p1`, `at`, `points`가 유한하고 `MAX_COORD` 안인지 바로 보고, 아니면 「off the canvas」 오류. 같은 시험.
+- 8 최소 간격: 도구가 `max(화면 4 px, 1 pt)`. 시험 `section_cut_points_are_a_point_apart_on_paper`(800 %에서 0.6 pt는 기다리고 1 pt는 놓음).
+- 9 끝내기 거리: 마지막 점에서 6 px(`FINISH_PX`). 도구 시험이 5 px 어긋난 두 번째 누르기로 끝나는지 본다.
+- 10 TM 도면: 높이 칸을 열기 전에(`ask::open`) 도면 원점의 북쪽 좌표를 보고, 한국어 문구로 상태줄에 알린다(`ko.tsv` 1줄). 시험 `level_lines_on_a_map_drawing_are_refused_at_the_click`.
+- 11 미리 보기: 다음 글자를 첫 점을 놓을 때 한 번 찾아 둔다.
+- 12 단언: 표고 이름은 정확히 「표고 95.5m」, 경사 표시는 누른 선의 가로 범위 안.
+
+### 재작업 1 검증 (클라우드 컨테이너, Linux) — 2026-10-16
+로그는 scratchpad `j024/r1-*.log`(git에 넣지 않음).
+
+| 명령 | 종료 코드 | 결과 | 기록 |
+|---|---|---|---|
+| `cargo test -p vectorcraft-engine --lib` | 0 | 1,703 통과 · 0 실패(새 시험 3) | `r1-engine.log` |
+| `cargo test -p vectorcraft-engine --test cmd_stratigraphy --test command_sweep --test plan_adversarial --test trowel_e2e --test m4_adversarial_stress --test trowel_adversarial_oracles` | 0 | 6 + 15 + 12 + 14 + 13 + 225 통과 · 0 실패 | `r1-engine-int.log` |
+| `cargo test -p vectorcraft-tools` | 0 | 301 통과(새 시험 2) | `r1-tools.log` |
+| `cargo test -p vectorcraft-doc` | 0 | 177 통과(새 시험 1) | `r1-doc.log` |
+| `cargo test -p vectorcraft-ui-egui` | 0 | 1,063 + 6 통과 · 0 실패(새 시험 2) | `r1-ui.log` |
+| `cargo test -p vectorcraft` | 0 | 66 통과 | `r1-app.log` |
+| `cargo clippy --workspace --all-targets -- -D warnings` | 0 | 경고 없음(앱·웹 crate 포함) | `r1-clippy.log` |
+| `cargo fmt --all -- --check` | 0 | 통과 | `r1-fmt.log` |
+| `twmissing.py` | 0 | 글자열 255개 중 번역 빠짐 0 | 터미널 |
 | GitHub 「Trowel CI」 | - | 이 커밋 push 뒤 확인 | - |

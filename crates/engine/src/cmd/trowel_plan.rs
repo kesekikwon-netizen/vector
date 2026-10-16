@@ -92,7 +92,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Insert Section Marker or Datum Tick",
             ["Trowel", "도면"],
             None,
-            "{at?: [x,y]|{x,y}, p0?: [x,y], p1?: [x,y], label?: string, orientation?: 'horizontal'|'vertical', spanPt?: f64, kind?: 'cut'|'datum', elevationM?: f64} insert section cut markers (A-A', B-B', a-a', b-b' with red reference bar and sightline check-arrow; between `p0` and `p1` in any direction when given, else from `at` along `orientation` for `spanPt`; without `label`, the first letter the drawing's marks don't use) or section datum tick (┣ 93.0m)",
+            "{at?: [x,y]|{x,y}, p0?: [x,y], p1?: [x,y], label?: string, orientation?: 'horizontal'|'vertical', spanPt?: f64, kind?: 'cut'|'datum', elevationM?: f64, format?: 'fixed'|'auto'} insert section cut markers (A-A', B-B', a-a', b-b' with red reference bar and sightline check-arrow; between `p0` and `p1` in any direction when given, else from `at` along `orientation` for `spanPt`; without `label`, the first letter the drawing's marks don't use) or section datum tick (┣ 93.0m; `auto`: two decimals for a height not in whole 10 cm, 32.45m, as level lines label theirs)",
             has_doc,
             insert_section_marker
         ),
@@ -337,6 +337,11 @@ fn spot_elevation(s: &mut Session, p: &Value) -> Result<Value> {
     })
 }
 
+/// A point on the canvas: finite and within [`crate::MAX_COORD`].
+fn in_range(q: Point) -> bool {
+    q.x.is_finite() && q.y.is_finite() && q.x.abs() <= crate::MAX_COORD && q.y.abs() <= crate::MAX_COORD
+}
+
 /// The level lines' weights on paper: every line, and every 50 cm (the user's 편집 file, design
 /// 3.0 Q2).
 const LEVEL_WEIGHT_PT: f64 = 0.3;
@@ -345,7 +350,7 @@ const LEVEL_MAJOR_WEIGHT_PT: f64 = 0.5;
 fn level_lines(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "trowel.levelLines";
     let profile = p.get("profileId").and_then(Value::as_u64).map(NodeId).ok_or_else(|| bad(C, "give `profileId`, the ground line"))?;
-    let at = p.get("at").and_then(parse_point).ok_or_else(|| bad(C, "missing or invalid `at`"))?;
+    let at = p.get("at").and_then(parse_point).filter(|q| in_range(*q)).ok_or_else(|| bad(C, "missing or invalid `at`"))?;
     let elevation = p
         .get("elevationM")
         .and_then(Value::as_f64)
@@ -359,6 +364,11 @@ fn level_lines(s: &mut Session, p: &Value) -> Result<Value> {
             return Err(bad(C, "this drawing has map coordinates: draw level lines in a section drawing"));
         }
         let node = doc.node(profile).ok_or_else(|| bad(C, format!("no object {}", profile.0)))?;
+        // Level lines, a datum tick or an A–A′ mark the tools put in are not a ground line.
+        let chain = doc.ancestry(profile).unwrap_or_default();
+        if chain.iter().filter_map(|id| doc.node(*id)).any(vectorcraft_doc::section_marks::is_mark) {
+            return Err(bad(C, "that is a mark the tools put in, not the ground line"));
+        }
         let bp = super::elevation::get_bezpath_from_node(node).ok_or_else(|| bad(C, "the ground line is not a path"))?;
         let bb = bp.bounding_box();
         if !bb.width().is_finite() || bb.width() < 1e-4 {
@@ -386,7 +396,7 @@ fn level_lines(s: &mut Session, p: &Value) -> Result<Value> {
         )?;
         let tick = s.execute(
             "trowel.insertSectionMarker",
-            &json!({ "kind": "datum", "orientation": "horizontal", "at": [right + 16.0, at.y], "elevationM": elevation }),
+            &json!({ "kind": "datum", "orientation": "horizontal", "at": [right + 16.0, at.y], "elevationM": elevation, "format": "auto" }),
         )?;
         Ok(json!({ "id": lines["id"], "datumId": tick["id"], "datumM": datum_m, "segmentCount": lines["segmentCount"] }))
     })
@@ -724,6 +734,9 @@ fn insert_section_marker(s: &mut Session, p: &Value) -> Result<Value> {
     let ends = match (p.get("p0").map(parse_point), p.get("p1").map(parse_point)) {
         (None, None) => None,
         (Some(Some(a)), Some(Some(b))) if kind != "datum" => {
+            if !in_range(a) || !in_range(b) {
+                return Err(bad(C, "`p0` and `p1` are off the canvas"));
+            }
             if a.distance(b) < 1.0 {
                 return Err(bad(C, "the section's two points are the same: press again further along"));
             }
@@ -734,6 +747,7 @@ fn insert_section_marker(s: &mut Session, p: &Value) -> Result<Value> {
     };
     let span = p.get("spanPt").and_then(Value::as_f64).filter(|v| v.is_finite() && *v > 10.0).unwrap_or(180.0);
     let elev_m = p.get("elevationM").and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(93.0);
+    let auto_label = p.get("format").and_then(Value::as_str) == Some("auto");
 
     let target_parent = s.doc()?.target_parent()?;
     let red_ref = Color::rgb8(210, 35, 90);
@@ -768,8 +782,9 @@ fn insert_section_marker(s: &mut Session, p: &Value) -> Result<Value> {
             tnode.name = Some("해발 기준 눈금".to_string());
             children.push(Arc::new(tnode));
 
-            // As the level lines label their heights: 93.0m, 32.45m.
-            let lbl_str = vectorcraft_doc::elevation::ElevationLabelFormat::MetersSuffix.format(elev_m);
+            // `auto`: as the level lines label their heights (93.0m, 32.45m); else one decimal.
+            let lbl_str =
+                if auto_label { vectorcraft_doc::elevation::ElevationLabelFormat::MetersSuffix.format(elev_m) } else { format!("{elev_m:.1}m") };
             let lid = doc.alloc_id();
             let cs = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
             let mut lobj = TextObject::point(text_pos, &lbl_str, cs);

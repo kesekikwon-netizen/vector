@@ -215,6 +215,8 @@ const MAX_BOUNDARY_POINTS: usize = 100_000;
 /// block: 7 pt, at least 11 pt apart).
 const NOTE_PT: f64 = 7.0;
 const NOTE_LINE: f64 = 11.55;
+/// The block's name.
+const NOTE_BLOCK: &str = "토층설명 7p";
 /// The layer numbers' type size (the field's 6 pt) and how far over the line their baseline is.
 const NUMBER_PT: f64 = 6.0;
 const NUMBER_RISE: f64 = 4.0;
@@ -240,7 +242,11 @@ fn boundary(s: &mut Session, p: &Value) -> Result<Value> {
         .and_then(Value::as_array)
         .ok_or_else(|| bad(C, "give `points`, [[x, y], ...]"))?
         .iter()
-        .map(|v| parse_point(v).filter(|q| q.x.is_finite() && q.y.is_finite()).ok_or_else(|| bad(C, "each point is [x, y]")))
+        .map(|v| {
+            parse_point(v)
+                .filter(|q| q.x.is_finite() && q.y.is_finite() && q.x.abs() <= crate::MAX_COORD && q.y.abs() <= crate::MAX_COORD)
+                .ok_or_else(|| bad(C, "each point is [x, y] on the canvas"))
+        })
         .collect::<Result<_>>()?;
     if pts.len() < 2 {
         return Err(bad(C, "a boundary needs two points"));
@@ -266,7 +272,12 @@ fn boundary(s: &mut Session, p: &Value) -> Result<Value> {
                 table.numbering_style = NumberingStyle::Roman;
             }
             let number = table.layers.iter().map(|l| l.index).max().unwrap_or(0).saturating_add(1);
-            (number, table.numbering_style.format(number), table.placement.clone())
+            // Past Ⅹ, Roman numerals in letters (XI, XII …), as `stratigraphy.number` writes them.
+            let badge = match table.numbering_style {
+                NumberingStyle::Roman if number > 10 => vectorcraft_doc::stratigraphy::to_ascii_roman(number),
+                style => style.format(number),
+            };
+            (number, badge, table.placement.clone())
         };
 
         let mut line = Node::path(doc.alloc_id(), PathData::single(vectorcraft_geom::SubPath::polyline(&pts, false)), Appearance::default());
@@ -283,29 +294,60 @@ fn boundary(s: &mut Session, p: &Value) -> Result<Value> {
         number_node.name = Some(format!("층위 번호 {badge}"));
         doc.insert(target_parent, usize::MAX, number_node).map_err(|e| bad(C, e.to_string()))?;
 
-        // The description block: the one made before while it is still there, else a new one under
-        // this line.
-        let block = placement
-            .as_ref()
-            .and_then(|pl| pl.node_id.filter(|id| matches!(doc.node(*id).map(|n| &n.kind), Some(NodeKind::Group { .. }))).map(|id| (id, pl.origin)));
-        let (block_id, origin, made) = match block {
-            Some((id, origin)) => (id, origin, false),
+        // The description block: the inline one made before (here or by `stratigraphy.generateTable`)
+        // while it is still there, in its type size; else a new 7 pt one under this line. A grid
+        // table is not a block of lines: the 7 pt block goes beside it, found again by its name
+        // (the table keeps its grid's placement).
+        let grid = placement.as_ref().is_some_and(|pl| pl.format != TableRenderFormat::Inline);
+        let group = |id: NodeId| matches!(doc.node(id).map(|n| &n.kind), Some(NodeKind::Group { .. }));
+        let block = match placement.as_ref() {
+            Some(pl) if !grid => pl.node_id.filter(|id| group(*id)).map(|id| {
+                let size = Some(pl.font_size_pt).filter(|v| v.is_finite() && (2.0..=72.0).contains(v)).unwrap_or(NOTE_PT);
+                (id, pl.origin, size)
+            }),
+            Some(_) => {
+                let mut found = None;
+                doc.walk(|n| {
+                    if found.is_none() && n.name.as_deref() == Some(NOTE_BLOCK) && matches!(n.kind, NodeKind::Group { .. }) {
+                        found = Some(n.id);
+                    }
+                });
+                found.map(|id| (id, Point::new(bounds.x0, bounds.y1 + 24.0), NOTE_PT))
+            }
+            None => None,
+        };
+        let (block_id, origin, size, made) = match block {
+            Some((id, origin, size)) => (id, origin, size, false),
             None => {
                 let origin = Point::new(bounds.x0, bounds.y1 + 24.0);
                 let gid = doc.alloc_id();
                 let mut g = Node::new(gid, NodeKind::Group { children: vec![], clip: false });
-                g.name = Some("토층설명 7p".to_string());
+                g.name = Some(NOTE_BLOCK.to_string());
                 doc.insert(target_parent, usize::MAX, g).map_err(|e| bad(C, e.to_string()))?;
-                (gid, origin, true)
+                (gid, origin, NOTE_PT, true)
             }
         };
-        let row = match doc.node(block_id).map(|n| &n.kind) {
-            Some(NodeKind::Group { children, .. }) => children.len(),
-            _ => 0,
+        // The next line goes under the block's last one (its last typed line), where it is now.
+        let line_h = (size * 1.65).max(NOTE_LINE);
+        let last = match doc.node(block_id).map(|n| &n.kind) {
+            Some(NodeKind::Group { children, .. }) => children
+                .iter()
+                .filter_map(|c| match &c.kind {
+                    NodeKind::Text(t) => {
+                        let at = t.xf.translation();
+                        let lines = t.plain_text().matches('\n').count() as f64;
+                        Some(Point::new(at.x, at.y + lines * line_h))
+                    }
+                    _ => None,
+                })
+                .filter(|q| q.x.is_finite() && q.y.is_finite())
+                .max_by(|a, b| a.y.total_cmp(&b.y)),
+            _ => None,
         };
+        let at = last.map_or(Point::new(origin.x, origin.y + size), |q| Point::new(q.x, q.y + line_h));
         let note_id = doc.alloc_id();
-        let style = CharStyle { size: NOTE_PT, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
-        let note = TextObject::point(Point::new(origin.x, origin.y + row as f64 * NOTE_LINE + NOTE_PT), &format!("{badge}층 : "), style);
+        let style = CharStyle { size, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
+        let note = TextObject::point(at, &format!("{badge}층 : "), style);
         let mut note_node = Node::new(note_id, NodeKind::Text(Box::new(note)));
         note_node.name = Some(format!("토층설명 {badge}"));
         doc.insert(Some(block_id), usize::MAX, note_node).map_err(|e| bad(C, e.to_string()))?;
@@ -320,7 +362,7 @@ fn boundary(s: &mut Session, p: &Value) -> Result<Value> {
             face_node_id: None,
         });
         table.layers.sort_by_key(|l| l.index);
-        if made {
+        if made && !grid {
             table.placement = Some(StratigraphyTablePlacement {
                 origin,
                 width_pt: 420.0,

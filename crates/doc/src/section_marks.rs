@@ -2,11 +2,29 @@
 //! design 3.0 §5 ④, §6): the Section Line tool and `trowel.insertSectionMarker` give each new
 //! mark the first letter no mark in the drawing uses yet.
 
-use crate::{Document, NodeKind};
+use crate::{Document, Node, NodeKind};
 
 /// How the groups of section marks are named: `단면 기호 A–A′` (`trowel.insertSectionMarker`) and
 /// `단면선 A–A′` (`trowel.sectionLine`).
 const PREFIXES: [&str; 2] = ["단면 기호 ", "단면선 "];
+
+/// How the other marks the archaeology tools and the drawing set's elements put in are named: datum
+/// ticks, spot heights, layer boundaries, numbers and descriptions, scale bars, north arrows,
+/// slope hachures.
+const MARK_PREFIXES: [&str; 9] = ["단면 해발 눈금", "표고 ", "토층선 ", "층위 번호", "토층 번호", "토층설명", "축척 막대", "방위표", "비탈면 빗금"];
+
+/// Whether `n` is a mark the tools put in (A–A′ marks, level lines, datum ticks …), not a line
+/// drawn by hand: the Level Lines and Slope Hachure tools don't take one for the line clicked.
+pub fn is_mark(n: &Node) -> bool {
+    if n.is_layer() {
+        return false;
+    }
+    if n.elevation.is_some() {
+        return true;
+    }
+    let Some(name) = n.name.as_deref() else { return false };
+    PREFIXES.iter().any(|p| name.strip_prefix(p).is_some_and(|rest| rest.contains('–'))) || MARK_PREFIXES.iter().any(|p| name.starts_with(p))
+}
 
 /// The most marks a drawing names (A–Z, then A1–Z1 … Z99): past that the next one is `A` again.
 const ROUNDS: u32 = 100;
@@ -69,5 +87,22 @@ mod tests {
             mark(&mut doc, &format!("단면 기호 {c}–{c}′"));
         }
         assert_eq!(next_letter(&doc), "A1");
+    }
+
+    #[test]
+    fn marks_are_told_from_drawn_lines() {
+        let named = |name: Option<&str>| {
+            let mut n = Node::group(crate::NodeId(1), vec![]);
+            n.name = name.map(str::to_string);
+            n
+        };
+        for name in ["단면 기호 A–A′", "단면선 B–B′", "단면 해발 눈금 (32.5m)", "표고 32.5m", "토층선 Ⅰ", "층위 번호 Ⅱ", "토층설명 7p", "비탈면 빗금"]
+        {
+            assert!(is_mark(&named(Some(name))), "{name}");
+        }
+        // A drawn line, a group of them, and the section layer's name on a group are not.
+        for name in [None, Some("지표선"), Some("단면선 (잘린 땅)"), Some("단면선")] {
+            assert!(!is_mark(&named(name)), "{name:?}");
+        }
     }
 }

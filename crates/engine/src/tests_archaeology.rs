@@ -143,6 +143,45 @@ fn level_lines_put_the_clicked_point_at_the_height() {
     assert!(e.to_string().contains("section drawing"), "{e}");
 }
 
+/// The marks the tools put in are not ground lines, and points off the canvas are refused with
+/// nothing made (review J024 4 and 7).
+#[test]
+fn level_lines_refuse_marks_and_points_off_the_canvas() {
+    let mut s = session();
+    let ground = pit(&mut s);
+    let r = run(&mut s, "trowel.levelLines", json!({"profileId": ground["id"], "at": [150, 250], "elevationM": 32.0}));
+    let lines = node(&s, &r["id"]);
+    let line = named(&lines, "주 해발선").first().map(|n| n.id.0).unwrap();
+    let tick = node(&s, &r["datumId"]);
+    let bar = named(&tick, "해발 기준 눈금").first().map(|n| n.id.0).unwrap();
+    let before = node_count(&s);
+    for id in [line, bar] {
+        let e = s.execute("trowel.levelLines", &json!({"profileId": id, "at": [150, 250], "elevationM": 32.0})).unwrap_err();
+        assert!(e.to_string().contains("not the ground line"), "{e}");
+    }
+    let huge = [1e308, 0.0];
+    for (cmd, p) in [
+        ("trowel.levelLines", json!({"profileId": ground["id"], "at": huge, "elevationM": 32.0})),
+        ("trowel.insertSectionMarker", json!({"kind": "cut", "p0": huge, "p1": [-1e308, 0.0]})),
+        ("trowel.insertSectionMarker", json!({"kind": "cut", "p0": [0, 0], "p1": [5e6, 0]})),
+        ("stratigraphy.boundary", json!({"points": [[0, 0], [4.1e6, 10]]})),
+    ] {
+        assert!(s.execute(cmd, &p).is_err(), "{cmd} {p}");
+    }
+    assert_eq!(node_count(&s), before);
+}
+
+/// A datum tick from the drawing set's element keeps its one decimal; level lines ask for the
+/// height as typed (`format: 'auto'`, review J024 6).
+#[test]
+fn datum_ticks_keep_one_decimal_unless_asked() {
+    let mut s = session();
+    let one = run(&mut s, "trowel.insertSectionMarker", json!({"kind": "datum", "at": [100, 100], "elevationM": 32.45}));
+    let auto = run(&mut s, "trowel.insertSectionMarker", json!({"kind": "datum", "at": [100, 200], "elevationM": 32.45, "format": "auto"}));
+    assert_eq!(node(&s, &one["id"]).name.as_deref(), Some("단면 해발 눈금 (32.5m)"));
+    assert_eq!(node(&s, &auto["id"]).name.as_deref(), Some("단면 해발 눈금 (32.45m)"));
+}
+
 #[test]
 fn spot_elevation_down_triangle_and_short_label() {
     let mut s = session();
@@ -230,4 +269,56 @@ fn strata_boundary_numbers_and_adds_a_description_line() {
     for bad in [json!({"points": [[1, 1]]}), json!({"points": "x"}), json!({"points": [[1, 1], ["a", 2]]}), json!({})] {
         assert!(s.execute("stratigraphy.boundary", &bad).is_err(), "{bad}");
     }
+}
+
+/// Past Ⅹ the numbers go on in letters; an inline table's block takes the next line in its own
+/// type size under its last line; a grid table keeps its grid and the lines go in a 7 pt block
+/// beside it (review J024 2 and 3).
+#[test]
+fn strata_boundaries_past_ten_and_with_a_table_already_there() {
+    let mut s = session();
+    let mut last = json!(null);
+    for i in 0..11 {
+        let y = 20 + i * 30;
+        last = run(&mut s, "stratigraphy.boundary", json!({"points": [[50, y], [250, y + 5]]}));
+    }
+    assert_eq!(last["badge"], "XI");
+    assert_eq!(text_of(&node(&s, &last["noteId"])), "XI층 : ");
+
+    // An inline table in 9 pt, made from the layers so far.
+    let mut s = session();
+    for y in [20, 50] {
+        run(&mut s, "stratigraphy.boundary", json!({"points": [[50, y], [250, y + 5]]}));
+    }
+    run(&mut s, "stratigraphy.generateTable", json!({"format": "inline", "fontSizePt": 9, "at": [50, 300]}));
+    let c = run(&mut s, "stratigraphy.boundary", json!({"points": [[50, 80], [250, 85]]}));
+    let block = node(&s, &c["blockId"]);
+    let ys: Vec<f64> = block
+        .children()
+        .unwrap()
+        .iter()
+        .filter_map(|n| match &n.kind {
+            NodeKind::Text(t) => Some(t.xf.translation().y),
+            _ => None,
+        })
+        .collect();
+    let step = (9.0 * 1.65f64).max(11.55);
+    assert!(ys.len() == 3 && ys.windows(2).all(|w| (w[1] - w[0] - step).abs() < 1e-6), "9 pt lines {step} apart: {ys:?}");
+    let note = node(&s, &c["noteId"]);
+    let NodeKind::Text(t) = &note.kind else { panic!("{:?}", note.name) };
+    assert_eq!(t.runs.first().map(|r| r.style.size), Some(9.0));
+
+    // A grid table: it keeps its placement, the lines go in a block of their own, found again.
+    let mut s = session();
+    run(&mut s, "stratigraphy.boundary", json!({"points": [[50, 20], [250, 25]]}));
+    let grid = run(&mut s, "stratigraphy.generateTable", json!({"format": "grid", "at": [50, 300]}));
+    let placement = |s: &Session| s.doc().unwrap().doc.stratigraphy_tables.first().and_then(|t| t.placement.clone()).unwrap();
+    let grid_node = placement(&s).node_id;
+    let d = run(&mut s, "stratigraphy.boundary", json!({"points": [[50, 80], [250, 85]]}));
+    let e = run(&mut s, "stratigraphy.boundary", json!({"points": [[50, 110], [250, 115]]}));
+    assert_eq!(placement(&s).format, vectorcraft_doc::stratigraphy::TableRenderFormat::Grid, "{grid}");
+    assert_eq!(placement(&s).node_id, grid_node);
+    assert_ne!(Some(NodeId(d["blockId"].as_u64().unwrap())), grid_node);
+    assert_eq!(d["blockId"], e["blockId"]);
+    assert_eq!(node(&s, &d["blockId"]).name.as_deref(), Some("토층설명 7p"));
 }

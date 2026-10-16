@@ -4335,7 +4335,7 @@ fn every_one_click_button_draws_without_error() {
     check(&mut h, "spot height", before, seq);
     let st = h.app.session.active().unwrap();
     let spot = st.selection.objects.first().and_then(|id| st.doc.node(*id)).map(|n| n.display_name());
-    assert!(spot.as_deref().is_some_and(|n| n.contains("95.5")), "{spot:?}");
+    assert_eq!(spot.as_deref(), Some("표고 95.5m"));
     let top = h.app.run("shape.line", json!({ "x1": 50.0, "y1": 50.0, "x2": 250.0, "y2": 80.0 })).unwrap();
     h.app.run("select.none", json!({})).unwrap();
     h.app.select_tool("slopeHachure");
@@ -4343,7 +4343,17 @@ fn every_one_click_button_draws_without_error() {
     let (before, seq) = (h.node_count(), h.app.ui.status_seq);
     h.click_at(h.on_screen(150.0, 65.0));
     check(&mut h, "slope hachure", before, seq);
-    assert!(top["id"].as_u64().is_some());
+    // Along the clicked line (50–250 across), not some other one.
+    let st = h.app.session.active().unwrap();
+    let line = st.doc.node(vectorcraft_doc::NodeId(top["id"].as_u64().unwrap())).and_then(|n| n.geometric_bounds()).unwrap();
+    let mut hachures = None;
+    st.doc.walk(|n| {
+        if n.name.as_deref() == Some("비탈면 빗금") {
+            hachures = n.geometric_bounds();
+        }
+    });
+    let b = hachures.expect("the hachures");
+    assert!(b.x0 >= line.x0 - 1.0 && b.x1 <= line.x1 + 1.0, "along the line {line:?}: {b:?}");
 }
 
 /// The names the drawing's objects have, in document order.
@@ -4382,6 +4392,66 @@ fn digits_pick_the_archaeology_tools_in_trowel_only() {
     h.settle();
     digit(&mut h, "1", Num1);
     assert_eq!(h.app.session.tool_id(), "selection");
+}
+
+/// The keyboard reaches the Strata Line while it is drawn (review J024 1): Backspace takes the last
+/// point back, Esc drops the line, and between clicks the shortcuts work (Z, the Zoom tool).
+#[test]
+fn the_keyboard_reaches_the_strata_line_while_it_is_drawn() {
+    let mut h = Harness::new();
+    h.click(wid("tool", "strataLine"));
+    for (x, y) in [(20.0, 215.0), (200.0, 240.0), (380.0, 215.0)] {
+        h.click_at(h.on_screen(x, y));
+    }
+    h.key(egui::Key::Backspace);
+    h.key(egui::Key::Enter);
+    let st = h.app.session.active().unwrap();
+    let mut anchors = None;
+    st.doc.walk(|n| {
+        if n.name.as_deref() == Some("토층선 Ⅰ")
+            && let vectorcraft_doc::NodeKind::Path { path, .. } = &n.kind
+        {
+            anchors = path.subpaths.first().map(|sp| sp.anchors.len());
+        }
+    });
+    assert_eq!(anchors, Some(2), "the third point taken back");
+    // Esc drops a line being drawn: nothing made.
+    for (x, y) in [(20.0, 260.0), (200.0, 270.0)] {
+        h.click_at(h.on_screen(x, y));
+    }
+    let before = h.node_count();
+    h.key(egui::Key::Escape);
+    h.key(egui::Key::Enter);
+    assert_eq!(h.node_count(), before);
+    // A shortcut between clicks: the line so far is kept, as switching tools does.
+    for (x, y) in [(20.0, 300.0), (200.0, 310.0)] {
+        h.click_at(h.on_screen(x, y));
+    }
+    h.frame(vec![
+        Event::Key { key: egui::Key::Z, physical_key: Some(egui::Key::Z), pressed: true, repeat: false, modifiers: Default::default() },
+        Event::Text("z".into()),
+    ]);
+    h.frame(vec![Event::Key { key: egui::Key::Z, physical_key: Some(egui::Key::Z), pressed: false, repeat: false, modifiers: Default::default() }]);
+    h.settle();
+    assert_eq!(h.app.session.tool_id(), "zoom");
+    assert!(object_names(&h).iter().any(|n| n == "토층선 Ⅱ"), "{:?}", object_names(&h));
+}
+
+/// A plan with map coordinates (a TM origin) is told at the click, before a height is typed
+/// (review J024 10): no height box, the refusal in the status bar.
+#[test]
+fn level_lines_on_a_map_drawing_are_refused_at_the_click() {
+    let mut h = Harness::new();
+    let anchors = json!([{"x": 20, "y": 200}, {"x": 200, "y": 260}, {"x": 380, "y": 200}]);
+    h.app.run("path.create", json!({ "anchors": anchors })).unwrap();
+    h.app.run("select.none", json!({})).unwrap();
+    h.app.run("doc.setOrigin", json!({"canvas": [0, 0], "world": [200000.0, 450000.0]})).unwrap();
+    h.click(wid("tool", "levelLines"));
+    let before = h.node_count();
+    h.click_at(h.on_screen(110.0, 230.0));
+    assert!(h.app.trowel_ask.is_none(), "no height box");
+    assert_eq!(h.app.ui.status, "This drawing has map coordinates: draw level lines in a section drawing");
+    assert_eq!(h.node_count(), before);
 }
 
 /// Design 3.0 §8 steps 5, 7 and 8 with the tool column alone (D4 criterion 7): A–A′ across the
