@@ -196,6 +196,17 @@ fn spot_elevation_down_triangle_and_short_label() {
     let tri = bounds(named(&g, "표고 기호").first().unwrap());
     assert!((tri.y1 - 100.0).abs() < 1e-9 && (tri.center().x - 100.0).abs() < 1e-9 && (tri.width() - 7.0).abs() < 1e-9, "{tri:?}");
     assert!(tri.y0 < 95.0, "{tri:?}");
+    // The label shows (review J024 UI 1): its white halo paints under the characters, so the
+    // black of the figures is there at 4×.
+    let label = named(&g, "표고 3").first().map(|n| bounds(n)).unwrap();
+    let xf = vectorcraft_geom::Affine::scale(4.0) * vectorcraft_geom::Affine::translate((-60.0, -60.0));
+    let img = vectorcraft_render::Renderer::new().render(&s.doc().unwrap().doc, 400, 400, xf, &Default::default());
+    let on = xf.transform_rect_bbox(label);
+    let dark = (on.y0.max(0.0) as u32..on.y1.min(400.0) as u32)
+        .flat_map(|y| (on.x0.max(0.0) as u32..on.x1.min(400.0) as u32).map(move |x| (x, y)))
+        .filter(|&(x, y)| img.pixel(x, y)[3] > 200 && img.pixel(x, y)[0] < 90)
+        .count();
+    assert!(dark > 40, "dark pixels in the label {on:?}: {dark}");
     let r = run(
         &mut s,
         "trowel.spotElevation",

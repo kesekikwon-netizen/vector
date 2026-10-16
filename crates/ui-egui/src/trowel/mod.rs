@@ -34,7 +34,7 @@ mod scale_dialog;
 pub mod section;
 mod status;
 pub mod style_dialog;
-mod tools;
+pub(crate) mod tools;
 mod weights;
 
 /// The panels' ids (egui keeps where each was laid out under it).

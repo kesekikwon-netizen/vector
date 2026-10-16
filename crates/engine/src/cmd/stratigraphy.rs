@@ -215,8 +215,8 @@ const MAX_BOUNDARY_POINTS: usize = 100_000;
 /// block: 7 pt, at least 11 pt apart).
 const NOTE_PT: f64 = 7.0;
 const NOTE_LINE: f64 = 11.55;
-/// The block's name.
-const NOTE_BLOCK: &str = "토층설명 7p";
+// The block's name (a double-click on its lines types in them, `section_marks::is_note_block`).
+use vectorcraft_doc::section_marks::NOTE_BLOCK;
 /// The layer numbers' type size (the field's 6 pt) and how far over the line their baseline is.
 const NUMBER_PT: f64 = 6.0;
 const NUMBER_RISE: f64 = 4.0;

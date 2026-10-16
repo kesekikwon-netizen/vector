@@ -129,6 +129,10 @@ pub struct Tokens {
     /// Trowel (D4): the red of the section marks on paper (the Section Line tool's icon), the same
     /// in every theme.
     pub section_mark: Color32,
+    /// Trowel (D4): a tool tile's shortcut letter (the mockup's `.tl i`) and on the tile in hand
+    /// (`.tl.on i`); the other themes draw them `text_disabled` and `icon_on`.
+    pub tile_key: Color32,
+    pub tile_key_on: Color32,
 }
 
 impl Tokens {
@@ -191,8 +195,10 @@ impl Tokens {
             caution_wash: hex(0x3f3524),
             ok: hex(0x45af63),
             section_mark: hex(0xe8334f),
+            tile_key: hex(0x6e6e6e),
+            tile_key_on: hex(0xf5f5f5),
         };
-        match b {
+        let mut t = match b {
             Brightness::Dark => base,
             // Measured from Illustrator 2026 (plan/illustrator/10-observed-ui.md §1).
             Brightness::MediumDark => Tokens {
@@ -352,8 +358,14 @@ impl Tokens {
                 caution_wash: hex(0xf7efd6),
                 ok: hex(0x3f6b31),
                 section_mark: hex(0xe8334f),
+                tile_key: hex(0x9a988f),
+                tile_key_on: hex(0xcfcfc8),
             },
+        };
+        if b != Brightness::Plate {
+            (t.tile_key, t.tile_key_on) = (t.text_disabled, t.icon_on);
         }
+        t
     }
 
     pub fn get(ctx: &egui::Context) -> Tokens {

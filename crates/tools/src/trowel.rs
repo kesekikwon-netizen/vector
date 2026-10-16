@@ -4,7 +4,7 @@
 //!
 //! - Section Line (`sectionCut`, key 1): two clicks, or a drag, put the A–A′ marks at the two
 //!   points (`trowel.insertSectionMarker {kind: cut, p0, p1}`) with the next letter the drawing
-//!   doesn't use yet. Shift: 45° steps; Esc stops.
+//!   doesn't use yet. Shift: 45° steps; Esc (or Backspace) stops.
 //! - Slope Hachure (`slopeHachure`, in the Section Line slot): a click on a line hachures along it
 //!   (`trowel.slopeHachures {topId}`).
 //! - Level Lines (`levelLines`, key 2): the ground line under the pointer is marked; a click on it
@@ -159,14 +159,15 @@ impl Tool for SectionCutTool {
             _ => vec![],
         }
     }
+    /// Esc, or Backspace taking the first point back (the pen bar's Undo), drops the first point.
     fn key(&mut self, _cx: &ToolContext, key: ToolKey, _m: Mods) -> Vec<Action> {
-        if key == ToolKey::Escape {
+        if matches!(key, ToolKey::Escape | ToolKey::Backspace | ToolKey::Delete) {
             self.reset();
         }
         vec![]
     }
     fn claims_key(&self, _cx: &ToolContext, key: ToolKey) -> bool {
-        self.start.is_some() && key == ToolKey::Escape
+        self.start.is_some() && matches!(key, ToolKey::Escape | ToolKey::Backspace | ToolKey::Delete)
     }
     fn deactivate(&mut self, _cx: &ToolContext) -> Vec<Action> {
         self.reset();
@@ -441,6 +442,11 @@ mod tests {
         assert!(a.is_empty() && t.claims_key(&cx, ToolKey::Escape), "a short drag is a click");
         assert!(t.deactivate(&cx).is_empty());
         assert!(!t.claims_key(&cx, ToolKey::Escape));
+        // Backspace (the pen bar's Undo) takes the first point back.
+        click(&mut t, &cx, 50.0, 50.0);
+        assert!(t.claims_key(&cx, ToolKey::Backspace));
+        assert!(t.key(&cx, ToolKey::Backspace, Mods::default()).is_empty());
+        assert!(!t.claims_key(&cx, ToolKey::Backspace) && t.overlays(&cx).is_empty());
     }
 
     /// Zoomed in past 400 %, two points 4 px apart are under a point apart on paper: the tool

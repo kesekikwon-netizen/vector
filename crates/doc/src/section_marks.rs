@@ -26,6 +26,16 @@ pub fn is_mark(n: &Node) -> bool {
     PREFIXES.iter().any(|p| name.strip_prefix(p).is_some_and(|rest| rest.contains('–'))) || MARK_PREFIXES.iter().any(|p| name.starts_with(p))
 }
 
+/// Whether `n` is a soil layer description block (`stratigraphy.boundary`'s 「토층설명 7p」, an
+/// inline table's 「토층설명 7p (…)」): a double-click on one of its lines types in it at once
+/// rather than isolating the group (design 3.0 §8 step 8).
+pub fn is_note_block(n: &Node) -> bool {
+    matches!(n.kind, NodeKind::Group { .. }) && n.name.as_deref().is_some_and(|m| m.starts_with(NOTE_BLOCK))
+}
+
+/// The name the description blocks start with.
+pub const NOTE_BLOCK: &str = "토층설명 7p";
+
 /// The most marks a drawing names (A–Z, then A1–Z1 … Z99): past that the next one is `A` again.
 const ROUNDS: u32 = 100;
 

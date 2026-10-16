@@ -1,7 +1,8 @@
 //! The pen bar (design 3.0 §9, the mockup's `.penbar`): while a drawing tool is in hand, three
 //! buttons centred at the bottom of the canvas for pen tablet users: Undo, Finish Line (Enter, in
 //! clay) and Close. The zoom has its place in the zoom buttons at the bottom right (principle 1);
-//! the bar keeps clear of them.
+//! the bar keeps clear of them. A strata line has nothing to close (Undo and Finish Line), a
+//! section line nothing to finish either (Undo and Cancel, Esc).
 
 use egui::{Align2, CornerRadius, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use serde_json::json;
@@ -38,7 +39,12 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui, canvas: Rect, t: &Tokens) {
     ui.ctx().options_mut(|o| o.input_options.max_double_click_delay = 0.5);
 
     // Each button's key, label and the key that does the same (shown after the label).
-    let buttons = [("undo", tw!("Undo"), None), ("finish", tw!("Finish Line"), Some("Enter")), ("close", tw!("Close"), None)];
+    let (undo, finish) = (("undo", tw!("Undo"), None), ("finish", tw!("Finish Line"), Some("Enter")));
+    let buttons = match app.session.tool_id() {
+        "strataLine" => vec![undo, finish],
+        "sectionCut" => vec![undo, ("cancel", tw!("Cancel"), Some("Esc"))],
+        _ => vec![undo, finish, ("close", tw!("Close"), None)],
+    };
     let f = font(12.5);
     let label_w = |label: &str, hint: Option<&str>| width_of(ui, label, f.clone()) + hint.map_or(0.0, |k| 5.0 + width_of(ui, k, f.clone()));
     // The buttons' widths with `pad` either side of their labels, with or without the key.
@@ -108,13 +114,18 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui, canvas: Rect, t: &Tokens) {
             let r = app.session.tool_key(vectorcraft_tools::ToolKey::Enter, vectorcraft_tools::Mods::default(), view);
             crate::canvas::apply_requests(app, r);
         }
+        Some("cancel") => {
+            let view = app.view_info();
+            let r = app.session.tool_key(vectorcraft_tools::ToolKey::Escape, vectorcraft_tools::Mods::default(), view);
+            crate::canvas::apply_requests(app, r);
+        }
         Some("close") => {
             if let Some(id) = app.session.active().and_then(|d| d.selection.objects.first().copied()) {
                 crate::menus::invoke(app, "path.close", json!({ "id": id.0 }));
             }
         }
-        // While a strata line is being drawn its points aren't in the drawing yet: Undo takes the
-        // last one back, as Backspace does.
+        // While a strata or section line is being drawn its points aren't in the drawing yet: Undo
+        // takes the last one back, as Backspace does.
         Some(_) if app.session.tool_claims_key(vectorcraft_tools::ToolKey::Backspace, app.view_info()) => {
             let view = app.view_info();
             let r = app.session.tool_key(vectorcraft_tools::ToolKey::Backspace, vectorcraft_tools::Mods::default(), view);

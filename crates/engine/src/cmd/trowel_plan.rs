@@ -307,17 +307,18 @@ fn spot_elevation(s: &mut Session, p: &Value) -> Result<Value> {
         sym_node.name = Some("표고 기호".to_string());
         children.push(Arc::new(sym_node));
 
-        // Text label
+        // Text label. The halo is a white stroke under the characters (the type's own stroke
+        // would paint over their fill and hide a 7 pt label, review J024 UI 1).
         let text_id = doc.alloc_id();
-        let style = CharStyle {
-            size: geom.font_size_pt,
-            fill: Paint::solid(Color::rgb8(20, 20, 19)),
-            stroke: if geom.halo { Paint::solid(Color::WHITE) } else { Paint::None },
-            stroke_width: if geom.halo { 2.5 } else { 0.0 },
-            ..Default::default()
-        };
+        let style = CharStyle { size: geom.font_size_pt, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
         let t_obj = TextObject::point(geom.label_pos, &geom.text, style);
         let mut text_node = Node::new(text_id, NodeKind::Text(Box::new(t_obj)));
+        if geom.halo {
+            let mut halo = StrokeLayer::new(Paint::solid(Color::WHITE), 2.5);
+            halo.join = vectorcraft_doc::appearance::LineJoin::Round;
+            text_node.appearance = Appearance { items: vec![AppearanceItem::Stroke(halo)], ..Default::default() };
+            text_node.appearance.set_contents_at(1);
+        }
         text_node.name = Some(format!("표고 {}", geom.text));
         children.push(Arc::new(text_node));
 

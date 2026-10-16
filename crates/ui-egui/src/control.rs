@@ -104,6 +104,8 @@ pub fn inspect(app: &VectorcraftApp, ctx: &egui::Context) -> Value {
         "nativeMenuBar": app.services.native_menu.is_some(),
         // Saves and exports still being written in the background (Background Save / Export).
         "background": app.background.jobs.iter().map(|j| j.label.as_str()).collect::<Vec<_>>(),
+        // Trowel's height box (the Level Lines and Spot Height tools), while it is open.
+        "trowelAsk": crate::trowel::ask::inspect(app),
     })
 }
 

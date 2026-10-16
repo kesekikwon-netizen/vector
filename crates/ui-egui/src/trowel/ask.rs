@@ -64,7 +64,23 @@ pub(crate) fn open(app: &mut VectorcraftApp, kind: &str, p: &Value) {
         _ => return,
     };
     let Some(doc) = app.session.active().map(|st| st.uid) else { return };
+    // The line was found: a 「Click the ground line」 from a miss before is said and done.
+    if !app.ui.status_error {
+        app.status(String::new());
+    }
     app.trowel_ask = Some(Ask { what, doc, text: None, at: None, focus: true });
+}
+
+/// The box for `ui.inspect`: `{for: "level"|"spot", text}` (what is typed, `null` until it shows),
+/// or `null` while it is closed.
+pub(crate) fn inspect(app: &VectorcraftApp) -> Value {
+    app.trowel_ask.as_ref().map_or(Value::Null, |a| {
+        let what = match a.what {
+            AskFor::Level { .. } => "level",
+            AskFor::Spot { .. } => "spot",
+        };
+        json!({ "for": what, "text": a.text })
+    })
 }
 
 /// A height as typed: `32.5`, `32.5m`, `32,5` (a decimal comma), in metres.

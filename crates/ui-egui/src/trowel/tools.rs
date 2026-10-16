@@ -45,7 +45,8 @@ const GROUPS: &[(bool, &[Slot])] = &[
     (false, &[(&["hand", "rotateView"], "tw-hand"), (&["zoom"], "tw-zoom")]),
 ];
 
-/// A tool's button as in the mockup (`.tl`); a shorter window tightens it.
+/// A tool's button as in the mockup (`.tl`); a shorter window tightens it as far as it must, to
+/// whole points and not under [`BUTTON_TIGHT`].
 const BUTTON: egui::Vec2 = vec2(38.0, 32.0);
 const BUTTON_TIGHT: f32 = 22.0;
 /// The room around the buttons: above the first and under the last (`padding`), between two
@@ -83,6 +84,13 @@ fn tools_height(bh: f32) -> f32 {
     2.0 * PAD + slots as f32 * (bh + GAP) - groups * GAP + (groups - 1.0) * SEPARATOR + captions * (CAPTION_TOP + CAPTION_H + GAP)
 }
 
+/// The buttons' height in a column `room` high: the mockup's while they fit, then as tall as fits.
+fn button_height(room: f32) -> f32 {
+    let slots: usize = GROUPS.iter().map(|g| g.1.len()).sum();
+    let fits = ((room - tools_height(0.0)) / slots.max(1) as f32).floor();
+    if fits.is_finite() { fits.clamp(BUTTON_TIGHT, BUTTON.y) } else { BUTTON_TIGHT }
+}
+
 pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     egui::Panel::left(TOOLS)
@@ -101,7 +109,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
                 ui.data_mut(|d| d.remove::<egui::Id>(held_id()));
             }
             // The tools as in the mockup while they fit; then the buttons tighten; then they scroll.
-            let bh = if tools_height(BUTTON.y) <= r.height() { BUTTON.y } else { BUTTON_TIGHT };
+            let bh = button_height(r.height());
             let height = tools_height(bh);
             let chosen = if height <= r.height() {
                 tools(app, ui, r, r.top(), bh, &t)
@@ -211,7 +219,10 @@ fn slot(app: &mut VectorcraftApp, ui: &Ui, tools: &[&'static str], icon: &str, s
         section_marks(ui, icon_rect, t);
     }
     if let Some(sc) = crate::shortcut_editor::tool_shortcut(shown) {
-        text(ui, rect.right_bottom() - vec2(2.0, 1.0), Align2::RIGHT_BOTTOM, sc, mono(9.0), if on { t.icon_on } else { t.text_disabled });
+        // The mockup's `.tl i` is 2 right, 1 up of the tile's corner in a browser's line box; egui
+        // sets the 9 px mono letter 2 px higher in its own, so its box ends 1 below the tile to
+        // put the letter where the mockup has it (review J024 UI 8).
+        text(ui, rect.right_bottom() + vec2(-2.0, 1.0), Align2::RIGHT_BOTTOM, sc, mono(9.0), if on { t.tile_key_on } else { t.tile_key });
     }
     // A right press or a long one opens the slot's other tools; a slot torn off into its own strip
     // comes to the front instead.
@@ -251,7 +262,7 @@ fn slot(app: &mut VectorcraftApp, ui: &Ui, tools: &[&'static str], icon: &str, s
 
 /// The Section Line icon's two marks in the section marks' red (the mockup's `#i-secline`), over
 /// the icon drawn at `r` (24 units across).
-fn section_marks(ui: &Ui, r: Rect, t: &Tokens) {
+pub(crate) fn section_marks(ui: &Ui, r: Rect, t: &Tokens) {
     let unit = r.width() / 24.0;
     for left in [2.5, 17.5] {
         let mark = Rect::from_min_size(r.min + vec2(left, 10.0) * unit, vec2(4.0, 4.0) * unit);

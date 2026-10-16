@@ -587,6 +587,7 @@ fn tool_rows(ui: &mut Ui, t: &Tokens, active: &str, tools: &[String]) -> Option<
         }
         let ir = egui::Rect::from_min_size(r.min + vec2(24.0, 6.0), vec2(18.0, 18.0));
         icons::paint(ui, icons::tool_icon(tool.icon), ir, t.icon);
+        section_red(ui, tool.icon, ir, t);
         let color = if is_active { t.flyout_active } else { t.text_strong };
         ui.painter().text(r.left_center() + vec2(52.0, 0.0), egui::Align2::LEFT_CENTER, tl!(tool.label), egui::FontId::proportional(13.0), color);
         if let Some(sc) = crate::shortcut_editor::tool_shortcut(tool.id) {
@@ -603,6 +604,13 @@ fn tool_rows(ui: &mut Ui, t: &Tokens, active: &str, tools: &[String]) -> Option<
         }
     }
     chosen
+}
+
+/// The Section Line icon's red marks, as on its tile (review J024 UI 10).
+fn section_red(ui: &Ui, icon: &str, r: egui::Rect, t: &Tokens) {
+    if icons::tool_icon(icon) == "tw-section-line" {
+        crate::trowel::tools::section_marks(ui, r, t);
+    }
 }
 
 /// The grab bar of the group whose first tool is `key` (one id, flyout or floating, so a drag
@@ -630,6 +638,7 @@ fn tool_strip(ui: &mut Ui, t: &Tokens, active: &str, tools: &[String]) -> Option
         }
         let ir = egui::Rect::from_center_size(r.center(), vec2(18.0, 18.0));
         icons::paint(ui, icons::tool_icon(tool.icon), ir, if active == tool.id { t.icon_on } else { t.icon });
+        section_red(ui, tool.icon, ir, t);
         if resp.on_hover_text(tip(tool)).clicked() {
             chosen = Some(tool.id);
         }

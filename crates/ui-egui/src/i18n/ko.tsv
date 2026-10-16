@@ -4331,7 +4331,7 @@ trowel	Strata Line	토층선
 trowel	Click two points: the A–A′ marks, with the next free letter	두 점을 누르면 A–A′ 표시가 생깁니다. 글자는 아직 쓰지 않은 다음 글자입니다
 trowel	Click a line: slope hachures along it	선을 누르면 그 선을 따라 경사 표시를 넣습니다
 trowel	Click the ground line and type the height there: level lines that stop at it	지표선을 누르고 그 자리의 높이를 넣으면 해발선을 그립니다. 해발선은 지표선에서 멈춥니다
-trowel	Click a point and type its height: ▽ and 32.5m	점을 누르고 높이를 넣으면 ▽와 「32.5m」가 생깁니다
+trowel	Click a point and type its height: ▽ and 32.5m	점을 누르고 높이를 넣으면 역삼각형 표시와 「32.5m」가 생깁니다
 trowel	Draw a layer boundary: its number and a description line come with it. Enter ends it	층 경계를 그리면 층 번호와 토층 설명 줄이 함께 생깁니다. Enter로 끝냅니다
 trowel	Click the line to hachure along	경사 표시를 넣을 선을 누르세요
 trowel	Click the ground line	지표선을 누르세요
@@ -4343,13 +4343,13 @@ trowel	Put in	넣기
 	Level Lines Tool	해발선 도구
 	Spot Height Tool	표고 도구
 	Strata Line Tool	토층선 도구
-	 two points for the A–A′ marks  |  	 두 점을 찍어 A–A′ 표시  |  
+	 two points for the A–A′ marks  |  	 두 점에 A–A′ 표시  |  
 	 from one end to the other  |  	 한쪽 끝에서 다른 끝까지  |  
 	 for 45° steps  |  	 45° 단위  |  
 	 to stop	 그만두기
 	 a line to hachure along it	 선을 따라 경사 표시
-	 the ground line, then type the height there	 지표선, 그 자리 높이 넣기
-	 a point, then type its height	 점, 그 높이 넣기
+	 the ground line, then type the height there	 지표선 → 그 자리 높이 넣기
+	 a point, then type its height	 점 → 높이 넣기
 	 to add a point  |  	 점 더하기  |  
 	 to draw freehand  |  	 손그림  |  
 	 to finish  |  	 끝내기  |  

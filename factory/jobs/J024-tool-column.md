@@ -176,6 +176,29 @@
 
 - 사고: 검토자가 재현 시험을 같은 작업 트리의 `trowel/tests.rs`에 잠깐 붙였다가 지웠다. `0bd0e41`에 `zz_review`가 없고 구현자 편집이 남아 있는 것을 구현자가 확인했다(diff 대조). 앞으로 검토자는 작업 트리를 건드리지 않는다.
 
+### 화면 검토 (ui-reviewer, 새로 띄운 `0bd0e41` 릴리스 앱) — 판정 **수정 필요**
+기록 scratchpad `review/j024-ui.md`, 그림 `review/j024-ui/out/`. 도구 열은 시안과 칸·가름줄·글자 자리 0 px 차이(단축키 글자만 2–2.5 px 위). 8장 5·7·8번은 끊기지 않음.
+
+| # | 지적 | 무게 | 처리 |
+|---|---|---|---|
+| 1 | 표고 글자가 안 보임(글자 위에 흰 테두리 2.5 pt) | 막는 것 | 재작업 1 |
+| 2 | 토층선 Backspace가 점을 안 지움 | 막는 것 | 재작업 1(코드 검토 1과 같음) |
+| 3 | 펜 막대 「닫기」가 단면선·토층선에서 오류만 냄 | 고칠 것 | 재작업 1 |
+| 4 | 설명 줄 두 번 누르기가 묶음 격리만 함 | 고칠 것 | 재작업 1 |
+| 5 | 해발선이 지금 고른 범례 줄에 들어가 「따로 16」 | 고칠 것 | **사람 결정 H9** |
+| 6 | TM 도면 거절이 반 영어, 입력 뒤에야 | 고칠 것 | 재작업 1(코드 검토 10과 같음) |
+| 7 | 「지표선을 누르세요」가 도구를 바꿔도 남음 | 고칠 것 | 재작업 1 |
+| 8 | 단축키 글자 2–2.5 px 위, 색이 진함 | 사소 | 재작업 1 |
+| 9 | 고고학 밖 칸 아이콘이 시안 그림과 다름 | 사소 | 남은 차이(D4 범위 밖) |
+| 10 | 펼침의 단면선 아이콘에 붉은 표시 없음 | 사소 | 재작업 1 |
+| 11 | 창이 조금 낮아도 칸이 32 → 22 | 사소 | 재작업 1 |
+| 12 | 한국어 안내 문구 어색, 풍선의 ▽가 작게 보임 | 사소 | 재작업 1 |
+| 13 | 해발선을 다시 누르면 해발선이 잡힘 | 사소 | 재작업 1(코드 검토 4와 같음) |
+| 14 | A–A′가 지금 줄에 들어가 「따로 1」, [범례대로]가 화살표 굵기를 바꿈(J024 전부터) | 사소 | **사람 결정 H9** |
+| 15 | 단면선 첫 점 뒤 「선 끝내기」가 아무 일 안 함 | 사소 | 재작업 1 |
+| 16 | 토층선 그리는 중 숫자·V 키로 도구가 안 바뀜 | 사소 | 재작업 1(busy 뜻 바꿈) |
+| 17 | `d4-scene.json`의 높이 칸 값이 확인 불가(`ui.inspect`에 없음) | 증거 | 재작업 1(`trowelAsk`), 다시 찍음 |
+
 ## 재작업 1 (rework) — 2026-10-16, 기준 `0bd0e41`
 - 1 키보드: 단면선·토층선의 `busy()`를 「단추를 누르고 있는 동안」으로 바꿨다(펜과 같은 뜻). 점 사이 대기는 `claims_key`로 나타낸다. 그래서 `shortcuts.rs`의 `if busy { … return; }`에 키가 막히지 않고, 점 사이에는 한 글자 단축키(1–4, Z)도 된다.
   - 시험 기대값 변경: 도구 시험이 「점이 있으면 `busy()`」를 보던 곳을 `claims_key`로 바꿨다. 근거: 검토 1(실제 키 경로에서 Backspace가 버려짐)과 `Tool::busy`의 뜻(누르고 끄는 중). 새 화면 시험 `the_keyboard_reaches_the_strata_line_while_it_is_drawn`(세 점 → Backspace → Enter면 점 2개, Esc는 아무것도 안 만듦, 점 사이 Z는 돋보기로 바꾸고 그때까지의 선을 남김).
@@ -190,6 +213,18 @@
 - 11 미리 보기: 다음 글자를 첫 점을 놓을 때 한 번 찾아 둔다.
 - 12 단언: 표고 이름은 정확히 「표고 95.5m」, 경사 표시는 누른 선의 가로 범위 안.
 
+### 재작업 1 (화면 검토 반영) — 같은 날, 기준 `5943506`
+- UI 1 표고 글자: 흰 테두리를 글자 자체의 선이 아니라 글자 아래에 칠하는 모양 항목으로 옮겼다(`trowel.spotElevation`, `contents_index` 1, 둥근 모서리). 요소함의 표고 버튼도 같은 명령이라 함께 보이게 된다. 시험: 엔진 `spot_elevation_down_triangle_and_short_label`이 4배로 그린 그림에서 글자 자리의 검은 점을 센다(고치기 전 0, 뒤 40 넘음).
+  - 같은 「글자 위 흰 선」이 요소함의 다른 버튼(평면 단면 기호 글자 10 pt, 주혈 깊이, 토층 번호 원)에도 있다. D4 길에는 없어서 이번에 고치지 않고 남은 위험으로 적는다(D5).
+- UI 3·15 펜 막대: 토층선은 [되돌리기][선 끝내기], 단면선은 [되돌리기][그만두기 Esc]만 보인다. 단면선은 Backspace·[되돌리기]·[그만두기]가 첫 점을 지운다. 시험 `the_pen_bar_has_what_each_tool_can_do`, 도구 시험 `section_cut_waits_…`.
+- UI 4 설명 줄: 선택 도구로 「토층설명 7p」 묶음의 글자 줄을 두 번 누르면 격리하지 않고 바로 문자 도구로 그 줄을 친다(`section_marks::is_note_block`, 엔진과 같은 이름 상수). 다른 묶음은 예전처럼 격리한다. 시험 `a_description_line_takes_typing_at_a_double_click`.
+- UI 7 안내: 상태줄 메시지는 그 메시지가 나온 도구일 때만 보인다(오류는 5초 그대로). 높이 칸이 열리면 앞의 「지표선을 누르세요」를 지운다. 시험 `the_level_lines_hint_goes_with_the_tool`.
+- UI 8 단축키 글자: 2 px 아래로, 색은 새 토큰 `tile_key` #9A988F / `tile_key_on` #CFCFC8(Quiet Plate, 시안 값). 다른 테마는 예전 색(`text_disabled`, `icon_on`).
+- UI 10 펼침: 펼침 목록과 떼어 낸 도구 띠에서도 단면선 아이콘에 붉은 표시를 그린다.
+- UI 11 칸 높이: 창이 낮으면 칸을 필요한 만큼만 줄인다(정수 pt, 22–32). 시험 기대값 변경: `small_windows_keep_every_tile_and_tool_in_reach`가 「900 미만이면 22」 대신 「(열 높이 − 111) ÷ 18의 내림, 22–32」(1366×728은 24)를 본다. 근거: 화면 검토 11과 시안 칸 32(완료 기준 1).
+- UI 12 문구: 「클릭 두 점에 A–A′ 표시」, 「클릭 지표선 → 그 자리 높이 넣기」, 「클릭 점 → 높이 넣기」. 표고 풍선은 「역삼각형 표시와 「32.5m」」(글꼴이 ▽를 작게 그림).
+- UI 17 증거: `ui.inspect`에 `trowelAsk`(`{for, text}` 또는 null)를 더했고, `scene_d4.py`가 그것을 본다. Backspace 단계(점 셋 → Backspace → Enter)도 더했다.
+
 ### 재작업 1 검증 (클라우드 컨테이너, Linux) — 2026-10-16
 로그는 scratchpad `j024/r1-*.log`(git에 넣지 않음).
 
@@ -203,5 +238,21 @@
 | `cargo test -p vectorcraft` | 0 | 66 통과 | `r1-app.log` |
 | `cargo clippy --workspace --all-targets -- -D warnings` | 0 | 경고 없음(앱·웹 crate 포함) | `r1-clippy.log` |
 | `cargo fmt --all -- --check` | 0 | 통과 | `r1-fmt.log` |
+| `twmissing.py` | 0 | 글자열 255개 중 번역 빠짐 0 | 터미널 |
+| GitHub 「Trowel CI」 run 38947212723 (커밋 `5943506`) | - | **성공** | GitHub Actions |
+
+### 재작업 1 (화면 검토 반영) 검증 — 2026-10-16
+로그는 scratchpad `j024/r1b-*.log`.
+
+| 명령 | 종료 코드 | 결과 | 기록 |
+|---|---|---|---|
+| `cargo test -p vectorcraft-engine --lib` | 0 | 1,703 통과 · 0 실패 | `r1b-engine.log` |
+| 엔진 통합 시험 6개(위와 같은 명령) | 0 | 6 + 15 + 12 + 14 + 13 + 225 통과 · 0 실패 | `r1b-engine-int.log` |
+| `cargo test -p vectorcraft-tools` | 0 | 301 통과 | `r1b-tools.log` |
+| `cargo test -p vectorcraft-doc` | 0 | 177 통과 | `r1b-doc.log` |
+| `cargo test -p vectorcraft-ui-egui` | 0 | 1,066 + 6 통과 · 0 실패(새 시험 3) | `r1b-ui.log` |
+| `cargo test -p vectorcraft` | 0 | 66 통과 | `r1b-app.log` |
+| `cargo clippy --workspace --all-targets -- -D warnings` | 0 | 경고 없음 | `r1b-clippy.log` |
+| `cargo fmt --all -- --check` | 0 | 통과 | `r1b-fmt.log` |
 | `twmissing.py` | 0 | 글자열 255개 중 번역 빠짐 0 | 터미널 |
 | GitHub 「Trowel CI」 | - | 이 커밋 push 뒤 확인 | - |

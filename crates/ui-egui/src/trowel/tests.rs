@@ -649,10 +649,16 @@ fn small_windows_keep_every_tile_and_tool_in_reach() {
         assert!(h.rect(wid("proxy", ()).with("fill-proxy")).is_none() && h.rect(wid("proxy-none", ())).is_none(), "{w}");
         let tool_shown = |h: &Harness, id: egui::Id| column.contains_rect(h.rect(id).unwrap_or_else(|| panic!("{w}: no {id:?}")));
         let all: Vec<egui::Id> = SLOTS.iter().map(|k| wid("tool", k)).collect();
-        // The mockup's 687 points fit 1440 × 900's 726. From 1366 × 728 the whole column fits
-        // tightened: 18 slots at 22 points, 4 lines and the caption take 507 of its 554.
+        // The mockup's 687 points fit 1440 × 900's 726. Lower, the buttons tighten only as far as
+        // they must (review J024 UI 11): the 4 lines, the caption and the gaps take 111, the 18
+        // buttons share the rest to whole points, 22 at the least (1366 × 728's 554: 24).
         let sizes: Vec<f32> = all.iter().filter_map(|id| h.rect(*id)).map(|r| r.height()).collect();
-        assert!(sizes.iter().all(|s| *s == if height >= 900.0 { 32.0 } else { 22.0 }), "{w}: {sizes:?}");
+        let fits = ((column.height() - 111.0) / 18.0).floor().clamp(22.0, 32.0);
+        assert!(sizes.iter().all(|s| *s == fits), "{w}: {sizes:?} for {fits} in {column:?}");
+        assert_eq!(fits == 32.0, height >= 900.0, "{w}");
+        if height == 728.0 {
+            assert_eq!(fits, 24.0, "{w}");
+        }
         if height >= 728.0 {
             let hidden: Vec<_> = all.iter().filter(|id| !tool_shown(&h, **id)).collect();
             assert!(hidden.is_empty(), "{w}: tools cut off {hidden:?}");
@@ -4435,6 +4441,92 @@ fn the_keyboard_reaches_the_strata_line_while_it_is_drawn() {
     h.settle();
     assert_eq!(h.app.session.tool_id(), "zoom");
     assert!(object_names(&h).iter().any(|n| n == "토층선 Ⅱ"), "{:?}", object_names(&h));
+}
+
+/// The pen bar has what each tool can do (review J024 UI 3 and 15): a strata line nothing to
+/// close, a section line nothing to finish either, its Cancel and Undo dropping the first point.
+#[test]
+fn the_pen_bar_has_what_each_tool_can_do() {
+    let mut h = Harness::new();
+    let has = |h: &Harness, k: &str| h.rect(wid("penbar", k)).is_some();
+    for (tool, keys) in [("pen", ["undo", "finish", "close"].as_slice()), ("strataLine", &["undo", "finish"]), ("sectionCut", &["undo", "cancel"])] {
+        h.app.select_tool(tool);
+        h.settle();
+        let shown: Vec<&str> = ["undo", "finish", "close", "cancel"].into_iter().filter(|k| has(&h, k)).collect();
+        assert_eq!(shown, keys, "{tool}");
+    }
+    let waiting = |h: &mut Harness| {
+        let view = h.app.view_info();
+        h.app.session.tool_claims_key(vectorcraft_tools::ToolKey::Escape, view)
+    };
+    for k in ["cancel", "undo"] {
+        h.click_at(h.on_screen(60.0, 120.0));
+        assert!(waiting(&mut h), "{k}: the first point");
+        h.click(wid("penbar", k));
+        assert!(!waiting(&mut h), "{k} drops it");
+    }
+    let before = h.node_count();
+    h.click_at(h.on_screen(60.0, 120.0));
+    h.click_at(h.on_screen(300.0, 120.0));
+    assert!(object_names(&h).iter().any(|n| n == "단면 기호 A–A′"), "{:?}", object_names(&h));
+    assert!(h.node_count() > before);
+}
+
+/// A soil layer's description line takes typing at a double-click with the Selection tool, not
+/// after isolating its block first (review J024 UI 4, design 3.0 §8 step 8).
+#[test]
+fn a_description_line_takes_typing_at_a_double_click() {
+    let mut h = Harness::new();
+    h.app.run("stratigraphy.boundary", json!({ "points": [[40, 100], [200, 120], [360, 100]] })).unwrap();
+    h.app.run("select.none", json!({})).unwrap();
+    h.app.select_tool("selection");
+    let st = h.app.session.active().unwrap();
+    let mut line = None;
+    st.doc.walk(|n| {
+        if n.name.as_deref() == Some("토층설명 Ⅰ") {
+            line = n.geometric_bounds().map(|b| (n.id, b));
+        }
+    });
+    let (id, b) = line.expect("the description line");
+    let at = h.on_screen(b.x1 - 1.0, b.center().y);
+    h.frame(vec![Event::PointerMoved(at)]);
+    for _ in 0..2 {
+        for pressed in [true, false] {
+            h.frame(vec![Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Default::default() }]);
+        }
+    }
+    h.settle();
+    assert_eq!(h.app.session.tool_id(), "type");
+    assert_eq!(h.app.session.tool_options()["editing"].as_u64(), Some(id.0), "typing in the line");
+    assert!(h.app.session.active().unwrap().isolation.is_none(), "not isolated");
+    h.frame(vec![Event::Text("회황갈색 사질점토".into())]);
+    h.key(egui::Key::Escape);
+    let st = h.app.session.active().unwrap();
+    let Some(vectorcraft_doc::NodeKind::Text(t)) = st.doc.node(id).map(|n| &n.kind) else { panic!("the line") };
+    assert!(t.plain_text().contains("회황갈색 사질점토"), "{}", t.plain_text());
+}
+
+/// What to click next belongs to the tool it was said for: picking another tool takes
+/// 「Click the ground line」 away, and so does finding the line (review J024 UI 7).
+#[test]
+fn the_level_lines_hint_goes_with_the_tool() {
+    let mut h = Harness::new();
+    let anchors = json!([{"x": 20, "y": 200}, {"x": 200, "y": 260}, {"x": 380, "y": 200}]);
+    h.app.run("path.create", json!({ "anchors": anchors })).unwrap();
+    h.app.run("select.none", json!({})).unwrap();
+    h.click(wid("tool", "levelLines"));
+    h.click_at(h.on_screen(200.0, 100.0));
+    // The message, not the tool's hint (「Click the ground line, then type the height there」).
+    let said = |h: &Harness| h.status_line().contains("Click the ground line") && !h.status_line().contains("then type");
+    assert!(said(&h), "{}", h.status_line());
+    h.click(wid("tool", "strataLine"));
+    assert!(!said(&h) && h.status_line().contains("to add a point"), "the Strata Line's hint: {}", h.status_line());
+    h.click(wid("tool", "levelLines"));
+    h.click_at(h.on_screen(200.0, 100.0));
+    assert!(said(&h), "{}", h.status_line());
+    h.click_at(h.on_screen(110.0, 230.0));
+    assert!(h.app.trowel_ask.is_some(), "the height box");
+    assert!(!said(&h) && h.status_line().contains("then type the height there"), "the hint back: {}", h.status_line());
 }
 
 /// A plan with map coordinates (a TM origin) is told at the click, before a height is typed

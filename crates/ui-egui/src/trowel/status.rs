@@ -75,8 +75,9 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
 }
 
 /// A save or export running; else a note ([`soon_note`]); else the last message, for
-/// [`MESSAGE_SECS`] after it is put there (the same one again too), so the hint comes back; an
-/// error (design 3.0 §5 ⑩: red, five seconds) for [`ERROR_SECS`]. With whether it is an error.
+/// [`MESSAGE_SECS`] after it is put there (the same one again too) or until another tool is
+/// picked, so the hint comes back; an error (design 3.0 §5 ⑩: red, five seconds) for
+/// [`ERROR_SECS`]. With whether it is an error.
 fn message(app: &VectorcraftApp, ctx: &egui::Context) -> Option<(String, bool)> {
     let status = crate::chrome::status_message(app);
     if let Some((running, true)) = status {
@@ -88,14 +89,20 @@ fn message(app: &VectorcraftApp, ctx: &egui::Context) -> Option<(String, bool)> 
     let (message, _) = status?;
     let now = ctx.input(|i| i.time);
     let seen = wid("status-seen", ());
-    let since = match ctx.data(|d| d.get_temp::<(u64, String, f64)>(seen)) {
-        Some((seq, s, at)) if seq == app.ui.status_seq && s == app.ui.status => at,
+    let tool = app.session.tool_id();
+    let (since, with) = match ctx.data(|d| d.get_temp::<(u64, String, f64, String)>(seen)) {
+        Some((seq, s, at, with)) if seq == app.ui.status_seq && s == app.ui.status => (at, with),
         _ => {
-            ctx.data_mut(|d| d.insert_temp(seen, (app.ui.status_seq, app.ui.status.clone(), now)));
-            now
+            ctx.data_mut(|d| d.insert_temp(seen, (app.ui.status_seq, app.ui.status.clone(), now, tool.to_string())));
+            (now, tool.to_string())
         }
     };
     let error = app.ui.status_error;
+    // What to do next belongs to the tool it was said for (「지표선을 누르세요」 is not the Strata
+    // Line's).
+    if !error && with != tool {
+        return None;
+    }
     let left = if error { ERROR_SECS } else { MESSAGE_SECS } - (now - since);
     // Drawn again when it is due to go.
     (left > 0.0).then(|| {
