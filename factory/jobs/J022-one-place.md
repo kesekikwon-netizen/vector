@@ -201,6 +201,7 @@
 | 11 | `cargo clippy -p vectorcraft-ui-egui --all-targets -- -D warnings` (`d2r2-clippy.log`) | 종료 0 (재작업 1에서 `manual_is_multiple_of` 1개 고침) |
 | 10 | `cargo build -p vectorcraft` (`d2r2-build.log`) 후 새 HOME·한국어·1440×880 캡처 | `shots/r2-fresh.png`, `r2-scaledlg.png`(+`-crop`), `r2-pen.png`, `r2-status-crop.png`. 재작업 1 캡처와 픽셀 비교: 바뀐 곳은 상태줄 좌표 칸(846–1171 × 853–880)뿐 |
 | 11 | 워크스페이스 전체 `cargo xtask ci`(wasm 포함) | 여기서 돌리지 않음 → 올린 뒤 GitHub 「Trowel CI」로 확인 |
+| 11 | GitHub 「Trowel CI」 on `be5f225` (run 38898723146: `cargo xtask ci (Linux)`, `Windows x64 release build`) | 두 작업 모두 success (2026-10-16 12:26Z). 첫 판 `2c8b4a6`도 success (run 38890066023) |
 
 ## 시안과 나란히 본 마지막 남은 차이 (그래서 「통과」가 아님)
 1. 제목줄 앱 표시와 리본 아이콘 4개(축척·좌표, 범례표, 맞추기, 도판) 모양이 시안 그림과 다름(J001·J003 아이콘).
@@ -219,6 +220,7 @@
 14. 범위 밖(D3–D5): 도구 열, 왼쪽 서랍 탭과 폭, 오른쪽 칸 순서, 팔레트 줄, 왼쪽 「놓는 중」 안내.
 
 ## 승인 요청
-- 승인 대상: 이 기록을 담은 커밋(아래 SHA). 첫 판 `2c8b4a6` 위에 재작업 1·2를 한 커밋으로 얹음.
+- 승인 대상: `be5f225`(재작업 1·2를 한 커밋으로, 첫 판 `2c8b4a6` 위). 이 CI 결과 줄은 그 뒤 기록만 더한 커밋.
 - 사람 검토: 축척을 바꾸는 세 곳(축척 창, 상태줄 목록, 소스판 1/N 축척자)이 이제 도면의 좌표계와 축 순서를 지킴. 예전 소스판 1/N은 EPSG:5186·동북 순서로 바꿔 버렸음.
-- 되돌리기: `git revert <SHA>`(재작업만), 첫 판까지 `git revert <SHA> 2c8b4a6`.
+- 되돌리기: `git revert be5f225`(재작업만), 첫 판까지 `git revert be5f225 2c8b4a6`.
+- 2026-10-16 12:3xZ 스레드에 승인 요청 올림.
