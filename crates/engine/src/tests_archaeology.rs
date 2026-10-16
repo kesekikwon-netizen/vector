@@ -215,6 +215,33 @@ fn level_lines_keep_their_weights_in_a_legend_row() {
     assert_eq!(widths(&s), before);
 }
 
+/// A plate prints every line, the tools' marks too (review J024 rework 2 A: the legend's way of
+/// leaving them out dropped the level lines and the A–A′ arrows from plate PDF and SVG).
+#[test]
+fn plates_print_the_level_lines_and_section_marks() {
+    let mut s = session();
+    let ground = pit(&mut s);
+    run(&mut s, "trowel.levelLines", json!({"profileId": ground["id"], "at": [150, 250], "elevationM": 32.0}));
+    run(&mut s, "trowel.insertSectionMarker", json!({"kind": "cut", "p0": [100, 100], "p1": [300, 100]}));
+    run(&mut s, "plate.createSheet", json!({}));
+    run(&mut s, "plate.addViewport", json!({"bounds": [40, 40, 500, 500], "scale": 20, "sourceScale": 20}));
+    let doc = &s.doc().unwrap().doc;
+    let plate = crate::cmd::plate::synthesize_plate_document(doc, doc.plate_sheets.first().unwrap());
+    let count = |d: &vectorcraft_doc::Document, name: &str| {
+        let mut n = 0;
+        d.walk(|c| {
+            if matches!(c.kind, NodeKind::Path { .. }) && c.name.as_deref().is_some_and(|m| m.starts_with(name)) {
+                n += 1;
+            }
+        });
+        n
+    };
+    for name in ["주 해발선", "해발선", "해발 보조선", "시선 화살표"] {
+        assert!(count(doc, name) > 0, "{name} in the drawing");
+        assert_eq!(count(&plate, name), count(doc, name), "{name} on the plate");
+    }
+}
+
 /// A datum tick from the drawing set's element keeps its one decimal; level lines ask for the
 /// height as typed (`format: 'auto'`, review J024 6).
 #[test]
