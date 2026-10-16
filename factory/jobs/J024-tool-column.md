@@ -1,4 +1,4 @@
-상태: rework
+상태: 승인 대기
 
 # J024 (디자인 3.0 D4): 도구 열 고고학 4칸
 
@@ -387,4 +387,10 @@
 | `cargo test -p vectorcraft-ui-egui` | 0 | 1,066 + 6 통과 |
 | `cargo clippy --workspace --all-targets -- -D warnings` | 0 | 경고 없음 |
 | GitHub 「Trowel CI」 run 38964274273 (커밋 `06ce1d4`) | - | **성공** |
-| GitHub 「Trowel CI」 (A 고친 커밋) | - | push 뒤 확인 |
+| 새로 띄운 릴리스 빌드(`fbc78bd`, sha256 `474ccadc…`)에 검토자 스크립트 `r1_engine.py`(단면선·해발선·A–A′ 기호를 그리고 도판 SVG 내보내기) | 0 | path 19개, 굵기 0.2·0.3·0.35·0.4·0.5·0.8·1.2 (`a33d898`과 같음, 고치기 전 `89105ae`는 7개). 로그 scratchpad `review/j024-r2-code/logs/r1-fbc78bd.log` |
+| GitHub 「Trowel CI」 run 38969988936 (커밋 `fbc78bd`) | - | **성공** |
+
+## 승인 (approval)
+- AI 검토: 코드·화면 독립 검토 2회와 마지막 확인 끝. 마지막 확인의 막는 것 A는 `fbc78bd`로 고침, 남은 것은 needs-human B(H9에 넣음)와 사소 S1–S4.
+- 사용자 승인: **아직 없음**(2026-10-16 승인 대기로 올림). 승인 보고 `/mnt/project-files/design/trowel-run/d4/J024-승인보고.md`.
+- 승인 대상 커밋: `8dff460` `0bd0e41` `5943506` `a33d898` `89105ae` `06ce1d4` `fbc78bd`. 이 기록 커밋 뒤 코드가 바뀌면 다시 검증하고 다시 승인받는다.
