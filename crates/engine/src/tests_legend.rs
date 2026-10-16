@@ -407,6 +407,26 @@ fn revert_brings_overrides_back() {
     assert_eq!(depth(&s), before);
 }
 
+/// Trowel's pen on selected lines (`stroke.set` with `newArt: false`): the lines take the weight,
+/// the next line keeps its own; without it the next line takes it too, as before.
+#[test]
+fn stroke_set_can_leave_the_next_lines_weight() {
+    let mut s = session();
+    layer(&mut s, "row");
+    let a = open_line(&mut s, 0.0);
+    run(&mut s, "select.none", json!({}));
+    run(&mut s, "stroke.set", json!({"weight": 0.6}));
+    run(&mut s, "select.set", json!({"ids": [a.0]}));
+    run(&mut s, "stroke.set", json!({"weight": 0.8, "newArt": false}));
+    assert_eq!((weight(&s, a), s.new_art_stroke().width), (0.8, 0.6));
+    run(&mut s, "stroke.set", json!({"weight": 0.5}));
+    assert_eq!((weight(&s, a), s.new_art_stroke().width), (0.5, 0.5));
+    // Nothing selected, `newArt: false` doesn't stop the pen: it is what the weight is for then.
+    run(&mut s, "select.none", json!({}));
+    run(&mut s, "stroke.set", json!({"weight": 0.3, "newArt": false}));
+    assert_eq!(s.new_art_stroke().width, 0.3);
+}
+
 // ---------- legend.weights ----------
 
 /// Rows 1.0 dash-dot, 0.8, 0.5, 0.2 and 0.25 (each with a line), an override 0.7087 in the 0.8 row,

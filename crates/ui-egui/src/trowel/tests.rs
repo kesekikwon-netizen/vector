@@ -2307,7 +2307,9 @@ fn the_three_buttons_do_what_they_say() {
 }
 
 /// Just This Once pressed for lines picked out with the Selection tool folds the buttons too (the
-/// lines keep their look, set apart); other lines in that look, picked out later, show them again.
+/// lines keep their look, set apart) while they stay selected; those lines or others in that look,
+/// picked out later, show them again. A weight chip pressed for selected lines leaves the next
+/// line's weight as it was.
 #[test]
 fn just_this_once_folds_for_selected_lines_too() {
     let mut h = Harness::new();
@@ -2316,8 +2318,10 @@ fn just_this_once_folds_for_selected_lines_too() {
     let (a, b) = (draw_rect(&mut h, 10.0), draw_rect(&mut h, 40.0));
     h.app.select_tool("selection");
     h.app.run("select.set", json!({ "ids": [a.0] })).unwrap();
-    h.app.run("stroke.set", json!({ "weight": 0.6 })).unwrap();
     h.settle();
+    h.click(wid("weight", "0.6"));
+    assert_eq!(weight_of(&h, a), 0.6);
+    assert_eq!(h.app.session.new_art_stroke().width, 0.8, "the next line keeps the row's weight");
     let buttons = |h: &Harness| h.rect(wid("pen-state", "once")).is_some();
     assert!(buttons(&h), "a line not as its row");
     h.click(wid("pen-state", "once"));
@@ -2326,11 +2330,34 @@ fn just_this_once_folds_for_selected_lines_too() {
     h.settle();
     assert!(!buttons(&h), "and stay folded");
     assert_eq!(weight_of(&h, a), 0.6, "the line keeps its look");
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.settle();
+    assert!(!buttons(&h), "the pen as its row");
+    h.app.run("select.set", json!({ "ids": [a.0] })).unwrap();
+    h.settle();
+    assert!(buttons(&h), "the same line picked out again: it may be for the legend now");
     // Another line in that look, picked out: they show again.
     h.app.run("select.set", json!({ "ids": [b.0] })).unwrap();
     h.app.run("stroke.set", json!({ "weight": 0.6 })).unwrap();
     h.settle();
     assert!(buttons(&h), "other lines may be for the legend");
+}
+
+/// Drawing on a sublayer, the pen is against the row the sublayer is in: its name in the head and
+/// whether the pen is as its look.
+#[test]
+fn the_pen_on_a_sublayer_is_against_its_row() {
+    let mut h = Harness::new();
+    let pits = legend_row(&mut h, "Pits", json!({"weight": 0.6}));
+    h.app.run("legend.pick", json!({ "id": pits.0 })).unwrap();
+    let sub = NodeId(h.app.run("layer.newSublayer", json!({"name": "Sub"})).unwrap()["id"].as_u64().unwrap());
+    h.app.run("layer.setCurrent", json!({ "id": sub.0 })).unwrap();
+    h.settle();
+    assert_eq!(h.current_layer(), Some(sub));
+    let has = |h: &Harness, s: &str| h.texts.iter().any(|p| p.text == s && pen_area(h).contains_rect(p.rect));
+    assert!(has(&h, "Pits · Next line") && has(&h, "Same as the legend"), "{}", h.line_in(pen_area(&h)));
+    h.click(wid("weight", "0.8"));
+    assert!(has(&h, "Not as the legend · Weight 0.6 → 0.8"), "{}", h.line_in(pen_area(&h)));
 }
 
 /// The pen's colours (design 3.0 §5 ⑧): each swatch paints its own colour, the line's on a click
@@ -2342,7 +2369,7 @@ fn the_swatches_paint_their_colours() {
     let t = h.tokens();
     let ring = |h: &Harness, key: &str| {
         let sw = h.rect(wid("pal-swatch", key)).unwrap();
-        h.rects_in(sw.expand(4.0)).iter().any(|(r, _, stroke)| stroke.color == t.text && r.width() > sw.width() + 4.0)
+        h.rects_in(sw.expand(4.0)).iter().any(|(r, _, stroke)| stroke.color == t.text && r.width() >= sw.width() + 3.0)
     };
     assert!(ring(&h, "black") && !ring(&h, "red"), "the pen's black ringed");
     let colour = |paint: &vectorcraft_color::Paint| match paint {

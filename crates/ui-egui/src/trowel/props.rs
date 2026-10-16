@@ -136,14 +136,20 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     }
 }
 
-/// What [`facts`] are worked out from: the drawing, its revision and its scale.
-type FactsKey = (u64, u64, Option<vectorcraft_doc::scale::ScaleConfig>);
+/// What [`facts`] are worked out from: the drawing, its revision and its scale, the language and
+/// whether sizes are of what is drawn (Use Preview Bounds).
+type FactsKey = (u64, u64, Option<vectorcraft_doc::scale::ScaleConfig>, &'static str, bool);
+
+fn facts_key(app: &VectorcraftApp) -> Option<FactsKey> {
+    let st = app.session.active()?;
+    Some((st.uid, st.revision, st.doc.scale.clone(), crate::i18n::current().code(), app.session.prefs.use_preview_bounds))
+}
 
 /// What is selected, on which rows, how big and where, worked out again only when the drawing or
 /// its selection changes (the properties and their height ask every frame).
 fn facts(app: &mut VectorcraftApp, ctx: &egui::Context) -> Facts {
     // The scale too: `doc.setScale` changes it without a new revision.
-    let Some(key) = app.session.active().map(|st| (st.uid, st.revision, st.doc.scale.clone())) else { return Facts::default() };
+    let Some(key) = facts_key(app) else { return Facts::default() };
     let cache = wid("props-facts", ());
     if let Some((was, facts)) = ctx.data(|d| d.get_temp::<(FactsKey, Facts)>(cache))
         && was == key
@@ -220,7 +226,7 @@ fn area(app: &mut VectorcraftApp, ctx: &egui::Context) -> Option<String> {
     let [id] = st.selection.objects.as_slice() else { return None };
     let id = *id;
     st.doc.node(id)?.path_data().filter(|p| p.is_closed())?;
-    let key = ((st.uid, st.revision, st.doc.scale.clone()), id.0);
+    let key = (facts_key(app)?, id.0);
     let cache = wid("props-area", ());
     if let Some((was, said)) = ctx.data(|d| d.get_temp::<((FactsKey, u64), Option<String>)>(cache))
         && was == key

@@ -82,7 +82,8 @@ struct Against {
     row: Option<RowLook>,
     /// The look shown: the pen's, or that line's.
     shown: Option<Look>,
-    /// The name of the layer the next line goes on, or of that line's layer, with a look or without.
+    /// The name of the row (top-level layer) the next line goes on, or of that line's, with a look or
+    /// without.
     name: Option<String>,
     /// How many lines are selected.
     selected: usize,
@@ -164,7 +165,8 @@ fn against_now(st: &vectorcraft_engine::DocState, pen: Look) -> Against {
         selected.extend(lines_of(n).into_iter().map(|l| (layer.id, stroke_of(l).map(|s| (s.width, LineType::of(s))))));
     }
     if selected.is_empty() {
-        let layer = st.current_layer().and_then(|id| doc.layers.iter().find(|l| l.id == id));
+        // The row the next line goes on: the current layer's top-level layer (a sublayer is in its row).
+        let layer = st.current_layer().and_then(|id| doc.layer_of(id)).and_then(|id| doc.layers.iter().find(|l| l.id == id));
         let row = layer.and_then(|l| row_look(l));
         let name = layer.map(|l| l.display_name());
         let differs = row.as_ref().is_some_and(|(_, _, w, t)| (w - pen.0).abs() > SAME || !t.same(&pen.1));
@@ -210,6 +212,11 @@ fn drawing_tool(app: &VectorcraftApp) -> bool {
 /// as it): with a drawing tool in hand, lines selected in the pen's look against its row were
 /// drawn with it, and the buttons fold. The pen as its row again forgets it.
 fn drawn_once(app: &VectorcraftApp, ctx: &egui::Context, a: &Against) {
+    // Pressed for lines selected then: forgotten once the selection changes, so those lines
+    // picked out again show the buttons (they may be for the legend now).
+    if ctx.data(|d| d.get_temp::<Once>(once_id())).is_some_and(|o| o.picked.is_some_and(|p| p != a.picked)) {
+        ctx.data_mut(|d| d.remove::<Once>(once_id()));
+    }
     if a.selected == 0 {
         ctx.data_mut(|d| {
             if a.differs {
@@ -231,7 +238,8 @@ fn drawn_once(app: &VectorcraftApp, ctx: &egui::Context, a: &Against) {
 
 /// Whether the three buttons show: the look differs, and Just This Once wasn't pressed or drawn on
 /// for it. Lines in a look Just This Once was for, picked out later with a selection tool, show
-/// them again (they may be for the legend now), unless it was pressed for those very lines.
+/// them again (they may be for the legend now), unless it was pressed for these lines while
+/// they stay selected.
 fn buttons_show(app: &VectorcraftApp, ctx: &egui::Context, a: &Against) -> bool {
     let once = ctx.data(|d| d.get_temp::<Once>(once_id())).filter(|o| o.key == a.key());
     let folded = once.is_some_and(|o| a.selected == 0 || drawing_tool(app) || o.picked == Some(a.picked));
@@ -337,7 +345,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
         let colour = crate::panels::c32(&vectorcraft_color::Color::rgb8(rgb[0], rgb[1], rgb[2]));
         if line_colour == Some(colour) {
             // The mockup's ring: the panel, then ink around it.
-            ui.painter().rect_stroke(sw.expand(2.75), CornerRadius::same(6), Stroke::new(1.5, t.text), StrokeKind::Middle);
+            ui.painter().rect_stroke(sw.expand(2.0), CornerRadius::same(6), Stroke::new(1.5, t.text), StrokeKind::Outside);
         }
         let edge = if resp.hovered() { t.text } else { t.input_border };
         ui.painter().rect(sw, CornerRadius::same(4), colour, Stroke::new(1.0, edge), StrokeKind::Inside);
@@ -430,7 +438,12 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
             }
         }
     }
-    if let Some(p) = set {
+    if let Some(mut p) = set {
+        // On selected lines, only on them: the next line keeps the pen's weight (design 3.0 §5 ⑧,
+        // the next line or the selected ones).
+        if a.selected > 0 {
+            p["newArt"] = json!(false);
+        }
         crate::panels::stroke::set(app, p);
     }
     let done = match asked {
