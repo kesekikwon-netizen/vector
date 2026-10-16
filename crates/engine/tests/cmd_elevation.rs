@@ -233,3 +233,18 @@ fn test_dynamic_reclip_on_profile_edit() {
         );
     }
 }
+
+/// Intervals from a command's params can't ask for more level lines than a drawing could use: a
+/// 1e7 m major interval on a blank page asked for 200 million segments and ran out of memory.
+#[test]
+fn huge_intervals_draw_nothing_instead_of_running_out_of_memory() {
+    let mut s = Session::new();
+    s.execute("file.new", &json!({"width": 800, "height": 600})).unwrap();
+    for params in [
+        json!({ "fillBelowProfile": true, "majorIntervalM": 1e7 }),
+        json!({ "fillBelowProfile": true, "minorIntervalM": 1e-9, "majorIntervalM": 1e300 }),
+    ] {
+        let out = s.execute("elevation.create", &params).unwrap();
+        assert_eq!(out["segmentCount"].as_u64(), Some(0), "{params}");
+    }
+}

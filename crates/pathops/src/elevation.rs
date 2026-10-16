@@ -255,6 +255,9 @@ pub fn clip_elevation_scanline(y: f64, ground_profile: &BezPath, obstacles: &[Be
     void_intervals
 }
 
+/// The most level lines one set draws (1,000 m at 10 cm intervals).
+pub const MAX_ELEVATION_LINES: f64 = 10_000.0;
+
 /// Generates all elevation line segments and labels according to the given ElevationSpec.
 pub fn generate_elevation(ground_profile: &BezPath, obstacles: &[BezPath], spec: &ElevationSpec, scale_cfg: Option<&ScaleConfig>) -> ElevationOutput {
     let profile_bounds = ground_profile.bounding_box();
@@ -323,7 +326,14 @@ pub fn generate_elevation(ground_profile: &BezPath, obstacles: &[BezPath], spec:
     let fill_below = spec.fill_below_profile || is_flat_datum;
     let bound_y = if fill_below { max_scanline_y.max(profile_bounds.y1) + 50.0 } else { min_scanline_y.min(profile_bounds.y0) - 50.0 };
 
-    let count = ((max_elev - min_elev) / minor_step).round() as i64;
+    // The span and intervals come from a command's params or a file: never more lines than a
+    // drawing could use (a 1e7 m major interval asked for 200 million), and none for a span that
+    // isn't a number.
+    let lines = (max_elev - min_elev) / minor_step;
+    if !lines.is_finite() || lines > MAX_ELEVATION_LINES {
+        return ElevationOutput::default();
+    }
+    let count = lines.round() as i64;
     let mut segments = Vec::new();
     let mut labels = Vec::new();
 
