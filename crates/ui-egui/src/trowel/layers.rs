@@ -248,7 +248,7 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     let foot = (!empties.is_empty()).then(|| Rect::from_min_max(pos2(r.left(), r.bottom() - FOOT_H), r.max));
     let list_r = Rect::from_min_max(pos2(r.left(), head.bottom() + LIST_PAD), pos2(r.right(), foot.map_or(r.bottom(), |f| f.top()) - LIST_PAD));
     let all: Vec<&Row> = shown.iter().chain(empties.iter().filter(|_| open.empties)).collect();
-    if let Some(a) = list(ui, list_r, &all, &t) {
+    if let Some(a) = list(ui, list_r, &all, &st.selection, &t) {
         act = Some(a);
     }
     if let Some(f) = foot {
@@ -268,8 +268,9 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect) {
     run(app, &ctx, act);
 }
 
-/// The rows `all` in `area`, those in view laid out; returns what was done to one.
-fn list(ui: &mut Ui, area: Rect, all: &[&Row], t: &Tokens) -> Option<Act> {
+/// The rows `all` in `area`, those in view laid out (the objects in `selection` marked); returns
+/// what was done to one.
+fn list(ui: &mut Ui, area: Rect, all: &[&Row], selection: &vectorcraft_doc::Selection, t: &Tokens) -> Option<Act> {
     let mut act = None;
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::top_down(egui::Align::Min)));
     child.spacing_mut().scroll.fade.strength = 0.0;
@@ -292,7 +293,7 @@ fn list(ui: &mut Ui, area: Rect, all: &[&Row], t: &Tokens) -> Option<Act> {
                 break;
             }
             let rr = Rect::from_min_size(origin + vec2(0.0, top), vec2(w, ROW_H));
-            if let Some(a) = row_ui(ui, row, rr, t) {
+            if let Some(a) = row_ui(ui, row, rr, !row.layer && selection.contains(row.id), t) {
                 act = Some(a);
             }
             // Where a dragged row would go: over the top quarter above it, the bottom quarter
@@ -339,9 +340,10 @@ fn list(ui: &mut Ui, area: Rect, all: &[&Row], t: &Tokens) -> Option<Act> {
     act
 }
 
-/// One row in `rr` (the mockup's `.lr`): eye, ▸/▾, colour bar or object box, name, then the pen
-/// mark on the current layer and the padlock when locked (or under the pointer).
-fn row_ui(ui: &mut Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
+/// One row in `rr` (the mockup's `.lr`): eye, ▸/▾, colour bar or object box (filled with the
+/// layer's colour when the object is `selected`), name, then the pen mark on the current layer and
+/// the padlock when locked (or under the pointer).
+fn row_ui(ui: &mut Ui, row: &Row, rr: Rect, selected: bool, t: &Tokens) -> Option<Act> {
     let cy = rr.center().y;
     let x_eye = rr.left() + PAD;
     // Each level in: the mockup's 10-point spacer and the gap after it.
@@ -367,7 +369,8 @@ fn row_ui(ui: &mut Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
     let icon = |name: &str, c: Pos2, size: f32, color: Color32| crate::icons::paint(ui, name, Rect::from_center_size(c, vec2(size, size)), color);
     icon(if row.visible { "eye" } else { "eye-off" }, pos2(x_eye + EYE / 2.0, cy), EYE, if row.visible { t.icon } else { t.ring });
     if row.opens {
-        triangle(ui, pos2(x_arrow + ARROW_W / 2.0, cy), 7.0, row.open, t.text_dim);
+        // The mockup's 8-point ▸ in its dim colour.
+        triangle(ui, pos2(x_arrow + ARROW_W / 2.0, cy), 5.0, row.open, t.text_dim);
     }
     let name_x = if row.layer {
         ui.painter().rect_filled(
@@ -378,25 +381,27 @@ fn row_ui(ui: &mut Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
         x_mark + 3.0 + GAP + 1.0
     } else {
         let b = Rect::from_min_size(pos2(x_mark, cy - 3.5), vec2(7.0, 7.0));
-        ui.painter().rect_stroke(b, CornerRadius::same(1), Stroke::new(1.0, t.text_disabled), StrokeKind::Inside);
+        if selected {
+            ui.painter().rect_filled(b, CornerRadius::same(1), row.colour.unwrap_or(t.clay));
+        } else {
+            ui.painter().rect_stroke(b, CornerRadius::same(1), Stroke::new(1.0, t.text_disabled), StrokeKind::Inside);
+        }
         x_mark + 7.0 + GAP + 1.0
     };
-    // The name takes the row up to the padlock (when locked, or under the pointer to lock it)
-    // and the pen nib (on the current layer), as the mockup's flexible `.nm`.
+    // The name takes the row up to its mark, as the mockup's flexible `.nm`: the padlock when
+    // locked (or under the pointer, to lock it), else the pen nib on the current layer. One mark,
+    // so the current layer's name doesn't shrink under the pointer.
     let mut name_end = rr.right() - PAD;
-    let lock_icon = Rect::from_center_size(lock_r.center(), vec2(MARK_W, MARK_W));
+    let mark = Rect::from_center_size(lock_r.center(), vec2(MARK_W, MARK_W));
     if row.locked {
-        super::legend::padlock(ui, lock_icon, t.text_dim);
+        super::legend::padlock(ui, mark, t.text_dim);
     } else if over {
-        icon("lock-open", lock_icon.center(), MARK_W, t.ring);
+        icon("lock-open", mark.center(), MARK_W, t.ring);
+    } else if row.current {
+        icon("tw-pen", mark.center(), MARK_W, t.clay);
     }
-    if row.locked || over {
-        name_end = lock_icon.left() - GAP;
-    }
-    if row.current {
-        let nib = Rect::from_min_max(pos2(name_end - MARK_W, cy - MARK_W / 2.0), pos2(name_end, cy + MARK_W / 2.0));
-        icon("tw-pen", nib.center(), MARK_W, t.clay);
-        name_end = nib.left() - GAP;
+    if row.locked || over || row.current {
+        name_end = mark.left() - GAP;
     }
     let renaming: Option<(NodeId, String)> = ui.data(|d| d.get_temp(rename_id()));
     if let Some((_, typed)) = renaming.filter(|(id, _)| *id == row.id) {
@@ -414,10 +419,9 @@ fn row_ui(ui: &mut Ui, row: &Row, rr: Rect, t: &Tokens) -> Option<Act> {
         tw!("Show · Alt+click: show this layer alone")
     });
     let lock = lock.on_hover_text(if row.locked { tw!("Unlock") } else { tw!("Lock") });
-    let tip =
-        if row.layer { tw!("Draw on this layer · double-click to rename") } else { tw!("Select · Shift+click: add · double-click to rename") };
+    // A name cut short shows whole under the pointer; no other note covers the rows below.
     let cut = width_of(ui, &row.name, f) > name_end - name_x;
-    let resp = resp.on_hover_text(if cut { format!("{}\n{tip}", row.name) } else { tip.to_string() });
+    let resp = if cut { resp.on_hover_text(&row.name) } else { resp };
     if resp.drag_started() {
         ui.data_mut(|d| d.insert_temp(drag_id(), row.id));
     }
@@ -466,6 +470,19 @@ fn run(app: &mut VectorcraftApp, ctx: &egui::Context, act: Option<Act>) {
     let path = || -> HashSet<NodeId> {
         app.session.active().and_then(|st| st.current_layer().and_then(|c| st.doc.ancestry(c))).unwrap_or_default().into_iter().collect()
     };
+    // A click that changes the current layer keeps the rows open as they are: the current
+    // layer's path, open until closed, stays open, so the rows don't move under the pointer.
+    if matches!(act, Act::Pick(..) | Act::Select(..))
+        && let Some(uid) = uid
+    {
+        let mut open = open_of(ctx, uid);
+        let kept: Vec<NodeId> = path().into_iter().filter(|id| !open.closed.contains(id)).collect();
+        if kept.iter().any(|id| !open.opened.contains(id)) {
+            open.opened.extend(kept);
+            open.generation += 1;
+            ctx.data_mut(|d| d.insert_temp(open_id(), open));
+        }
+    }
     let result = match act {
         // As the legend's row: the current layer, the pen with its row's look; a sublayer takes
         // its layer's look and is drawn on itself. A hidden or locked layer (the legend won't
@@ -517,7 +534,15 @@ fn new_sublayer(app: &mut VectorcraftApp, ctx: &egui::Context) -> Result<(), Str
     let Some(st) = app.session.active() else { return Ok(()) };
     let Some(parent) = st.current_layer() else { return Err(tw!("No layer to draw on").to_string()) };
     let uid = st.uid;
-    let done = app.run("layer.newSublayer", json!({ "parent": parent.0 }))?;
+    // Named in the window's language, the first number its siblings don't have.
+    let taken: HashSet<String> = st
+        .doc
+        .node(parent)
+        .and_then(|n| n.children())
+        .map(|c| c.iter().filter(|k| k.is_layer()).map(|k| k.display_name()).collect())
+        .unwrap_or_default();
+    let name = (1..=taken.len() + 1).map(|n| tw!("Sublayer {n}").replace("{n}", &n.to_string())).find(|n| !taken.contains(n)).unwrap_or_default();
+    let done = app.run("layer.newSublayer", json!({ "parent": parent.0, "name": name }))?;
     if let Some(id) = done["id"].as_u64() {
         app.run("layer.setCurrent", json!({ "id": id }))?;
     }

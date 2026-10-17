@@ -45,6 +45,12 @@ fn moving_id() -> egui::Id {
     wid("panel-moving", ())
 }
 
+/// A panel is being moved (its ghost shows).
+#[cfg(test)]
+pub(super) fn is_moving(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp::<Moving>(moving_id())).is_some()
+}
+
 /// Lay out the columns (after the tool column, before the canvas) and move a panel dropped by its
 /// head.
 pub(super) fn columns(app: &mut VectorcraftApp, ui: &mut Ui) {
@@ -246,7 +252,9 @@ fn stack(app: &mut VectorcraftApp, ui: &mut Ui, c: Column, r: Rect, heads: &mut 
 #[allow(clippy::too_many_arguments)]
 fn draw(app: &mut VectorcraftApp, ui: &mut Ui, p: Panel, slot: Rect, own: f32, first: bool, heads: &mut Vec<(Panel, egui::Response)>, t: &Tokens) {
     let head = Rect::from_min_size(slot.min, vec2(slot.width(), head_height(p).min(slot.height())));
-    let resp = ui.interact(head, wid("panel-head", p.id()), Sense::drag());
+    // Clicks too, so a press on one of the head's buttons waits to see whether it is a drag:
+    // a click on « or ＋ is the button's, never the start of a move.
+    let resp = ui.interact(head, wid("panel-head", p.id()), Sense::click_and_drag());
     heads.push((p, resp));
     // The pen and the properties draw their own line over them.
     if !first && p.fills() {
@@ -335,9 +343,10 @@ fn pen_top_id() -> egui::Id {
     wid("pen-top-held", ())
 }
 
-/// The boundaries between column `c`'s panels: dragged, they size the panel on the side that
-/// isn't sharing the rest (the one above when both are); a double click gives it its own height
-/// back.
+/// The boundaries between column `c`'s panels: dragged, they size the panel beside them on the
+/// side away from the panels sharing the rest (the one below when those are all above it, else
+/// the one above), so the boundary follows the pointer; a double click gives that panel its own
+/// height back.
 #[allow(clippy::too_many_arguments)]
 fn boundaries(app: &mut VectorcraftApp, ui: &Ui, c: Column, panels: &[Panel], plan: &Plan, mins: &[f32], rects: &[Rect], r: Rect) {
     let shares = |i: usize| plan.shares.get(i).copied().unwrap_or(false);
@@ -348,7 +357,7 @@ fn boundaries(app: &mut VectorcraftApp, ui: &Ui, c: Column, panels: &[Panel], pl
         if resp.hovered() || resp.dragged() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
         }
-        let below = shares(k) && !shares(k + 1);
+        let below = (0..=k).any(shares) && !(k + 1..panels.len()).any(shares);
         let target = if below { k + 1 } else { k };
         let Some(p) = panels.get(target).copied() else { continue };
         if resp.double_clicked() {

@@ -4366,6 +4366,7 @@ trowel	This drawing has map coordinates: draw level lines in a section drawing	�
 	Panel Layout	칸 배치
 trowel	Open {name}	{name} 펴기
 trowel	New sublayer in the current layer	지금 레이어 안에 하위 레이어
+trowel	Sublayer {n}	하위 레이어 {n}
 trowel	Fold the layer strip	레이어 띠 접기
 trowel	{n} empty layer	빈 레이어 {n}개
 trowel	{n} empty layers	빈 레이어 {n}개
@@ -4373,8 +4374,6 @@ trowel	Fold the layers with nothing drawn on them	그린 것이 없는 레이어
 trowel	Show the layers with nothing drawn on them	그린 것이 없는 레이어 펼치기
 trowel	Hide · Alt+click: show this layer alone	숨기기 · Alt+클릭: 이 레이어만 보이기
 trowel	Show · Alt+click: show this layer alone	보이기 · Alt+클릭: 이 레이어만 보이기
-trowel	Draw on this layer · double-click to rename	이 레이어에 그립니다 · 두 번 누르면 이름을 바꿉니다
-trowel	Select · Shift+click: add · double-click to rename	고릅니다 · Shift+클릭: 더해 고르기 · 두 번 누르면 이름을 바꿉니다
 trowel	panel must be one of set, legend, pen, props, layers	panel은 set, legend, pen, props, layers 가운데 하나여야 합니다
 trowel	column must be one of left, right, edge	column은 left, right, edge 가운데 하나여야 합니다
 trowel	shown must be true or false	shown은 true 또는 false여야 합니다

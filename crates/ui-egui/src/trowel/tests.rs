@@ -4816,13 +4816,78 @@ fn the_layer_strip_lists_what_is_drawn_and_folds_the_empty_layers() {
     let doc = &h.app.session.active().unwrap().doc;
     assert_eq!(doc.ancestry(sub).unwrap_or_default().first(), Some(&pits), "in Pits");
     let name = doc.node(sub).unwrap().display_name();
+    assert_eq!(name, "Sublayer 1", "named in the window's language, numbered in Pits");
     let (s, p) = (row(&h, sub).unwrap(), row(&h, pits).unwrap());
     assert_eq!(s.top(), p.bottom(), "under it");
-    // The mockup's 10-point spacer and the 4-point gap after it.
-    assert_eq!(text_left(&h, &name, s).unwrap() - text_left(&h, "Pits", p).unwrap(), 14.0, "14 further in");
+    // The mockup's 10-point spacer and the 4-point gap after it, measured at the colour bars
+    // (the names' painted edges differ by a point from one first letter to another).
+    let bar = |r: Rect| h.rects_in(r).into_iter().find(|(b, _, _)| b.width() == 3.0).map(|(b, _, _)| b.left());
+    assert_eq!(bar(s).unwrap() - bar(p).unwrap(), 14.0, "14 further in");
+    assert!(text_left(&h, &name, s).unwrap() > text_left(&h, "Pits", p).unwrap() + 12.0, "its name too");
     h.app.run("edit.undo", json!({})).unwrap();
     h.settle();
     assert!(row(&h, sub).is_none(), "one undo step");
+    // Undone, Pits is drawn on again, not whichever layer is on top.
+    assert_eq!(h.current_layer(), Some(pits), "Pits current again");
+    let after = draw_rect(&mut h, 70.0);
+    assert_eq!(h.app.session.active().unwrap().doc.parent_of(after), Some(pits));
+}
+
+/// A click in the strip that changes the current layer leaves the rows where they are under the
+/// pointer: the layer that was current stays open (UI review 5). A selected object's box is
+/// filled with its layer's colour.
+#[test]
+fn a_click_in_the_strip_keeps_the_rows_where_they_are() {
+    let mut h = Harness::sized(1440.0, 880.0);
+    let first = h.layer_ids()[0];
+    let stone = draw_rect(&mut h, 10.0);
+    h.app.run("layer.setProps", json!({ "ids": [stone.0], "name": "Stone" })).unwrap();
+    new_layer(&mut h, "Pits");
+    let pit = draw_rect(&mut h, 40.0);
+    h.app.run("layer.setProps", json!({ "ids": [pit.0], "name": "Pit 1" })).unwrap();
+    h.app.run("select.set", json!({ "ids": [] })).unwrap();
+    h.settle();
+    let row = |h: &Harness, id: NodeId| h.rect(wid("strip-row", id.0));
+    assert!(row(&h, pit).is_some() && row(&h, stone).is_none(), "the current layer open, Layer 1 shut");
+    h.click(wid("strip-arrow", first.0));
+    let (pit_at, stone_at) = (row(&h, pit).unwrap(), row(&h, stone).unwrap());
+    let small_box = |h: &Harness, r: Rect| h.rects_in(r).into_iter().find(|(b, _, _)| b.size() == vec2(7.0, 7.0)).map(|(_, fill, _)| fill);
+    assert_eq!(small_box(&h, stone_at), Some(egui::Color32::TRANSPARENT), "an empty box");
+    h.click(wid("strip-row", stone.0));
+    assert_eq!(h.app.session.active().unwrap().selection.objects, [stone]);
+    assert_eq!(h.current_layer(), Some(first), "Layer 1 drawn on");
+    assert_eq!((row(&h, pit), row(&h, stone)), (Some(pit_at), Some(stone_at)), "Pits still open, the rows where they were");
+    let bar = h.rects_in(row(&h, first).unwrap()).into_iter().find(|(b, _, _)| b.width() == 3.0).map(|(_, fill, _)| fill);
+    assert!(bar.is_some_and(|c| c != egui::Color32::TRANSPARENT));
+    assert_eq!(small_box(&h, stone_at), bar, "the box filled with Layer 1's colour");
+    assert_eq!(small_box(&h, pit_at), Some(egui::Color32::TRANSPARENT), "not the others");
+}
+
+/// A click on a head's button is the button's, never the start of a move (UI review 1): « folds
+/// the strip and it stays folded; held down, the legend's ＋ shows no ghost, and let go it makes
+/// its row. Dragged, the head still moves its panel (above).
+#[test]
+fn a_heads_buttons_never_start_a_move() {
+    use crate::trowel_layout::{Column, FOLDED_W};
+    let mut h = Harness::sized(1440.0, 880.0);
+    let before = layout_of(&h).clone();
+    h.click(wid("strip-fold", ()));
+    assert_eq!(layout_of(&h).folded_by_hand(Column::Edge), Some(true), "folded by hand");
+    assert_eq!(h.panel(layout::EDGE).width(), FOLDED_W);
+    let after = layout_of(&h);
+    assert_eq!((&after.left, &after.right, &after.edge), (&before.left, &before.right, &before.edge), "nothing moved");
+    let n = h.layer_ids().len();
+    let plus = h.rect(wid("legend-new", ())).unwrap().center();
+    let (button, modifiers) = (PointerButton::Primary, egui::Modifiers::default());
+    h.frame(vec![Event::PointerMoved(plus)]);
+    h.frame(vec![Event::PointerButton { pos: plus, button, pressed: true, modifiers }]);
+    for _ in 0..3 {
+        h.frame(vec![]);
+        assert!(!layout::is_moving(&h.ctx), "no ghost while ＋ is held");
+    }
+    h.frame(vec![Event::PointerButton { pos: plus, button, pressed: false, modifiers }]);
+    h.settle();
+    assert_eq!(h.layer_ids().len(), n + 1, "＋ made its row");
 }
 
 /// The strip does what the legend's rows do, with the same switches (정할 것 6): a press draws on
@@ -4951,6 +5016,28 @@ fn columns_and_panels_size_by_their_edges() {
     h.double_click(wid("panel-boundary", ("right", boundary.unwrap())));
     assert_eq!(layout_of(&h).height(Panel::Pen), None, "its own height again");
     assert!(taller > 0.0);
+}
+
+/// The boundary under the pen follows the pointer: up, the properties grow and the pen goes up
+/// with it at its own height, the legend giving the room (UI review 2); a double click gives the
+/// properties their own height back.
+#[test]
+fn the_boundary_under_the_pen_follows_the_pointer() {
+    use crate::trowel_layout::Panel;
+    let mut h = Harness::sized(1440.0, 880.0);
+    let head = |h: &Harness, p: &str| h.rect(wid("panel-head", p)).unwrap();
+    let (pen, props) = (head(&h, "pen"), head(&h, "props"));
+    let at = pos2(props.center().x, props.top());
+    h.drag(at, at - vec2(0.0, 60.0));
+    let (pen2, props2) = (head(&h, "pen"), head(&h, "props"));
+    assert!((props2.top() - (props.top() - 60.0)).abs() < 0.5, "at the pointer: {props:?} → {props2:?}");
+    assert!(((props2.top() - pen2.top()) - (props.top() - pen.top())).abs() < 0.5, "the pen as tall as it was");
+    assert!(layout_of(&h).height(Panel::Props).is_some());
+    assert_eq!(layout_of(&h).height(Panel::Pen), None, "the pen keeps its own height");
+    let k = (0..3).find(|k| h.rect(wid("panel-boundary", ("right", *k))).is_some_and(|b| (b.center().y - props2.top()).abs() < 1.0));
+    h.double_click(wid("panel-boundary", ("right", k.expect("the boundary over the properties"))));
+    assert_eq!(layout_of(&h).height(Panel::Props), None, "their own height again");
+    assert_eq!(head(&h, "props").top(), props.top());
 }
 
 /// 「창 › 배치 처음대로」 and Preferences' Reset both bring back the first layout, hidden panels

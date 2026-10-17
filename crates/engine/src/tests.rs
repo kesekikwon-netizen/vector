@@ -934,6 +934,26 @@ fn new_layers_and_sublayers_are_numbered_together() {
     assert_eq!(name(&s, &sub), "Layer 4", "the art doesn't count");
 }
 
+/// Undoing a sublayer made the current layer leaves the layer it was in current, so new art goes
+/// there, not to whichever layer is on top; a redo leaves the current layer as it is.
+#[test]
+fn undoing_the_current_sublayer_keeps_its_layer_current() {
+    let mut s = session();
+    let first = s.doc().unwrap().current_layer().unwrap();
+    rect(&mut s, 0.0, 0.0, 10.0, 10.0);
+    let top = NodeId(s.execute("layer.new", &json!({})).unwrap()["id"].as_u64().unwrap());
+    s.execute("layer.setCurrent", &json!({"id": first.0})).unwrap();
+    let sub = NodeId(s.execute("layer.newSublayer", &json!({"parent": first.0})).unwrap()["id"].as_u64().unwrap());
+    s.execute("layer.setCurrent", &json!({"id": sub.0})).unwrap();
+    s.execute("edit.undo", &json!({})).unwrap();
+    assert!(s.doc().unwrap().doc.node(sub).is_none(), "precondition: the sublayer undone");
+    assert_eq!(s.doc().unwrap().current_layer(), Some(first));
+    s.execute("edit.redo", &json!({})).unwrap();
+    assert_eq!(s.doc().unwrap().current_layer(), Some(first), "redo leaves it");
+    let r = rect(&mut s, 20.0, 0.0, 10.0, 10.0);
+    assert_eq!(s.doc().unwrap().doc.parent_of(r), Some(first), "not on {top:?}");
+}
+
 /// #785: objects given are used as given (a value that isn't an object id fails, never the
 /// selection instead), and `text.setRangeStyle` works on the selected type object without `id`.
 #[test]
