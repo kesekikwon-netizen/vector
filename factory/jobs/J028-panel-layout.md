@@ -1,4 +1,4 @@
-상태: rework
+상태: 승인 대기 (AI 검토 끝, 사용자 승인 전)
 
 # J028 (디자인 3.0 D4+): 칸 배치 — 레이어 띠, 옮기기·크기 바꾸기, 배치 처음대로
 
@@ -143,4 +143,27 @@
 11. (사람 결정) 펜이 든 열의 최소 너비 274 → 색 줄이 잘리지 않게 한 것. 13장 「220–560」과 다르므로 묻는다.
 12. (사람 결정) 작업 공간을 바꾸면 배치가 사라짐 → 코드 검토 3과 같은 문제로 이미 고침(b7d7421).
 - 시안 차이 목록 가운데 고친 것: ▸ 크기·색(시안의 8 pt 연한 ▸), 줄 위 풍선 도움말(아래 줄을 가리던 것, 이제 잘린 이름만 전체를 보여 줌, 시안 차이 12).
+
+## 검증 2차 (verify, `8b1f68d`)
+| 명령 | 종료 코드 | 결과 |
+|---|---|---|
+| `cargo fmt --all -- --check` | 0 | 차이 없음 |
+| `cargo clippy --workspace --all-targets -- -D warnings` | 0 | 경고 없음 |
+| `cargo test -p vectorcraft-ui-egui` | 0 | 1,086 + 6 통과 |
+| `cargo test -p vectorcraft-engine --lib` | 0 | 1,707 통과 |
+| `cargo test -p vectorcraft` | 0 | 66 통과 |
+| `cargo xtask layers` | 0 | 위반 없음 |
+| `cargo build --release -p vectorcraft` | 0 | 새 HOME으로 띄워 캡처(비교 그림 8장, `/mnt/project-files/design/trowel-run/j028/`) |
+| GitHub 「Trowel CI」 `b7d7421` (run 38987157121) | - | success |
+| GitHub 「Trowel CI」 `8b1f68d` (run 38988982265: Linux `cargo xtask ci`, Windows x64 빌드) | - | success |
+- 새 시험: `a_heads_buttons_never_start_a_move`, `the_boundary_under_the_pen_follows_the_pointer`, `a_click_in_the_strip_keeps_the_rows_where_they_are`, 엔진 `undoing_the_current_sublayer_keeps_its_layer_current`. 기존 `the_layer_strip_lists_what_is_drawn_and_folds_the_empty_layers`에 이름·되돌린 뒤 지금 레이어 확인을 더했다.
+- 측정 방법만 바꾼 곳: 같은 시험의 들여쓰기 14는 이름 글자의 그린 가장자리 대신 색 막대 위치로 잰다. 하위 레이어 이름이 「Layer N」에서 「Sublayer 1」로 바뀌자 첫 글자 모양 때문에 13으로 재졌다(기대값 14는 그대로).
+- 실행하지 않은 것: 이 컨테이너의 `cargo xtask ci` 전체(wasm 포함)와 엔진 통합 시험(GitHub CI가 돌림), macOS·Windows 화면, 어두운 테마, 실제 마우스·태블릿.
+
+## 검토 2차 (review)
+- 고친 곳 화면 재확인(ui-reviewer, `8b1f68d` 릴리스, 보고 `scratchpad/review/j028-ui-recheck.md`): **막는 것 없음**. 1차 지적 1–6 모두 고쳐짐, 회귀 없음.
+  - A (사소, 남김): 칸 머리 단추를 0.8초 넘게 누르고 있으면 칸 옮기기 그림이 뜬다(egui가 0.8초 뒤 끌기로 봄). 그대로 떼면 바뀌는 것 없음. 승인 보고서 남은 위험에 적음.
+  - B (J028 범위 밖): 범례 ＋로 만든 최상위 레이어를 되돌리면 지금 레이어가 사라진 레이어를 가리킴. 백로그 J033.
+- 수정 루프: 1회 사용(재작업 1). 남은 지적은 사소·범위 밖이라 2회째는 쓰지 않았다.
+- 승인 보고서: `/mnt/project-files/design/trowel-run/j028/J028-승인보고.md`
 
