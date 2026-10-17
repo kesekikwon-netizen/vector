@@ -1826,6 +1826,7 @@
 	Fills	塗り
 	Strokes	線
 	None	なし
+	None (Delete)	なし (削除)
 	None.	なし。
 	Normal	通常
 	Note:	メモ:
@@ -4097,3 +4098,5 @@ lighting	Light	ライト
 	Change Weights at Once	線幅を一括変更
 	Add Legend Group	凡例グループを追加
 	Add to Legend	凡例に追加
+@msg	Rule layer added: {name}	ルールレイヤーを追加しました: {name}
+@msg	Removed empty unused layers: {removed}	空の未使用レイヤーを削除しました: {removed}

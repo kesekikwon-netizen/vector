@@ -89,20 +89,26 @@ pub fn build_adjacency_graph(faces: &[BezPath], min_overlap: f64) -> Vec<Vec<usi
     adj
 }
 
-/// Flattens a BezPath into linear line segments.
+/// Flattens a BezPath into linear line segments, automatically closing open polygonal subpaths.
 fn extract_segments(path: &BezPath, tol: f64) -> Vec<(Point, Point)> {
     let mut segs = Vec::new();
     let mut start_pt = Point::ZERO;
     let mut curr_pt = Point::ZERO;
+    let mut subpath_segs = 0usize;
 
     kurbo::flatten(path.iter(), tol, |el| match el {
         PathEl::MoveTo(p) => {
+            if subpath_segs >= 2 && curr_pt.distance(start_pt) > 1e-6 {
+                segs.push((curr_pt, start_pt));
+            }
             start_pt = p;
             curr_pt = p;
+            subpath_segs = 0;
         }
         PathEl::LineTo(p) => {
             if curr_pt.distance(p) > 1e-6 {
                 segs.push((curr_pt, p));
+                subpath_segs += 1;
             }
             curr_pt = p;
         }
@@ -111,9 +117,14 @@ fn extract_segments(path: &BezPath, tol: f64) -> Vec<(Point, Point)> {
                 segs.push((curr_pt, start_pt));
             }
             curr_pt = start_pt;
+            subpath_segs = 0;
         }
         _ => {}
     });
+
+    if subpath_segs >= 2 && curr_pt.distance(start_pt) > 1e-6 {
+        segs.push((curr_pt, start_pt));
+    }
 
     segs
 }

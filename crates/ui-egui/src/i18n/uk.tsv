@@ -1707,6 +1707,7 @@
 	Nonbreaking Hyphen	Нерозривний дефіс
 	Nonbreaking Space	Нерозривна прогалина
 	None	Немає
+	None (Delete)	Немає (видалити)
 	None (/)	Немає (/)
 	None (keep transparency)	Ні (зберегти прозорість)
 	None.	Немає.
@@ -4083,3 +4084,5 @@ lighting	Light	Світло
 	Change Weights at Once	Змінити товщини разом
 	Add Legend Group	Додати групу легенди
 	Add to Legend	Додати до легенди
+@msg	Rule layer added: {name}	Додано шар правила: {name}
+@msg	Removed empty unused layers: {removed}	Видалено порожніх невикористаних шарів: {removed}

@@ -1,9 +1,11 @@
-//! Trowel's main window (design 2.1 §3, the `win-plan` mockup at 1600 × 988): caption, menu bar
-//! with the Drawing menu, ribbon, Control bar, tool column, drawing set, document tabs, the canvas
-//! with what floats on it, the right column (drawing palette, legend and layers, properties) and
-//! the status bar. It draws the same engine state and runs the same commands as the classic window
-//! ([`crate::chrome`], [`crate::toolbar`], [`crate::dock`]); what later jobs bring shows dimmed,
-//! with their job number on hover ([`soon`]).
+//! Trowel's main window (design 3.0 §4, the main mockup at 1440 × 880; 3.1 §13): caption, menu
+//! bar with the Drawing menu, ribbon, tool column, drawing set, document tabs, the canvas with the
+//! zoom buttons on it, the right column (legend, pen, properties), the layer strip and the status
+//! bar. The drawing set, the right column's panels and the strip move and size as the user lays
+//! them out ([`layout`]). It draws the same engine state and runs the same commands as the classic window
+//! ([`crate::chrome`], [`crate::toolbar`], [`crate::dock`]); each thing it does has one place
+//! (design 3.0 §3, principle 1), and what later jobs bring shows dimmed, with their job number on
+//! hover ([`soon`]).
 
 use std::hash::Hash;
 
@@ -12,15 +14,17 @@ use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Str
 use crate::VectorcraftApp;
 use crate::theme::{self, Tokens};
 
+pub(crate) mod ask;
 pub mod book;
 pub mod canvas_penbar;
 mod caption;
 mod card;
 mod center;
-mod control;
 pub mod drawings;
 pub mod gpkg_browser;
 pub mod home;
+mod layers;
+mod layout;
 mod legend;
 mod menu;
 mod palette;
@@ -29,17 +33,17 @@ pub mod pottery;
 mod props;
 mod ribbon;
 mod rowedit;
+mod scale_dialog;
 pub mod section;
 mod status;
 pub mod style_dialog;
-mod tools;
+pub(crate) mod tools;
 mod weights;
 
 /// The panels' ids (egui keeps where each was laid out under it).
 pub(crate) const CAPTION: &str = "trowel-caption";
 pub(crate) const MENU: &str = "trowel-menu";
 pub(crate) const RIBBON: &str = "trowel-ribbon";
-pub(crate) const CONTROL: &str = "trowel-control";
 pub(crate) const STATUS: &str = "trowel-status";
 pub(crate) const TOOLS: &str = "trowel-tools";
 pub(crate) const SET: &str = "trowel-set";
@@ -48,13 +52,10 @@ pub(crate) const RIGHT: &str = "trowel-right";
 /// The parts' sizes in points, as in the mockup.
 const CAPTION_H: f32 = 32.0;
 const MENU_H: f32 = 28.0;
-const RIBBON_H: f32 = 96.0;
-const CONTROL_H: f32 = 40.0;
-const STATUS_H: f32 = 32.0;
-const TOOLS_W: f32 = 56.0;
-const SET_W: f32 = 216.0;
-const RIGHT_W: f32 = 304.0;
-const TABS_H: f32 = 32.0;
+const RIBBON_H: f32 = 86.0;
+const STATUS_H: f32 = 28.0;
+const TOOLS_W: f32 = 50.0;
+const TABS_H: f32 = 34.0;
 
 /// The id of one of Trowel's widgets: its kind and which one.
 pub(crate) fn wid(kind: &str, key: impl Hash + std::fmt::Debug) -> egui::Id {
@@ -67,8 +68,43 @@ pub(crate) fn card_took_press(ctx: &egui::Context) -> bool {
     card::took_press(ctx)
 }
 
+/// The elevation the tool column's Spot Height and the drawing set's section and spot height
+/// elements use, in metres: the one last set in the drawing set, 93.0 m until then.
+pub(crate) fn datum_elevation_m(ctx: &egui::Context) -> f64 {
+    ctx.data(|d| d.get_temp::<f64>(datum_elevation_id())).unwrap_or(93.0)
+}
+
+/// Where [`datum_elevation_m`] is kept.
+pub(crate) fn datum_elevation_id() -> egui::Id {
+    wid("spot-datum-elev-val", ())
+}
+
+/// Compute a visible placement position near the active viewport center (or active artboard
+/// center), applying a small cascade offset on consecutive insertions so multiple 1-click
+/// symbols do not stack on the exact same pixel, and switch to the Selection tool so the user
+/// can immediately drag the newly inserted symbol.
+pub(crate) fn place_symbol_at(app: &mut VectorcraftApp, ctx: &egui::Context, base_offset: [f64; 2]) -> [f64; 2] {
+    let step_id = wid("symbol-cascade-step", ());
+    let step = ctx.data(|d| d.get_temp::<u32>(step_id).unwrap_or(0));
+    ctx.data_mut(|d| d.insert_temp(step_id, (step + 1) % 6));
+    let cascade = f64::from(step) * 14.0;
+    let center = app
+        .view()
+        .map(|v| [v.center.x, v.center.y])
+        .or_else(|| {
+            let d = app.session.active()?;
+            let ab = d.doc.artboards.first()?;
+            Some([ab.rect.x0 + ab.rect.width() * 0.5, ab.rect.y0 + ab.rect.height() * 0.5])
+        })
+        .unwrap_or([240.0, 200.0]);
+    app.select_tool("selection");
+    [center[0] + base_offset[0] + cascade, center[1] + base_offset[1] + cascade * 0.6]
+}
+
 /// Lay out Trowel's window. Screen mode 2 (full screen with the menu bar off) leaves out the bars
-/// above the canvas, screen mode 3 (full screen) everything but the canvas.
+/// above the canvas, screen mode 3 (full screen) everything but the canvas. There is no Control
+/// bar (design 3.0 §5): what it held has its one place in the status bar, the right column or the
+/// Window menu's panels.
 pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let mode = app.ui.screen_mode;
@@ -83,9 +119,6 @@ pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {
             menu::show(app, ui);
         }
         ribbon::show(app, ui);
-        if app.ui.control_bar {
-            control::show(app, ui);
-        }
     }
     if mode < 3 {
         if app.ui.status_bar {
@@ -95,90 +128,15 @@ pub(crate) fn frame(app: &mut VectorcraftApp, ui: &mut Ui) {
             tools::show(app, ui);
         }
         if app.ui.dock {
-            drawings::show(app, ui);
-            right_column(app, ui);
+            layout::columns(app, ui);
         }
     }
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.pasteboard)).show(ui, |ui| center::show(app, ui, mode));
     plate::show_dialog(app, ui.ctx());
     style_dialog::show_dialog(app, ui.ctx());
     gpkg_browser::show_dialog(app, ui.ctx());
-}
-
-/// The right column: the drawing palette on top, the properties at the bottom, the legend and
-/// layers between them. A window too short for them all scrolls them, the legend with room for two
-/// layers. The dock's own panels pop out to its left.
-fn right_column(app: &mut VectorcraftApp, ui: &mut Ui) {
-    let t = Tokens::get(ui.ctx());
-    egui::Panel::right(RIGHT)
-        .resizable(true)
-        .default_size(RIGHT_W)
-        .size_range(220.0..=560.0)
-        .show_separator_line(false)
-        .frame(egui::Frame::NONE.fill(t.panel))
-        .show(ui, |ui| {
-            let r = ui.max_rect();
-            ui.set_min_width(r.width());
-            line_left(ui, r, t.border);
-            ui.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id()));
-            let props_h = props::height(ui.ctx());
-            let tall = palette::HEIGHT + legend::MIN_HEIGHT + props_h;
-            if r.height() >= tall {
-                right_parts(app, ui, r, props_h);
-            } else {
-                let mut column = ui.new_child(egui::UiBuilder::new().max_rect(r).layout(egui::Layout::top_down(egui::Align::Min)));
-                egui::ScrollArea::vertical().id_salt(wid("right-scroll", ())).auto_shrink([false, false]).show(&mut column, |ui| {
-                    let (_, content) = ui.allocate_space(vec2(ui.available_width(), tall));
-                    right_parts(app, ui, content, props_h);
-                });
-            }
-            // Its panels pop out to its left, level with its top.
-            let keep = ui.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id())).unwrap_or_default();
-            crate::dock::set_flyout(ui.ctx(), crate::dock::Flyout { left: r.left(), top: r.top() + 6.0, keep });
-        });
-}
-
-/// The right column's parts in `r`: the palette at the top, the properties `props_h` tall at the
-/// bottom, the legend between them, with mouse-draggable horizontal splitters between sections.
-fn right_parts(app: &mut VectorcraftApp, ui: &mut Ui, r: Rect, props_h: f32) {
-    let top_delta_id = wid("right-split-top-delta", ());
-    let bot_delta_id = wid("right-split-bot-delta", ());
-    let mut top_delta = ui.data(|d| d.get_temp::<f32>(top_delta_id).unwrap_or(0.0));
-    let mut bot_delta = ui.data(|d| d.get_temp::<f32>(bot_delta_id).unwrap_or(0.0));
-
-    let max_extra = (r.height() - palette::HEIGHT - props_h - legend::MIN_HEIGHT).max(0.0);
-    top_delta = top_delta.clamp(-80.0, max_extra);
-    bot_delta = bot_delta.clamp(-80.0, (max_extra - top_delta.max(0.0)).max(0.0));
-
-    let top_h = (palette::HEIGHT + top_delta).clamp(palette::HEIGHT, (r.height() - legend::MIN_HEIGHT - 80.0).max(palette::HEIGHT));
-    let bot_h = (props_h + bot_delta).clamp(90.0, (r.height() - top_h - legend::MIN_HEIGHT).max(props_h));
-
-    let top = Rect::from_min_size(r.min, vec2(r.width(), top_h));
-    let bottom = Rect::from_min_max(pos2(r.left(), r.bottom() - bot_h), r.max);
-    palette::show(app, ui, top);
-    legend::show(app, ui, Rect::from_min_max(top.left_bottom(), bottom.right_top()));
-    props::show(app, ui, bottom);
-
-    // Draggable vertical splitters between Palette/Legend and Legend/Props.
-    let split_top_rect = Rect::from_min_max(pos2(r.left(), top.bottom() - 3.0), pos2(r.right(), top.bottom() + 3.0));
-    let resp_top = ui.interact(split_top_rect, wid("right-split-top", ()), Sense::drag());
-    if resp_top.hovered() || resp_top.dragged() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-    }
-    if resp_top.dragged() {
-        top_delta += resp_top.drag_delta().y;
-        ui.data_mut(|d| d.insert_temp(top_delta_id, top_delta));
-    }
-
-    let split_bot_rect = Rect::from_min_max(pos2(r.left(), bottom.top() - 3.0), pos2(r.right(), bottom.top() + 3.0));
-    let resp_bot = ui.interact(split_bot_rect, wid("right-split-bot", ()), Sense::drag());
-    if resp_bot.hovered() || resp_bot.dragged() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-    }
-    if resp_bot.dragged() {
-        bot_delta -= resp_bot.drag_delta().y;
-        ui.data_mut(|d| d.insert_temp(bot_delta_id, bot_delta));
-    }
+    scale_dialog::show(app, ui.ctx());
+    ask::show(app, ui.ctx());
 }
 
 fn font(size: f32) -> FontId {
@@ -239,24 +197,92 @@ fn panel_head(ui: &Ui, r: Rect, title: &str, sub: &str, buttons: usize, t: &Toke
     (width_of(ui, sub, font(11.0)) > right - x).then_some(shown)
 }
 
+/// A head of the right column's parts in `r` (the mockup's `.ph`): `title` in semibold 13.5 at
+/// the left, then `sub` dimmed, cut short with "…" before room for `buttons` [`head_button`]s.
+/// Returns where the title ends.
+fn column_head(ui: &Ui, r: Rect, title: &str, sub: &str, buttons: usize, t: &Tokens) -> f32 {
+    let end = text(ui, pos2(r.left() + 10.0, r.center().y), Align2::LEFT_CENTER, title, bold(13.5), t.text).right();
+    if !sub.is_empty() {
+        let right = match buttons.checked_sub(1) {
+            Some(more) => column_slot(r, more).left() - 4.0,
+            None => r.right() - 10.0,
+        };
+        text_to(ui, pos2(end + 6.0, r.center().y), right, sub, font(12.0), t.text_dim);
+    }
+    end
+}
+
+/// Where a right-column head's button `slot` places from the right goes (0: the last one): a
+/// 24-point square whose mark sits where the mockup's `.ph .r` glyphs do, 16 in from the right.
+fn column_slot(head: Rect, slot: usize) -> Rect {
+    Rect::from_center_size(pos2(head.right() - 16.0 - 24.0 * slot as f32, head.center().y), vec2(24.0, 24.0))
+}
+
 /// A panel head's button `slot` places from the right (0: the last one): `icon` in a 24-point
 /// square.
 fn head_button(ui: &Ui, id: egui::Id, head: Rect, slot: usize, icon: &str, tip: &str, t: &Tokens) -> egui::Response {
     let r = Rect::from_center_size(pos2(head.right() - 12.0 - 12.0 - 24.0 * slot as f32, head.center().y), vec2(24.0, 24.0));
+    icon_button(ui, id, r, tip, t, |ui, r| crate::icons::paint(ui, icon, r.shrink(5.0), t.text))
+}
+
+/// A right-column head's button `slot` places from the right ([`column_slot`]), drawn by `mark`.
+fn column_button(ui: &Ui, id: egui::Id, head: Rect, slot: usize, tip: &str, t: &Tokens, mark: impl FnOnce(&Ui, Rect)) -> egui::Response {
+    icon_button(ui, id, column_slot(head, slot), tip, t, mark)
+}
+
+/// A button in `r` drawn by `mark`, the wash under it on hover.
+fn icon_button(ui: &Ui, id: egui::Id, r: Rect, tip: &str, t: &Tokens, mark: impl FnOnce(&Ui, Rect)) -> egui::Response {
     let resp = ui.interact(r, id, Sense::click());
     if resp.hovered() {
         ui.painter().rect_filled(r, CornerRadius::same(6), t.hover);
     }
-    crate::icons::paint(ui, icon, r.shrink(5.0), t.text);
+    mark(ui, r);
     resp.on_hover_text(tip)
 }
 
-/// The ⋯ button of a head that pops a panel out beside the right column, or puts it away
-/// ([`head_button`]). A press on it doesn't count as one away from the popped-out panel.
+/// The ⋯ button of a right-column head that pops a panel out beside the column, or puts it away
+/// ([`column_button`]). A press on it doesn't count as one away from the popped-out panel.
 fn more_button(ui: &Ui, id: egui::Id, head: Rect, slot: usize, tip: &str, t: &Tokens) -> egui::Response {
-    let resp = head_button(ui, id, head, slot, "ellipsis", tip, t);
+    let resp = column_button(ui, id, head, slot, tip, t, |ui, r| crate::icons::paint(ui, "ellipsis", r.shrink(5.0), t.text));
     ui.data_mut(|d| d.get_temp_mut_or_default::<Vec<Rect>>(keep_id()).push(resp.rect));
     resp
+}
+
+/// `n` of something as said: `one` for one, else `other` (each with `{n}` where the count goes).
+fn count(n: usize, one: &str, other: &str) -> String {
+    crate::i18n::fmt(if n == 1 { one } else { other }, &[("n", &n.to_string())])
+}
+
+/// The selected objects `ids`, in their order, each with the top-level layer it is in, found in
+/// one walk of the drawing that stops once all are found (`Document::node` and `layer_of` walk it
+/// for each id, which a selection of thousands can't afford).
+fn selected_in_rows<'a>(
+    doc: &'a vectorcraft_doc::Document,
+    ids: &[vectorcraft_doc::NodeId],
+) -> Vec<(&'a vectorcraft_doc::Node, &'a vectorcraft_doc::Node)> {
+    use std::collections::{HashMap, HashSet};
+    use vectorcraft_doc::{Node, NodeId};
+    type Found<'a> = HashMap<NodeId, (&'a Node, &'a Node)>;
+    fn walk<'a>(n: &'a Node, row: &'a Node, wanted: &HashSet<NodeId>, found: &mut Found<'a>) {
+        if wanted.contains(&n.id) {
+            found.insert(n.id, (n, row));
+        }
+        for child in n.children().into_iter().flatten() {
+            if found.len() == wanted.len() {
+                return;
+            }
+            walk(child, row, wanted, found);
+        }
+    }
+    let wanted: HashSet<NodeId> = ids.iter().copied().collect();
+    let mut found = Found::with_capacity(wanted.len());
+    for layer in &doc.layers {
+        if found.len() == wanted.len() {
+            break;
+        }
+        walk(layer, layer, &wanted, &mut found);
+    }
+    ids.iter().filter_map(|id| found.get(id).copied()).collect()
 }
 
 /// Where the ⋯ buttons of the right column are kept while it is drawn.
@@ -446,8 +472,10 @@ fn soon(what: &str, job: &str) -> String {
 /// How long the status bar shows a note, and a message, before it shows the hint again (seconds).
 const NOTE_SECS: f64 = 4.0;
 const MESSAGE_SECS: f64 = 6.0;
+/// How long it shows an error (design 3.0 §5 ⑩), in red.
+const ERROR_SECS: f64 = 5.0;
 
-/// Where the note a press on something a later job brings left is kept, with when.
+/// Where the status bar's note ([`note`]) is kept, with when.
 fn note_id() -> egui::Id {
     wid("soon-note", ())
 }
@@ -466,12 +494,16 @@ fn soon_widget(ui: &Ui, id: egui::Id, r: Rect, what: &str, job: &str) -> egui::R
 /// before the colon.
 fn note_soon(ctx: &egui::Context, what: &str, job: &str) {
     let what = what.strip_suffix('…').unwrap_or(what);
-    let note = crate::i18n::fmt(tw!("{what}: coming soon ({job})"), &[("what", what), ("job", job)]);
-    let now = ctx.input(|i| i.time);
-    ctx.data_mut(|d| d.insert_temp(note_id(), (note, now)));
+    note(ctx, &crate::i18n::fmt(tw!("{what}: coming soon ({job})"), &[("what", what), ("job", job)]));
 }
 
-/// The note a press on something a later job brings left, for [`NOTE_SECS`].
+/// Say `s` in the status bar for [`NOTE_SECS`].
+fn note(ctx: &egui::Context, s: &str) {
+    let now = ctx.input(|i| i.time);
+    ctx.data_mut(|d| d.insert_temp(note_id(), (s.to_string(), now)));
+}
+
+/// The note a press on something a later job brings, or a [`note`], left, for [`NOTE_SECS`].
 fn soon_note(ctx: &egui::Context) -> Option<String> {
     let (note, at) = ctx.data(|d| d.get_temp::<(String, f64)>(note_id()))?;
     let left = NOTE_SECS - (ctx.input(|i| i.time) - at);
@@ -482,27 +514,16 @@ fn soon_note(ctx: &egui::Context) -> Option<String> {
     })
 }
 
-/// The name of tool `id` as Trowel shows it: its label without "Tool".
-fn tool_name(id: &str) -> String {
-    vectorcraft_tools::tool_info(id)
-        .map(|info| {
-            let label = tl!(info.label);
-            label.strip_suffix(tw!("Tool")).unwrap_or(label).trim().to_string()
-        })
-        .unwrap_or_default()
-}
-
 /// Where the next line goes.
 struct DrawTarget {
-    /// The layer (or isolated group) new art lands in; none when every layer is locked or hidden.
-    into: Option<vectorcraft_doc::NodeId>,
-    /// Why that is not the current layer, when the current one is locked or hidden.
+    /// Why that is not the current layer (when the current one is locked or hidden), or that no
+    /// layer takes it.
     note: Option<String>,
 }
 
 /// A locked or hidden layer takes no new art: the engine puts it in the topmost layer that is shown
 /// and unlocked instead ([`vectorcraft_engine::DocState::insertion_parent`]), or refuses it. The
-/// band, the Control bar and the legend show that layer and say why.
+/// status bar and the legend say so.
 fn draw_target(st: &vectorcraft_engine::DocState) -> DrawTarget {
     let into = st.insertion_parent().filter(|p| st.doc.is_editable(*p));
     let name = |id| st.doc.node(id).map(|n| n.display_name()).unwrap_or_default();
@@ -519,15 +540,13 @@ fn draw_target(st: &vectorcraft_engine::DocState) -> DrawTarget {
         _ if into.is_none() => Some(tw!("No layer to draw on").to_string()),
         _ => None,
     };
-    DrawTarget { into, note }
+    DrawTarget { note }
 }
 
-/// The active tool's hint at `size` in `color`, plainly as in the mockup, its parts apart by "·";
-/// `first` keeps the first part ("Click to add a corner point").
-fn hint_job(app: &VectorcraftApp, first: bool, size: f32, color: Color32) -> egui::text::LayoutJob {
+/// The active tool's hint at `size` in `color`, plainly as in the mockup, its parts apart by "·".
+fn hint_job(app: &VectorcraftApp, size: f32, color: Color32) -> egui::text::LayoutJob {
     let all: String = crate::chrome::current_hint(app).into_iter().map(|(s, _)| s).collect();
-    let mut parts = all.split('|').map(str::trim).filter(|p| !p.is_empty());
-    let shown = if first { parts.next().unwrap_or_default().to_string() } else { parts.collect::<Vec<_>>().join(" · ") };
+    let shown = all.split('|').map(str::trim).filter(|p| !p.is_empty()).collect::<Vec<_>>().join(" · ");
     egui::text::LayoutJob::simple_singleline(shown, font(size), color)
 }
 

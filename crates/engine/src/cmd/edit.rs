@@ -184,6 +184,7 @@ fn undo(s: &mut Session, _: &Value) -> Result<Value> {
     let e = st.history.undo.pop().ok_or_else(|| EngineError::Other("nothing to undo".into()))?;
     let label = e.label.clone();
     let editing = st.doc.mask_edit.map(|m| m.layer);
+    let current = current_path(st);
     st.history.redo.push(crate::HistoryEntry {
         label: e.label,
         doc: std::mem::replace(&mut st.doc, e.doc),
@@ -191,6 +192,7 @@ fn undo(s: &mut Session, _: &Value) -> Result<Value> {
     });
     st.revision += 1;
     st.selection.prune(&st.doc);
+    keep_current(st, current);
     super::maskedit::follow_history(st, editing);
     Ok(json!({ "undone": label }))
 }
@@ -200,6 +202,7 @@ fn redo(s: &mut Session, _: &Value) -> Result<Value> {
     let e = st.history.redo.pop().ok_or_else(|| EngineError::Other("nothing to redo".into()))?;
     let label = e.label.clone();
     let editing = st.doc.mask_edit.map(|m| m.layer);
+    let current = current_path(st);
     st.history.undo.push(crate::HistoryEntry {
         label: e.label,
         doc: std::mem::replace(&mut st.doc, e.doc),
@@ -207,8 +210,28 @@ fn redo(s: &mut Session, _: &Value) -> Result<Value> {
     });
     st.revision += 1;
     st.selection.prune(&st.doc);
+    keep_current(st, current);
     super::maskedit::follow_history(st, editing);
     Ok(json!({ "redone": label }))
+}
+
+/// The current layer and the layers it is in, innermost first, before an undo or redo.
+fn current_path(st: &crate::DocState) -> Vec<NodeId> {
+    let mut path = st.current_layer().and_then(|c| st.doc.ancestry(c)).unwrap_or_default();
+    path.reverse();
+    path
+}
+
+/// After an undo or redo took the current layer away (a sublayer just made, undone), the
+/// innermost layer it was in that is still there becomes the current one, so new art doesn't go
+/// to another layer.
+fn keep_current(st: &mut crate::DocState, path: Vec<NodeId>) {
+    if st.current_layer().is_some() {
+        return;
+    }
+    if let Some(l) = path.into_iter().find(|id| st.doc.node(*id).is_some_and(|n| n.is_layer())) {
+        st.active_layer = Some(l);
+    }
 }
 
 /// Selected top-level objects in paint order, dropping any whose ancestor is also selected.

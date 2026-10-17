@@ -61,6 +61,47 @@ fn parse_direction(val: &str) -> Option<HatchDirection> {
     }
 }
 
+fn direction_to_str(dir: HatchDirection) -> &'static str {
+    match dir {
+        HatchDirection::Deg0 => "0",
+        HatchDirection::Deg45 => "45",
+        HatchDirection::Deg90 => "90",
+        HatchDirection::Deg135 => "135",
+        HatchDirection::Cross => "cross",
+        HatchDirection::DiagonalCross => "diagonal_cross",
+        HatchDirection::Alternate => "alt",
+        HatchDirection::None => "none",
+    }
+}
+
+/// Collects all hatchable leaf path/compound node IDs under `roots` (recursing into Groups,
+/// skipping hidden Live Paint Sources and stroke-only Live Paint Edge nodes).
+fn collect_hatchable_ids(d: &vectorcraft_doc::Document, roots: &[NodeId]) -> Vec<NodeId> {
+    fn visit(n: &vectorcraft_doc::Node, out: &mut Vec<NodeId>) {
+        if !n.visible || n.name.as_deref() == Some("Live Paint Sources") || n.name.as_deref() == Some("Edge") {
+            return;
+        }
+        match &n.kind {
+            NodeKind::Path { .. } | NodeKind::Compound { .. } => out.push(n.id),
+            NodeKind::Group { children, .. } | NodeKind::Layer { children, .. } => {
+                for c in children {
+                    visit(c, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for id in roots {
+        if let Some(n) = d.node(*id) {
+            visit(n, &mut out);
+        }
+    }
+    out.sort_unstable_by_key(|id| id.0);
+    out.dedup();
+    out
+}
+
 fn set(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "hatch.set";
     let dir_str = str_param(p, "direction").ok_or_else(|| bad(C, "missing `direction` (\"45\", \"135\", \"alt\", \"none\")"))?;
@@ -70,18 +111,19 @@ fn set(s: &mut Session, p: &Value) -> Result<Value> {
     let weight_pt = p.get("weight_pt").and_then(Value::as_f64).unwrap_or(DEFAULT_HATCH_WEIGHT_PT);
     let flipped_param = p.get("flipped").and_then(Value::as_bool);
 
+    s.default_hatch = direction;
+    s.default_cut_face = false;
+
     let ids = targets(s, p)?;
     if ids.is_empty() {
-        return Ok(json!({ "updated": 0, "conflicts": [] }));
+        return Ok(json!({ "updated": 0, "conflicts": [], "defaultDirection": direction_to_str(direction) }));
     }
 
     let changed = edit_counted(s, "Set Hatch", |d| {
+        let leaf_ids = collect_hatchable_ids(d, &ids);
         let mut count = 0;
-        for id in &ids {
-            let Some(node) = d.node_mut(*id) else { continue };
-            if !matches!(node.kind, NodeKind::Path { .. } | NodeKind::Compound { .. }) {
-                continue;
-            }
+        for id in leaf_ids {
+            let Some(node) = d.node_mut(id) else { continue };
             if direction == HatchDirection::None {
                 node.hatch = None;
             } else {
@@ -104,27 +146,30 @@ fn set(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn cut_face(s: &mut Session, p: &Value) -> Result<Value> {
+    s.default_hatch = HatchDirection::Alternate;
+    s.default_cut_face = true;
+
     let ids = targets(s, p)?;
     if ids.is_empty() {
-        return Ok(json!({ "updated": 0 }));
+        return Ok(json!({ "updated": 0, "defaultDirection": "alt", "defaultCutFace": true }));
     }
 
     let changed = edit_counted(s, "Cut Face", |d| {
+        let leaf_ids = collect_hatchable_ids(d, &ids);
         let mut count = 0;
-        for id in &ids {
-            let Some(node) = d.node_mut(*id) else { continue };
-            if !matches!(node.kind, NodeKind::Path { .. } | NodeKind::Compound { .. }) {
-                continue;
-            }
+        for id in leaf_ids {
+            let Some(node) = d.node_mut(id) else { continue };
             // 1. Set hatch to Cut Face (Alternate, 1.0mm, 0.1pt)
             node.hatch = Some(HatchStyle::cut_face());
 
-            // 2. Set border stroke to 0.8 pt
-            if let Some(st) = node.appearance.stroke_mut() {
-                st.width = DEFAULT_CUT_BORDER_PT;
-            } else {
-                let st = StrokeLayer::new(vectorcraft_color::Paint::solid(vectorcraft_color::Color::BLACK), DEFAULT_CUT_BORDER_PT);
-                node.appearance.items.push(AppearanceItem::Stroke(st));
+            // 2. Set border stroke to 0.8 pt (unless it's a fill-only Live Paint Face)
+            if node.name.as_deref() != Some("Face") {
+                if let Some(st) = node.appearance.stroke_mut() {
+                    st.width = DEFAULT_CUT_BORDER_PT;
+                } else {
+                    let st = StrokeLayer::new(vectorcraft_color::Paint::solid(vectorcraft_color::Color::BLACK), DEFAULT_CUT_BORDER_PT);
+                    node.appearance.items.push(AppearanceItem::Stroke(st));
+                }
             }
             count += 1;
         }
@@ -147,9 +192,10 @@ fn flip(s: &mut Session, p: &Value) -> Result<Value> {
     }
 
     let changed = edit_counted(s, "Flip Hatch", |d| {
+        let leaf_ids = collect_hatchable_ids(d, &ids);
         let mut count = 0;
-        for id in &ids {
-            let Some(node) = d.node_mut(*id) else { continue };
+        for id in leaf_ids {
+            let Some(node) = d.node_mut(id) else { continue };
             if let Some(hatch) = &mut node.hatch {
                 hatch.flipped = !hatch.flipped;
                 count += 1;
@@ -169,20 +215,24 @@ fn flip(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn get(s: &mut Session, p: &Value) -> Result<Value> {
     let ids = targets(s, p)?;
-    let Some(first_id) = ids.first() else {
+    if ids.is_empty() {
         return Ok(json!({
-            "direction": "none",
+            "direction": direction_to_str(s.default_hatch),
             "spacing_mm": DEFAULT_HATCH_SPACING_MM,
             "weight_pt": DEFAULT_HATCH_WEIGHT_PT,
             "flipped": false,
             "has_conflict": false,
         }));
-    };
+    }
 
     let doc = s.doc()?;
-    let Some(node) = doc.doc.node(*first_id) else {
+    let leaf_ids = collect_hatchable_ids(&doc.doc, &ids);
+    let target_node =
+        leaf_ids.iter().filter_map(|id| doc.doc.node(*id)).find(|n| n.hatch.is_some()).or_else(|| leaf_ids.first().and_then(|id| doc.doc.node(*id)));
+
+    let Some(node) = target_node else {
         return Ok(json!({
-            "direction": "none",
+            "direction": direction_to_str(s.default_hatch),
             "spacing_mm": DEFAULT_HATCH_SPACING_MM,
             "weight_pt": DEFAULT_HATCH_WEIGHT_PT,
             "flipped": false,
@@ -191,21 +241,11 @@ fn get(s: &mut Session, p: &Value) -> Result<Value> {
     };
 
     let conflicts = check_conflicts(s, &ids);
-    let has_conflict = conflicts.contains(&first_id.0);
+    let has_conflict = conflicts.contains(&node.id.0);
 
     if let Some(hatch) = &node.hatch {
-        let dir_str = match hatch.direction {
-            HatchDirection::Deg0 => "0",
-            HatchDirection::Deg45 => "45",
-            HatchDirection::Deg90 => "90",
-            HatchDirection::Deg135 => "135",
-            HatchDirection::Cross => "cross",
-            HatchDirection::DiagonalCross => "diagonal_cross",
-            HatchDirection::Alternate => "alt",
-            HatchDirection::None => "none",
-        };
         Ok(json!({
-            "direction": dir_str,
+            "direction": direction_to_str(hatch.direction),
             "spacing_mm": hatch.spacing_mm,
             "weight_pt": hatch.weight_pt,
             "flipped": hatch.flipped,
@@ -222,7 +262,7 @@ fn get(s: &mut Session, p: &Value) -> Result<Value> {
     }
 }
 
-fn update_document_hatch_directions(d: &mut vectorcraft_doc::Document) {
+pub(crate) fn update_document_hatch_directions(d: &mut vectorcraft_doc::Document) {
     let res = resolve_document_hatching(d);
     for (id, base_dir) in res.base_dirs {
         if let Some(node) = d.node_mut(id)

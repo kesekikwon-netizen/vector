@@ -602,6 +602,39 @@ enum LpHover {
     Region(usize),
 }
 
+/// Finds the topmost visible, unlocked path/compound node whose enclosed area contains `p`.
+fn unselected_shape_at(doc: &Document, p: Point) -> Option<(NodeId, BezPath)> {
+    fn visit(n: &Node, p: Point, out: &mut Option<(NodeId, BezPath)>) {
+        if !n.visible || n.locked || n.name.as_deref() == Some(SOURCES_NAME) || n.name.as_deref() == Some(EDGE_NAME) {
+            return;
+        }
+        match &n.kind {
+            NodeKind::Layer { children, .. } | NodeKind::Group { children, .. } => {
+                for c in children {
+                    visit(c, p, out);
+                }
+            }
+            NodeKind::Path { .. } | NodeKind::Compound { .. } => {
+                if let Some((mut pd, _)) = node_outline(n) {
+                    for sp in pd.subpaths.iter_mut().filter(|sp| !sp.closed) {
+                        sp.closed = po::encloses_area(sp);
+                    }
+                    let bp = pd.to_bezpath();
+                    if bp.bounding_box().contains(p) && bp.winding(p) != 0 {
+                        *out = Some((n.id, bp));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut hit = None;
+    for l in &doc.layers {
+        visit(l, p, &mut hit);
+    }
+    hit
+}
+
 fn lp_hover(cx: &ToolContext, cache: &mut RegionCache, p: Point, edge: bool) -> LpHover {
     if let Some(g) = live_paint_at(cx.doc, p).and_then(|id| cx.doc.node(id)) {
         let part = if edge { edge_near(g, p, cx.tol(4.0)) } else { face_at(g, p) };
@@ -624,6 +657,9 @@ fn lp_hover(cx: &ToolContext, cache: &mut RegionCache, p: Point, edge: bool) -> 
     let sel_is_live = cx.selection.objects.iter().any(|id| cx.doc.node(*id).is_some_and(is_live_paint));
     if !sel_is_live && let Some(i) = cache.at(cx, p) {
         return LpHover::Region(i);
+    }
+    if !edge && let Some((_, bp)) = unselected_shape_at(cx.doc, p) {
+        return LpHover::Part(bp);
     }
     LpHover::None
 }
@@ -693,6 +729,9 @@ impl Tool for LivePaintBucketTool {
                     self.cache.key = None;
                     let roots = sorted_roots(cx.doc, &cx.selection.objects);
                     return vec![Action::Exec("livePaint.fill".into(), json!({ "ids": json_ids(&roots), "point": point }))];
+                }
+                if let Some((hit_id, _)) = unselected_shape_at(cx.doc, p) {
+                    return vec![Action::Exec("livePaint.fill".into(), json!({ "ids": [hit_id.0], "point": point }))];
                 }
                 vec![]
             }

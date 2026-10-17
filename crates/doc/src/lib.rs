@@ -40,6 +40,7 @@ pub mod rastersettings;
 mod reach;
 pub mod recolor;
 pub mod scale;
+pub mod section_marks;
 pub mod selection;
 pub mod setup;
 pub mod shaper;

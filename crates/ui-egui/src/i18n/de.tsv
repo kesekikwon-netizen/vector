@@ -1661,6 +1661,7 @@
 	Nonbreaking Hyphen	Geschützter Trennstrich
 	Nonbreaking Space	Geschütztes Leerzeichen
 	None	Ohne
+	None (Delete)	Ohne (Löschen)
 	None (/)	Ohne (/)
 	None (keep transparency)	Ohne (Transparenz beibehalten)
 	None.	Keine.
@@ -4057,3 +4058,5 @@ theme	Appearance	Erscheinungsbild
 	Change Weights at Once	Konturstärken gemeinsam ändern
 	Add Legend Group	Legendengruppe hinzufügen
 	Add to Legend	Zur Legende hinzufügen
+@msg	Rule layer added: {name}	Regelebene hinzugefügt: {name}
+@msg	Removed empty unused layers: {removed}	Leere, ungenutzte Ebenen entfernt: {removed}

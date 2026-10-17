@@ -208,20 +208,35 @@ pub fn is_line(n: &Node) -> bool {
 
 /// The lines of a row, top first: [`is_line`] objects in the layer, its groups and sublayers. Type,
 /// images, symbols, blends and other live art are not lines and are not looked into, nor are a
-/// compound's own paths.
+/// compound's own paths, nor the marks the archaeology tools put in ([`section_marks::is_mark`]:
+/// level lines, A–A′ …, drawn at their own weights, are not set apart from the row nor taken back
+/// to its look, review J024 H9). `layer` itself is looked into whatever it is.
+///
+/// [`section_marks::is_mark`]: crate::section_marks::is_mark
 pub fn lines(layer: &Node) -> Vec<&Node> {
-    fn walk<'a>(n: &'a Node, out: &mut Vec<&'a Node>) {
+    gather(layer, true)
+}
+
+/// Every line in `layer` as [`lines`] finds them, the marks' too: what a plate prints.
+pub fn all_lines(layer: &Node) -> Vec<&Node> {
+    gather(layer, false)
+}
+
+fn gather(layer: &Node, skip_marks: bool) -> Vec<&Node> {
+    fn walk<'a>(n: &'a Node, skip_marks: bool, out: &mut Vec<&'a Node>) {
         let (NodeKind::Layer { children, .. } | NodeKind::Group { children, .. }) = &n.kind else { return };
         for c in children.iter().rev() {
             if matches!(c.kind, NodeKind::Layer { .. } | NodeKind::Group { .. }) {
-                walk(c, out);
+                if !(skip_marks && crate::section_marks::is_mark(c)) {
+                    walk(c, skip_marks, out);
+                }
             } else if is_line(c) {
                 out.push(c);
             }
         }
     }
     let mut out = vec![];
-    walk(layer, &mut out);
+    walk(layer, skip_marks, &mut out);
     out
 }
 

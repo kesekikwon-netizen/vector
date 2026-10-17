@@ -14,8 +14,9 @@ use vectorcraft_doc::{Dash, Document, Legend, LegendGroup, LegendSample, LineTyp
 use super::layer::{apply_options, locked_within, make_layer};
 use super::*;
 
-/// The palette's weight chips (points): Change Weights at Once steps along them.
-pub const LADDER: [f64; 6] = [0.1, 0.2, 0.3, 0.5, 0.8, 1.0];
+/// The weights in points (Trowel design 3.0 §2, one list for the whole app): the pen's chips, the
+/// row editor's, and the steps of Change Weights at Once.
+pub const LADDER: [f64; 9] = [0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0];
 /// The longest row name (characters).
 const MAX_NAME: usize = 512;
 
@@ -44,7 +45,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Revert to the Legend",
             [],
             None,
-            "{ids?: [id…], all?: bool} lines set apart go back to their row's look (weight and dashes): the lines in `ids` (groups and layers: the lines in them), with `all` every line of the drawing, else the selection's. Lines of rows without a look are left, locked ones are skipped and counted; one undo step. With nothing selected and no ids, the pen takes the current row's look → {lines, skipped}",
+            "{ids?: [id…], all?: bool, pen?: bool} lines set apart go back to their row's look (weight and dashes): the lines in `ids` (groups and layers: the lines in them), with `all` every line of the drawing, else the selection's. Lines of rows without a look are left, locked ones are skipped and counted; one undo step. With nothing selected and no ids, or with `pen`, the pen takes the current row's look too → {lines, skipped}",
             has_doc,
             revert
         ),
@@ -53,7 +54,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Change Weights at Once",
             [],
             None,
-            "{how: ratio|value|step, ratio?: factor above 0, from?: pt, to?: pt, step?: 1|-1, overrides?: bool} every row with a look takes the rule (ratio: × factor; value: a weight within 1e-9 pt of `from` becomes `to`; step: the next palette weight 0.1, 0.2, 0.3, 0.5, 0.8, 1.0 up or down, none past the ends) and the lines that follow it its new weight; lines set apart take the rule on their own weight only with `overrides`, lines of layers without a look always. Results round to 0.001 pt within 0–1000; hidden lines change, locked ones are skipped and counted; one undo step → {rows: [{id, name, from, to}], lines, skipped}",
+            "{how: ratio|value|step, ratio?: factor above 0, from?: pt, to?: pt, step?: 1|-1, overrides?: bool} every row with a look takes the rule (ratio: × factor; value: a weight within 1e-9 pt of `from` becomes `to`; step: the next weight of 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0 up or down, none past the ends) and the lines that follow it its new weight; lines set apart take the rule on their own weight only with `overrides`, lines of layers without a look always. Results round to 0.001 pt within 0–1000; hidden lines change, locked ones are skipped and counted; one undo step → {rows: [{id, name, from, to}], lines, skipped}",
             has_doc,
             weights
         ),
@@ -89,7 +90,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Add Field Standard Legend Presets",
             [],
             None,
-            "{name?: string} add Korean excavation report field standard legend rows (0.6pt 평면외곽선, 0.3pt 내선(바닥), 0.4pt 이중굴광시-가운데선, 0.5pt 석곽-평면외곽선, 0.2pt 석곽-내선, 0.3pt 석곽-유물 토기외곽·금속, 0.2pt 석곽-유물 내선, 0.15pt 석곽-유물 깨진면, 0.8pt 단면선, 0.2pt 단면빗금, 0.3pt 해발선, 0.5pt 해발선 0.5단위)",
+            "{name?: string} add Korean excavation report field standard legend rows; `name` (one of the twelve, else an error) adds that one, or draws with it when it is there already → {added: [id], picked?: id} (0.6pt 평면외곽선, 0.3pt 내선(바닥), 0.4pt 이중굴광시-가운데선, 0.5pt 석곽-평면외곽선, 0.2pt 석곽-내선, 0.3pt 석곽-유물 토기외곽·금속, 0.2pt 석곽-유물 내선, 0.15pt 석곽-유물 깨진면, 0.8pt 단면선, 0.2pt 단면빗금, 0.3pt 해발선, 0.5pt 해발선 0.5단위)",
             has_doc,
             add_field_presets
         ),
@@ -353,6 +354,7 @@ fn pick(s: &mut Session, p: &Value) -> Result<Value> {
 fn revert(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "legend.revert";
     let all = flag(p, "all", C)?.unwrap_or(false);
+    let pen = flag(p, "pen", C)?.unwrap_or(false);
     let ids = match p.get("ids") {
         None | Some(Value::Null) => None,
         Some(_) => {
@@ -368,10 +370,10 @@ fn revert(s: &mut Session, p: &Value) -> Result<Value> {
         (false, Some(ids)) => ids,
         (false, None) => super::edit::selected_roots(s)?,
     };
+    let pen_look = st.current_layer().and_then(|l| d.layer_of(l)).and_then(|r| d.node(r)).and_then(look_of);
     if !all && p.get("ids").is_none_or(Value::is_null) && starts.is_empty() {
         // Nothing to revert: the pen takes the current row's look.
-        let look = st.current_layer().and_then(|l| d.layer_of(l)).and_then(|r| d.node(r)).and_then(look_of);
-        if let Some((w, t)) = look {
+        if let Some((w, t)) = pen_look {
             set_pen(s, w, &t);
         }
         return Ok(json!({ "lines": 0, "skipped": 0 }));
@@ -400,6 +402,9 @@ fn revert(s: &mut Session, p: &Value) -> Result<Value> {
             }
             Ok(())
         })?;
+    }
+    if pen && let Some((w, t)) = pen_look {
+        set_pen(s, w, &t);
     }
     Ok(json!({ "lines": todo.len(), "skipped": skipped }))
 }
@@ -736,20 +741,21 @@ fn add(s: &mut Session, p: &Value) -> Result<Value> {
 /// 평면외곽선 0.6pt, 내선(바닥) 0.3pt, 이중굴광시-가운데선 0.4pt 파선,
 /// 석곽-평면외곽선 0.5pt, 석곽-내선 0.2pt, 석곽-유물 토기외곽·금속 0.3pt,
 /// 석곽-유물 내선 0.2pt, 석곽-유물 깨진면 0.15pt, 단면선 0.8pt, 단면빗금 0.2pt,
-/// 해발선 0.3pt, 해발선 0.5단위 0.5pt.
+/// 해발선 0.3pt, 해발선 0.5단위 0.5pt. ★ (used often): 평면외곽선, 내선(바닥) and 단면선, as
+/// Trowel design 3.0 §7's table.
 const FIELD_PRESETS: [(&str, LegendGroup, f64, LineType, Show, bool); 12] = [
     ("평면외곽선", LegendGroup::Plan, 0.6, LineType::Solid, Show::Area, true),
     ("내선(바닥)", LegendGroup::Plan, 0.3, LineType::Solid, Show::Area, true),
     ("이중굴광시-가운데선", LegendGroup::Plan, 0.4, LineType::Dashed, Show::Line, false),
-    ("석곽-평면외곽선", LegendGroup::Plan, 0.5, LineType::Solid, Show::Area, true),
+    ("석곽-평면외곽선", LegendGroup::Plan, 0.5, LineType::Solid, Show::Area, false),
     ("석곽-내선", LegendGroup::Plan, 0.2, LineType::Solid, Show::Line, false),
-    ("석곽-유물 토기외곽·금속", LegendGroup::Finds, 0.3, LineType::Solid, Show::Line, true),
+    ("석곽-유물 토기외곽·금속", LegendGroup::Finds, 0.3, LineType::Solid, Show::Line, false),
     ("석곽-유물 내선", LegendGroup::Finds, 0.2, LineType::Solid, Show::Line, false),
     ("석곽-유물 깨진면", LegendGroup::Finds, 0.15, LineType::Solid, Show::Line, false),
     ("단면선", LegendGroup::Section, 0.8, LineType::Solid, Show::Line, true),
     ("단면빗금", LegendGroup::Section, 0.2, LineType::Solid, Show::Area, false),
     ("해발선", LegendGroup::Section, 0.3, LineType::Solid, Show::Line, false),
-    ("해발선 0.5단위", LegendGroup::Section, 0.5, LineType::Solid, Show::Line, true),
+    ("해발선 0.5단위", LegendGroup::Section, 0.5, LineType::Solid, Show::Line, false),
 ];
 
 /// Returns the 12 real-world Korean excavation report field standard rules.
@@ -769,12 +775,31 @@ pub fn field_preset_rows() -> Vec<(&'static str, Legend)> {
 }
 
 fn add_field_presets(s: &mut Session, p: &Value) -> Result<Value> {
-    let filter_name = p.get("name").and_then(Value::as_str);
+    const C: &str = "legend.addFieldPresets";
+    let filter_name = match p.get("name") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(name)) => Some(name.as_str()),
+        Some(_) => return Err(bad(C, "`name` is not text")),
+    };
+    // A name that isn't one of the twelve is a caller's mistake, not "nothing to add".
+    if let Some(name) = filter_name
+        && !FIELD_PRESETS.iter().any(|row| row.0 == name)
+    {
+        return Err(bad(C, format!("no field standard row named `{name}`")));
+    }
     let d = &s.doc()?.doc;
-    let there = |name: &str| d.layers.iter().any(|l| l.display_name().trim() == name);
-    let rows: Vec<(&'static str, Legend)> =
-        field_preset_rows().into_iter().filter(|(name, _)| filter_name.is_none_or(|fnm| *name == fnm)).filter(|(name, _)| !there(name)).collect();
+    let there = |name: &str| d.layers.iter().find(|l| l.display_name().trim() == name).map(|l| l.id);
+    let rows: Vec<(&'static str, Legend)> = field_preset_rows()
+        .into_iter()
+        .filter(|(name, _)| filter_name.is_none_or(|fnm| *name == fnm))
+        .filter(|(name, _)| there(name).is_none())
+        .collect();
     if rows.is_empty() {
+        // One row asked for by name and already there: draw with it, as when it is added.
+        if let Some(id) = filter_name.and_then(there) {
+            pick(s, &json!({ "id": id.0 }))?;
+            return Ok(json!({ "added": [], "picked": id.0 }));
+        }
         return Ok(json!({ "added": [], "skipped": 0 }));
     }
     let added = s.edit("Add Field Standard Legend Presets", |d, _| {

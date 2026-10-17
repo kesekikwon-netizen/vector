@@ -232,6 +232,12 @@ impl Tool for SelectionTool {
                 }
                 if let Some(h) = hit_test(cx.doc, p, cx.hit_options()) {
                     let top = h.top_object(cx.isolation);
+                    // A soil layer description line is typed in at once, not isolated first.
+                    if cx.doc.node(top).is_some_and(vectorcraft_doc::section_marks::is_note_block)
+                        && cx.doc.node(h.leaf).is_some_and(|n| matches!(n.kind, vectorcraft_doc::NodeKind::Text(_)))
+                    {
+                        return vec![Action::SwitchTool("type".into())];
+                    }
                     if cx.double_click_isolate && cx.doc.node(top).is_some_and(|n| matches!(n.kind, vectorcraft_doc::NodeKind::Group { .. })) {
                         return vec![Action::Exec("object.isolate".into(), json!({ "id": top.0 }))];
                     }

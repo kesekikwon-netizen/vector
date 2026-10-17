@@ -373,7 +373,7 @@ fn test_tier1_j005_legend_weights_step_along_ladder() {
     let rows = res["rows"].as_array().unwrap();
     let changed = rows.first().unwrap();
     assert!((changed["from"].as_f64().unwrap() - 0.5).abs() < 1e-4);
-    assert!((changed["to"].as_f64().unwrap() - 0.8).abs() < 1e-4);
+    assert!((changed["to"].as_f64().unwrap() - 0.6).abs() < 1e-4);
 }
 
 #[test]

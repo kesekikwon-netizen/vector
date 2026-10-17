@@ -1525,28 +1525,15 @@ fn context_menu(app: &mut VectorcraftApp, resp: &egui::Response, xf: &Xf) {
     if barrel1 {
         resp.ctx.data_mut(|d| d.remove::<bool>(egui::Id::new("canvas-stylus-barrel1")));
         let tool = app.session.tool_id();
-        let is_drawing_tool = matches!(
-            tool,
-            "pen"
-                | "pencil"
-                | "paintbrush"
-                | "curvature"
-                | "lineSegment"
-                | "section-line"
-                | "spot-height"
-                | "find-number"
-                | "posthole"
-                | "hachure"
-                | "pottery"
-                | "stratigraphy"
-        );
+        let is_drawing_tool = matches!(tool, "pen" | "pencil" | "paintbrush" | "curvature" | "lineSegment" | "sectionCut" | "strataLine" | "pottery");
         let has_interaction = app.session.active().and_then(|s| s.interaction.as_ref()).is_some();
         if is_drawing_tool || has_interaction {
             // Task J017 B1: Stylus Barrel Button 1 triggers undo / active anchor rollback
             if has_interaction {
                 let _ = app.session.cancel_interaction();
             }
-            let _ = app.run("edit.undo", json!({}));
+            // As Ctrl+Z: while a Trowel line is drawn, its last point (review J024 N2).
+            crate::menus::invoke(app, "edit.undo", json!({}));
             return;
         }
     }
@@ -4195,8 +4182,8 @@ mod tests {
         assert_eq!(eraser.prev_tool, "pen");
         assert!(eraser.is_eraser);
 
-        let spring_pan = SpringPanState { prev_tool: "section-line".into(), start_time: 10.0, active: true };
-        assert_eq!(spring_pan.prev_tool, "section-line");
+        let spring_pan = SpringPanState { prev_tool: "sectionCut".into(), start_time: 10.0, active: true };
+        assert_eq!(spring_pan.prev_tool, "sectionCut");
         assert!(spring_pan.active);
     }
 

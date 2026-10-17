@@ -63,6 +63,7 @@ pub mod titlebar;
 pub mod toolbar;
 mod touch;
 mod trowel;
+pub mod trowel_layout;
 mod ui_fonts;
 pub mod unsaved;
 pub mod widgets;
@@ -378,6 +379,12 @@ pub struct VectorcraftApp {
     /// (SVG without a `system_clipboard`) while the internal clipboard is empty. It enables the
     /// Paste menu items.
     pub(crate) system_paste: bool,
+    /// Trowel's height box (design 3.0 §5 ④), while a Level Lines or Spot Height click asks for a
+    /// height ([`trowel::ask`]). Not in [`UiState`], which other crates build field by field.
+    pub(crate) trowel_ask: Option<trowel::ask::Ask>,
+    /// The width of Trowel's window and of its tool column in the last frame, so a panel shown
+    /// again from the Window menu can open the column it goes back to when that is folded.
+    pub(crate) trowel_window: Option<(f32, f32)>,
     /// When `system_paste` was last checked in line (app time, s; at most once per frame).
     system_paste_at: f64,
     /// The thread that checks the system clipboard for `system_paste` instead
@@ -483,6 +490,8 @@ impl VectorcraftApp {
             graphics_adapter: None,
             place: Default::default(),
             system_paste: false,
+            trowel_ask: None,
+            trowel_window: None,
             system_paste_at: f64::NEG_INFINITY,
             clipboard_probe: None,
             picks: picks::Picks::default(),
@@ -822,6 +831,13 @@ impl VectorcraftApp {
     pub fn status(&mut self, s: impl Into<String>) {
         self.ui.status = s.into();
         self.ui.status_seq = self.ui.status_seq.wrapping_add(1);
+        self.ui.status_error = false;
+    }
+
+    /// [`Self::status`] for something that failed: Trowel shows it in red.
+    pub fn status_error(&mut self, s: impl Into<String>) {
+        self.status(s);
+        self.ui.status_error = true;
     }
 
     fn drain_inbox(&mut self) {

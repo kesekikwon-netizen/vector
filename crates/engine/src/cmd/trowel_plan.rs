@@ -38,7 +38,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Spot Elevation",
             ["Trowel", "도면"],
             Some("Shift+Z"),
-            "{at: [x,y]|{x,y}, elevation: f64, marker?: 'dot'|'triangle'|'crosshair', fontSize?: f64, halo?: bool, prefixPlus?: bool, suffixM?: bool} create an elevation marker symbol and formatted text",
+            "{at: [x,y]|{x,y}, elevation: f64, marker?: 'dot'|'triangle'|'triangleDown'|'crosshair', fontSize?: f64, halo?: bool, prefixPlus?: bool, suffixM?: bool, format?: 'fixed'|'auto'} create an elevation marker symbol and formatted text (`triangleDown`: ▽ with its tip on the point; `auto`: one decimal for a height in whole 10 cm, else two, as level lines label theirs)",
             has_doc,
             spot_elevation
         ),
@@ -59,6 +59,15 @@ pub fn specs() -> Vec<CommandSpec> {
             "{topId?: u64, bottomId?: u64, spacingMm?: f64, shortRatio?: f64, width?: f64, range?: [f64, f64]} emit alternating long/short hachure ticks along curve",
             has_doc,
             slope_hachures
+        ),
+        cmd!(
+            "trowel.levelLines",
+            "Level Lines from a Point",
+            [],
+            None,
+            "{profileId: u64, at: [x,y]|{x,y}, elevationM: f64} the Level Lines tool's click (design 3.0 §5 ④): level lines (`elevation.create`, 10 cm apart, every 50 cm heavier, 0.3/0.5 pt) over the ground line `profileId` with the height at `at` set to `elevationM`, and the datum tick ┣ at that height right of it, as one undo step",
+            has_doc,
+            level_lines
         ),
         cmd!(
             query "trowel.polygonStats",
@@ -83,7 +92,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Insert Section Marker or Datum Tick",
             ["Trowel", "도면"],
             None,
-            "{at?: [x,y]|{x,y}, label?: string, orientation?: 'horizontal'|'vertical', spanPt?: f64, kind?: 'cut'|'datum', elevationM?: f64} insert section cut markers (A-A', B-B', a-a', b-b' with red reference bar and sightline check-arrow) or section datum tick (┣ 93.0m)",
+            "{at?: [x,y]|{x,y}, p0?: [x,y], p1?: [x,y], label?: string, orientation?: 'horizontal'|'vertical', spanPt?: f64, kind?: 'cut'|'datum', elevationM?: f64, format?: 'fixed'|'auto'} insert section cut markers (A-A', B-B', a-a', b-b' with red reference bar and sightline check-arrow; between `p0` and `p1` in any direction when given, else from `at` along `orientation` for `spanPt`; without `label`, the first letter the drawing's marks don't use) or section datum tick (┣ 93.0m; `auto`: two decimals for a height not in whole 10 cm, 32.45m, as level lines label theirs)",
             has_doc,
             insert_section_marker
         ),
@@ -143,8 +152,13 @@ fn get_bezpath_from_node(node: &Node) -> Option<BezPath> {
 fn section_line(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "trowel.sectionLine";
 
-    let p0 = p.get("p0").or_else(|| p.get("p1")).and_then(parse_point).ok_or_else(|| bad(C, "missing or invalid `p0` or `p1`"))?;
-    let p1 = if p.get("p0").is_some() { p.get("p1") } else { p.get("p2") }
+    let p0 = p
+        .get("p0")
+        .or_else(|| p.get("start"))
+        .or_else(|| p.get("p1"))
+        .and_then(parse_point)
+        .ok_or_else(|| bad(C, "missing or invalid `p0` or `p1`"))?;
+    let p1 = if p.get("p0").is_some() || p.get("start").is_some() { p.get("p1").or_else(|| p.get("end")) } else { p.get("p2") }
         .and_then(parse_point)
         .ok_or_else(|| bad(C, "missing or invalid `p1` or `p2`"))?;
 
@@ -246,12 +260,23 @@ fn spot_elevation(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "trowel.spotElevation";
 
     let at = p.get("at").and_then(parse_point).ok_or_else(|| bad(C, "missing or invalid `at`"))?;
-    let elevation = p.get("elevation").and_then(|v| v.as_f64()).ok_or_else(|| bad(C, "missing `elevation` value"))?;
+    let elevation = p
+        .get("elevation")
+        .or_else(|| p.get("elevation_m"))
+        .or_else(|| p.get("elevationM"))
+        .and_then(|v| v.as_f64())
+        .ok_or_else(|| bad(C, "missing `elevation` value"))?;
 
     let marker = match p.get("marker").and_then(|v| v.as_str()).map(str::to_ascii_lowercase).as_deref() {
         Some("triangle") => SpotMarkerKind::Triangle,
+        Some("triangledown") => SpotMarkerKind::TriangleDown,
         Some("crosshair") => SpotMarkerKind::Crosshair,
         _ => SpotMarkerKind::Dot,
+    };
+    let short_label = match p.get("format").and_then(Value::as_str) {
+        None | Some("fixed") => false,
+        Some("auto") => true,
+        Some(other) => return Err(bad(C, format!("`format` is 'fixed' or 'auto', not '{other}'"))),
     };
 
     let font_size_pt = p.get("fontSize").and_then(|v| v.as_f64()).unwrap_or(7.0);
@@ -259,7 +284,10 @@ fn spot_elevation(s: &mut Session, p: &Value) -> Result<Value> {
     let prefix_plus = p.get("prefixPlus").and_then(|v| v.as_bool()).unwrap_or(true);
     let suffix_m = p.get("suffixM").and_then(|v| v.as_bool()).unwrap_or(true);
 
-    let spec = SpotElevationSpec { at, elevation_m: elevation, marker, font_size_pt, halo, prefix_plus, suffix_m };
+    if !elevation.is_finite() {
+        return Err(bad(C, "`elevation` must be a number"));
+    }
+    let spec = SpotElevationSpec { at, elevation_m: elevation, marker, font_size_pt, halo, prefix_plus, suffix_m, short_label };
 
     let geom = generate_spot_elevation_geometry(&spec);
     let target_parent = s.doc()?.target_parent()?;
@@ -279,17 +307,18 @@ fn spot_elevation(s: &mut Session, p: &Value) -> Result<Value> {
         sym_node.name = Some("표고 기호".to_string());
         children.push(Arc::new(sym_node));
 
-        // Text label
+        // Text label. The halo is a white stroke under the characters (the type's own stroke
+        // would paint over their fill and hide a 7 pt label, review J024 UI 1).
         let text_id = doc.alloc_id();
-        let style = CharStyle {
-            size: geom.font_size_pt,
-            fill: Paint::solid(Color::rgb8(20, 20, 19)),
-            stroke: if geom.halo { Paint::solid(Color::WHITE) } else { Paint::None },
-            stroke_width: if geom.halo { 2.5 } else { 0.0 },
-            ..Default::default()
-        };
+        let style = CharStyle { size: geom.font_size_pt, fill: Paint::solid(Color::rgb8(20, 20, 19)), ..Default::default() };
         let t_obj = TextObject::point(geom.label_pos, &geom.text, style);
         let mut text_node = Node::new(text_id, NodeKind::Text(Box::new(t_obj)));
+        if geom.halo {
+            let mut halo = StrokeLayer::new(Paint::solid(Color::WHITE), 2.5);
+            halo.join = vectorcraft_doc::appearance::LineJoin::Round;
+            text_node.appearance = Appearance { items: vec![AppearanceItem::Stroke(halo)], ..Default::default() };
+            text_node.appearance.set_contents_at(1);
+        }
         text_node.name = Some(format!("표고 {}", geom.text));
         children.push(Arc::new(text_node));
 
@@ -306,6 +335,71 @@ fn spot_elevation(s: &mut Session, p: &Value) -> Result<Value> {
             "text": geom.text,
             "at": [at.x, at.y],
         }))
+    })
+}
+
+/// A point on the canvas: finite and within [`crate::MAX_COORD`].
+fn in_range(q: Point) -> bool {
+    q.x.is_finite() && q.y.is_finite() && q.x.abs() <= crate::MAX_COORD && q.y.abs() <= crate::MAX_COORD
+}
+
+/// The level lines' weights on paper: every line, and every 50 cm (the user's 편집 file, design
+/// 3.0 Q2).
+const LEVEL_WEIGHT_PT: f64 = 0.3;
+const LEVEL_MAJOR_WEIGHT_PT: f64 = 0.5;
+
+fn level_lines(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "trowel.levelLines";
+    let profile = p.get("profileId").and_then(Value::as_u64).map(NodeId).ok_or_else(|| bad(C, "give `profileId`, the ground line"))?;
+    let at = p.get("at").and_then(parse_point).filter(|q| in_range(*q)).ok_or_else(|| bad(C, "missing or invalid `at`"))?;
+    let elevation = p
+        .get("elevationM")
+        .and_then(Value::as_f64)
+        .filter(|v| v.is_finite() && v.abs() <= 100_000.0)
+        .ok_or_else(|| bad(C, "give `elevationM` in metres"))?;
+    let (datum_m, right) = {
+        let doc = &s.doc()?.doc;
+        // `elevation.create` reads the heights of a drawing whose origin has map coordinates from
+        // its northings, not from the height given: a plan, not a section.
+        if doc.scale.as_ref().is_some_and(|sc| sc.world_origin.1.abs() >= 1e-6) {
+            return Err(bad(C, "this drawing has map coordinates: draw level lines in a section drawing"));
+        }
+        let node = doc.node(profile).ok_or_else(|| bad(C, format!("no object {}", profile.0)))?;
+        // Level lines, a datum tick or an A–A′ mark the tools put in are not a ground line.
+        let chain = doc.ancestry(profile).unwrap_or_default();
+        if chain.iter().filter_map(|id| doc.node(*id)).any(vectorcraft_doc::section_marks::is_mark) {
+            return Err(bad(C, "that is a mark the tools put in, not the ground line"));
+        }
+        let bp = super::elevation::get_bezpath_from_node(node).ok_or_else(|| bad(C, "the ground line is not a path"))?;
+        let bb = bp.bounding_box();
+        if !bb.width().is_finite() || bb.width() < 1e-4 {
+            return Err(bad(C, "the ground line has no width"));
+        }
+        // The points to a metre on paper (1:20 without a scale, as `elevation.create` takes it).
+        let ppm = doc.scale.as_ref().map_or((72.0 / 0.0254) / 20.0, |sc| sc.scale.points_per_meter());
+        if !(ppm.is_finite() && ppm > 0.0) {
+            return Err(bad(C, "the drawing's scale is not usable"));
+        }
+        // `elevation.create` keeps the height of the line's lowest point (its top for one that is
+        // flat): the one for the height at `at` to be `elevation`.
+        let reference_y = if bb.height() < 1.0 { bb.y0 } else { bb.y1 };
+        let mut datum = elevation - (reference_y - at.y) / ppm;
+        // It takes a datum of 0 for "none given": a few micrometres off, which no label shows.
+        if datum.abs() <= 1e-6 {
+            datum = 2e-6;
+        }
+        (datum, bb.x1)
+    };
+    super::library::in_one_step(s, |s| {
+        let lines = s.execute(
+            "elevation.create",
+            &json!({ "profileId": profile.0, "datumM": datum_m, "minorWeightPt": LEVEL_WEIGHT_PT, "majorWeightPt": LEVEL_MAJOR_WEIGHT_PT }),
+        )?;
+        let tick = s.execute(
+            "trowel.insertSectionMarker",
+            &json!({ "kind": "datum", "orientation": "horizontal", "at": [right + 16.0, at.y], "elevationM": elevation, "format": "auto" }),
+        )?;
+        Ok(json!({ "id": lines["id"], "datumId": tick["id"], "datumM": datum_m, "segmentCount": lines["segmentCount"] }))
     })
 }
 
@@ -629,14 +723,32 @@ fn insert_scale_bar(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn insert_section_marker(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "trowel.insertSectionMarker";
     let origin = p.get("at").and_then(parse_point).unwrap_or(Point::new(200.0, 220.0));
     let kind = p.get("kind").and_then(Value::as_str).unwrap_or("cut");
     let orientation = p.get("orientation").and_then(Value::as_str).unwrap_or("horizontal");
-    let label_base = p.get("label").and_then(Value::as_str).unwrap_or("A").trim();
-    let label_start = if label_base.is_empty() { "A".to_string() } else { label_base.to_string() };
+    // Without a letter, the first one the drawing's marks don't use (A, then B …).
+    let label_base = p.get("label").and_then(Value::as_str).map(str::trim).unwrap_or_default();
+    let label_start = if label_base.is_empty() { vectorcraft_doc::section_marks::next_letter(&s.doc()?.doc) } else { label_base.to_string() };
     let label_end = format!("{label_start}′");
+    // The Section Line tool's two points: the marks go at both, facing along the line between them.
+    let ends = match (p.get("p0").map(parse_point), p.get("p1").map(parse_point)) {
+        (None, None) => None,
+        (Some(Some(a)), Some(Some(b))) if kind != "datum" => {
+            if !in_range(a) || !in_range(b) {
+                return Err(bad(C, "`p0` and `p1` are off the canvas"));
+            }
+            if a.distance(b) < 1.0 {
+                return Err(bad(C, "the section's two points are the same: press again further along"));
+            }
+            Some((a, b))
+        }
+        (Some(Some(_)), Some(Some(_))) => return Err(bad(C, "a datum tick goes `at` one point, not between `p0` and `p1`")),
+        _ => return Err(bad(C, "give both `p0` and `p1` as [x, y]")),
+    };
     let span = p.get("spanPt").and_then(Value::as_f64).filter(|v| v.is_finite() && *v > 10.0).unwrap_or(180.0);
     let elev_m = p.get("elevationM").and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(93.0);
+    let auto_label = p.get("format").and_then(Value::as_str) == Some("auto");
 
     let target_parent = s.doc()?.target_parent()?;
     let red_ref = Color::rgb8(210, 35, 90);
@@ -646,32 +758,38 @@ fn insert_section_marker(s: &mut Session, p: &Value) -> Result<Value> {
         let mut children = Vec::new();
 
         if kind == "datum" {
-            // Section Elevation Benchmark Tick (┣ 93.0m horizontal or ┳ 93.0m vertical)
-            let mut tick_bez = BezPath::new();
-            let text_pos = if orientation == "vertical" {
-                // Top T-tick (┳) for vertical section B-B'
-                tick_bez.move_to(Point::new(origin.x - 4.0, origin.y));
-                tick_bez.line_to(Point::new(origin.x + 4.0, origin.y));
-                tick_bez.move_to(origin);
-                tick_bez.line_to(Point::new(origin.x, origin.y + 6.0));
-                Point::new(origin.x + 6.0, origin.y + 2.0)
+            // Korean field standard Section Elevation Benchmark:
+            // Black reference line (14pt, 0.2pt) + Filled Red Bar ┃ (1.6 x 6.5 pt) + 6pt elevation text ("93.0m")
+            let mut line_bez = BezPath::new();
+            let (bar_rect, text_pos) = if orientation == "vertical" {
+                line_bez.move_to(origin);
+                line_bez.line_to(Point::new(origin.x, origin.y + 14.0));
+                (kurbo::Rect::from_center_size(origin, kurbo::Size::new(6.5, 1.6)), Point::new(origin.x + 5.5, origin.y + 2.2))
             } else {
-                // Right/left ┣ tick for horizontal section A-A'
-                tick_bez.move_to(Point::new(origin.x, origin.y - 4.0));
-                tick_bez.line_to(Point::new(origin.x, origin.y + 4.0));
-                tick_bez.move_to(origin);
-                tick_bez.line_to(Point::new(origin.x + 6.0, origin.y));
-                Point::new(origin.x + 8.0, origin.y + 2.0)
+                line_bez.move_to(Point::new(origin.x - 14.0, origin.y));
+                line_bez.line_to(origin);
+                (kurbo::Rect::from_center_size(origin, kurbo::Size::new(1.6, 6.5)), Point::new(origin.x + 4.5, origin.y + 2.2))
             };
+
+            let ref_id = doc.alloc_id();
+            let mut ref_node = Node::path(ref_id, PathData::from_bezpath(&line_bez), Appearance::basic(Paint::None, Paint::solid(black), 0.2));
+            ref_node.name = Some("해발 보조선".to_string());
+            children.push(Arc::new(ref_node));
+
+            let mut bar_bez = BezPath::new();
+            bar_bez.extend(bar_rect.to_path(0.1));
             let tid = doc.alloc_id();
-            let mut tnode = Node::path(tid, PathData::from_bezpath(&tick_bez), Appearance::basic(Paint::None, Paint::solid(red_ref), 0.5));
+            let mut tnode = Node::path(tid, PathData::from_bezpath(&bar_bez), Appearance::basic(Paint::solid(red_ref), Paint::None, 0.0));
             tnode.name = Some("해발 기준 눈금".to_string());
             children.push(Arc::new(tnode));
 
-            let lbl_str = format!("{elev_m:.1}m");
+            // `auto`: as the level lines label their heights (93.0m, 32.45m); else one decimal.
+            let lbl_str =
+                if auto_label { vectorcraft_doc::elevation::ElevationLabelFormat::MetersSuffix.format(elev_m) } else { format!("{elev_m:.1}m") };
             let lid = doc.alloc_id();
             let cs = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
-            let lobj = TextObject::point(text_pos, &lbl_str, cs);
+            let mut lobj = TextObject::point(text_pos, &lbl_str, cs);
+            lobj.para.justify = Justify::Left;
             let mut lnode = Node::new(lid, NodeKind::Text(Box::new(lobj)));
             lnode.name = Some(format!("해발 {lbl_str}"));
             children.push(Arc::new(lnode));
@@ -684,46 +802,103 @@ fn insert_section_marker(s: &mut Session, p: &Value) -> Result<Value> {
             return Ok(json!({ "id": gid.0, "kind": "datum", "elevationM": elev_m }));
         }
 
-        // Section Cut Markers (A-A', B-B', a-a', b-b') with Red Reference Block ■ + Sightline Check-Arrow ∠
-        let mut red_bars = BezPath::new();
-        let mut arrows = BezPath::new();
-        let endpoints = if orientation == "vertical" {
-            [(origin, label_start.clone()), (Point::new(origin.x, origin.y + span), label_end.clone())]
-        } else {
-            [(origin, label_start.clone()), (Point::new(origin.x + span, origin.y), label_end.clone())]
-        };
-
-        for (pt, lbl) in &endpoints {
-            if orientation == "vertical" {
-                // Vertical red bar (2.0 x 7.5 pt) + rightward check-arrow ∠
-                let bar_r = kurbo::Rect::from_center_size(*pt, kurbo::Size::new(2.0, 7.5));
-                red_bars.extend(bar_r.to_path(0.1));
-                arrows.move_to(Point::new(pt.x - 2.0, pt.y));
-                arrows.line_to(Point::new(pt.x + 11.0, pt.y));
-                arrows.line_to(Point::new(pt.x + 8.0, pt.y + 3.0));
-
+        if let Some((a, b)) = ends {
+            let (bars, arrows, labels) = section_marks_between(a, b, &label_start, &label_end);
+            for (pos, text) in labels {
                 let lid = doc.alloc_id();
                 let cs = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
-                let lobj = TextObject::point(Point::new(pt.x + 13.0, pt.y + 2.0), lbl, cs);
-                let mut lnode = Node::new(lid, NodeKind::Text(Box::new(lobj)));
-                lnode.name = Some(format!("기호 {lbl}"));
-                children.push(Arc::new(lnode));
-            } else {
-                // Horizontal red bar (7.5 x 2.0 pt) + upward check-arrow ∠
-                let bar_r = kurbo::Rect::from_center_size(*pt, kurbo::Size::new(7.5, 2.0));
-                red_bars.extend(bar_r.to_path(0.1));
-                arrows.move_to(Point::new(pt.x, pt.y + 2.0));
-                arrows.line_to(Point::new(pt.x, pt.y - 11.0));
-                arrows.line_to(Point::new(pt.x + 3.0, pt.y - 8.0));
-
-                let lid = doc.alloc_id();
-                let cs = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
-                let mut lobj = TextObject::point(Point::new(pt.x, pt.y - 13.5), lbl, cs);
+                let mut lobj = TextObject::point(pos, text, cs);
                 lobj.para.justify = Justify::Center;
                 let mut lnode = Node::new(lid, NodeKind::Text(Box::new(lobj)));
-                lnode.name = Some(format!("기호 {lbl}"));
+                lnode.name = Some(format!("기호 {text}"));
                 children.push(Arc::new(lnode));
             }
+            let bar_id = doc.alloc_id();
+            let mut bar_node = Node::path(bar_id, PathData::from_bezpath(&bars), Appearance::basic(Paint::solid(red_ref), Paint::None, 0.0));
+            bar_node.name = Some("단면 붉은 기준점".to_string());
+            children.push(Arc::new(bar_node));
+            let arr_id = doc.alloc_id();
+            let mut arr_node = Node::path(arr_id, PathData::from_bezpath(&arrows), Appearance::basic(Paint::None, Paint::solid(black), 0.35));
+            arr_node.name = Some("시선 화살표".to_string());
+            children.push(Arc::new(arr_node));
+            let gid = doc.alloc_id();
+            let mut group = Node::new(gid, NodeKind::Group { children, clip: false });
+            group.name = Some(format!("단면 기호 {label_start}–{label_end}"));
+            doc.insert(target_parent, usize::MAX, group).map_err(|e| bad(C, e.to_string()))?;
+            sel.objects = vec![gid];
+            return Ok(json!({ "id": gid.0, "label": format!("{label_start}–{label_end}"), "p0": [a.x, a.y], "p1": [b.x, b.y] }));
+        }
+
+        // Section Cut Markers (A-A', B-B', a-a', b-b') with Red Reference Block ■ + Collinear Sightline Check-Arrow:
+        // Horizontal: Left is `∠───■` (with `A` above shaft), Right is mirror-symmetric `■───⦣` (with `A′` above shaft).
+        // Vertical: Top is vertical red block `■` with shaft extending up and barb folding right, Bottom is mirror-symmetric.
+        let mut red_bars = BezPath::new();
+        let mut arrows = BezPath::new();
+
+        if orientation == "vertical" {
+            // Top endpoint (e.g. "B") at origin: red block extends inward (downward), shaft extends upward
+            let pt0 = origin;
+            let bar0 = kurbo::Rect::new(pt0.x - 1.4, pt0.y, pt0.x + 1.4, pt0.y + 8.5);
+            red_bars.extend(bar0.to_path(0.1));
+            arrows.move_to(Point::new(pt0.x - 1.4, pt0.y));
+            arrows.line_to(Point::new(pt0.x - 1.4, pt0.y - 16.0));
+            arrows.line_to(Point::new(pt0.x + 3.8, pt0.y - 10.5));
+
+            let lid0 = doc.alloc_id();
+            let cs0 = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
+            let mut lobj0 = TextObject::point(Point::new(pt0.x + 3.5, pt0.y - 2.5), &label_start, cs0);
+            lobj0.para.justify = Justify::Left;
+            let mut lnode0 = Node::new(lid0, NodeKind::Text(Box::new(lobj0)));
+            lnode0.name = Some(format!("기호 {label_start}"));
+            children.push(Arc::new(lnode0));
+
+            // Bottom endpoint (e.g. "B′") at origin.y + span: red block extends inward (upward), shaft extends downward
+            let pt1 = Point::new(origin.x, origin.y + span);
+            let bar1 = kurbo::Rect::new(pt1.x - 1.4, pt1.y - 8.5, pt1.x + 1.4, pt1.y);
+            red_bars.extend(bar1.to_path(0.1));
+            arrows.move_to(Point::new(pt1.x - 1.4, pt1.y));
+            arrows.line_to(Point::new(pt1.x - 1.4, pt1.y + 16.0));
+            arrows.line_to(Point::new(pt1.x + 3.8, pt1.y + 10.5));
+
+            let lid1 = doc.alloc_id();
+            let cs1 = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
+            let mut lobj1 = TextObject::point(Point::new(pt1.x + 3.5, pt1.y + 7.5), &label_end, cs1);
+            lobj1.para.justify = Justify::Left;
+            let mut lnode1 = Node::new(lid1, NodeKind::Text(Box::new(lobj1)));
+            lnode1.name = Some(format!("기호 {label_end}"));
+            children.push(Arc::new(lnode1));
+        } else {
+            // Left endpoint (e.g. "A") at origin: `∠───■`
+            let pt0 = origin;
+            let bar0 = kurbo::Rect::new(pt0.x, pt0.y - 1.4, pt0.x + 8.5, pt0.y + 1.4);
+            red_bars.extend(bar0.to_path(0.1));
+            arrows.move_to(Point::new(pt0.x, pt0.y + 1.4));
+            arrows.line_to(Point::new(pt0.x - 16.0, pt0.y + 1.4));
+            arrows.line_to(Point::new(pt0.x - 10.5, pt0.y - 3.8));
+
+            let lid0 = doc.alloc_id();
+            let cs0 = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
+            let mut lobj0 = TextObject::point(Point::new(pt0.x - 6.0, pt0.y - 1.5), &label_start, cs0);
+            lobj0.para.justify = Justify::Center;
+            let mut lnode0 = Node::new(lid0, NodeKind::Text(Box::new(lobj0)));
+            lnode0.name = Some(format!("기호 {label_start}"));
+            children.push(Arc::new(lnode0));
+
+            // Right endpoint (e.g. "A′") at origin.x + span: mirror-symmetric `■───⦣`
+            let pt1 = Point::new(origin.x + span, origin.y);
+            let bar1 = kurbo::Rect::new(pt1.x - 8.5, pt1.y - 1.4, pt1.x, pt1.y + 1.4);
+            red_bars.extend(bar1.to_path(0.1));
+            arrows.move_to(Point::new(pt1.x, pt1.y + 1.4));
+            arrows.line_to(Point::new(pt1.x + 16.0, pt1.y + 1.4));
+            arrows.line_to(Point::new(pt1.x + 10.5, pt1.y - 3.8));
+
+            let lid1 = doc.alloc_id();
+            let cs1 = CharStyle { size: 6.0, fill: Paint::solid(black), ..Default::default() };
+            let mut lobj1 = TextObject::point(Point::new(pt1.x + 6.0, pt1.y - 1.5), &label_end, cs1);
+            lobj1.para.justify = Justify::Center;
+            let mut lnode1 = Node::new(lid1, NodeKind::Text(Box::new(lobj1)));
+            lnode1.name = Some(format!("기호 {label_end}"));
+            children.push(Arc::new(lnode1));
         }
 
         let bar_id = doc.alloc_id();
@@ -732,7 +907,7 @@ fn insert_section_marker(s: &mut Session, p: &Value) -> Result<Value> {
         children.push(Arc::new(bar_node));
 
         let arr_id = doc.alloc_id();
-        let mut arr_node = Node::path(arr_id, PathData::from_bezpath(&arrows), Appearance::basic(Paint::None, Paint::solid(black), 0.3));
+        let mut arr_node = Node::path(arr_id, PathData::from_bezpath(&arrows), Appearance::basic(Paint::None, Paint::solid(black), 0.35));
         arr_node.name = Some("시선 화살표".to_string());
         children.push(Arc::new(arr_node));
 
@@ -748,6 +923,41 @@ fn insert_section_marker(s: &mut Session, p: &Value) -> Result<Value> {
             "orientation": orientation,
         }))
     })
+}
+
+/// The two ends of a section mark between `a` and `b` (the Section Line tool's two points), as the
+/// horizontal ones are drawn but turned to face along the line: at each end a red bar 8.5 pt long
+/// reaching inward, the sight arrow's shaft 16 pt outward with its barb folding to the side the
+/// section is seen from (above a line drawn left to right), and the letter (`start` at `a`, `end`
+/// at `b`) beside the shaft. Returns the bars, the arrows and where each letter's baseline centre
+/// goes.
+fn section_marks_between<'a>(a: Point, b: Point, start: &'a str, end: &'a str) -> (BezPath, BezPath, [(Point, &'a str); 2]) {
+    let u = (b - a) / a.distance(b).max(1e-9);
+    // The side the barbs fold to: up for a line drawn left to right (y grows downward).
+    let n = kurbo::Vec2::new(u.y, -u.x);
+    let mut bars = BezPath::new();
+    let mut arrows = BezPath::new();
+    let mut labels = [(a, start), (b, end)];
+    for (i, (at, out)) in [(a, -u), (b, u)].into_iter().enumerate() {
+        // The point `along` outward and `side` towards the barbs from this end.
+        let local = |along: f64, side: f64| at + out * along + n * side;
+        let bar = [local(0.0, -1.4), local(-8.5, -1.4), local(-8.5, 1.4), local(0.0, 1.4)];
+        bars.move_to(bar[0]);
+        for q in bar.iter().skip(1) {
+            bars.line_to(*q);
+        }
+        bars.close_path();
+        arrows.move_to(local(0.0, -1.4));
+        arrows.line_to(local(16.0, -1.4));
+        arrows.line_to(local(10.5, 3.8));
+        // The letter's middle 6 pt out and 3.6 pt to the barbs' side, upright: its baseline sits
+        // 2.1 pt (0.35 of 6 pt) under that.
+        let middle = local(6.0, 3.6);
+        if let Some(l) = labels.get_mut(i) {
+            l.0 = Point::new(middle.x, middle.y + 2.1);
+        }
+    }
+    (bars, arrows, labels)
 }
 
 fn insert_north_arrow(s: &mut Session, p: &Value) -> Result<Value> {
@@ -1014,6 +1224,19 @@ mod tests {
         // 5. Field standard 12 stroke presets (0.15..0.8 pt)
         let fp = s.execute("legend.addFieldPresets", &json!({})).expect("field presets");
         assert_eq!(fp["added"].as_array().map(Vec::len), Some(12));
+        // One by name: already there, so it becomes the row to draw with; a wrong name is an error
+        // (design 3.0 D1: the set's buttons sent five names the list doesn't have, and nothing happened).
+        let again = s.execute("legend.addFieldPresets", &json!({ "name": "석곽-유물 깨진면" })).expect("by name");
+        let picked = again["picked"].as_u64().map(NodeId).expect("picked");
+        assert_eq!(s.doc().unwrap().current_layer(), Some(picked));
+        assert_eq!(s.doc().unwrap().doc.node(picked).map(|n| n.display_name()).as_deref(), Some("석곽-유물 깨진면"));
+        assert!(s.execute("legend.addFieldPresets", &json!({ "name": "석곽·유물 깨진면" })).is_err(), "not one of the twelve");
+        assert!(s.execute("legend.addFieldPresets", &json!({ "name": 5 })).is_err(), "a name is text");
+        // A locked row can't be drawn with: an error, and the row in hand stays.
+        let section = fp["added"].as_array().and_then(|a| a.get(8)).and_then(|v| v.as_u64()).expect("단면선");
+        s.execute("layer.setProps", &json!({ "ids": [section], "locked": true })).expect("lock");
+        assert!(s.execute("legend.addFieldPresets", &json!({ "name": "단면선" })).is_err(), "locked");
+        assert_eq!(s.doc().unwrap().current_layer(), Some(picked));
 
         // 6. Roman numeral (I..XX) & 7pt inline stratigraphy block
         assert_eq!(vectorcraft_doc::stratigraphy::to_ascii_roman(1), "I");

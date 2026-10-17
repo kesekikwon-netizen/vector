@@ -575,7 +575,54 @@ fn lp_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let paint = paint_from(s, p)?.unwrap_or_else(|| s.paint.fill.clone());
     let group = id_param(p, "group");
     let roots = if group.is_none() { root_ids(s, p)? } else { vec![] };
+
+    let is_arch_doc = s.doc().ok().is_some_and(|st| st.doc.scale.is_some());
+    let hatch_dir = if s.default_hatch != vectorcraft_doc::hatch::HatchDirection::None {
+        s.default_hatch
+    } else if is_arch_doc && paint.is_none() {
+        s.default_hatch = vectorcraft_doc::hatch::HatchDirection::Deg45;
+        vectorcraft_doc::hatch::HatchDirection::Deg45
+    } else {
+        vectorcraft_doc::hatch::HatchDirection::None
+    };
+    let use_cut_face = s.default_cut_face;
+
     let (g, face) = s.edit("Live Paint Bucket", |d, sel| {
+        // When hatching a single standalone Path or Compound node directly with the Bucket tool,
+        // apply the hatch (and fill if non-empty) directly to the node without wrapping it in a Live Paint group.
+        if hatch_dir != vectorcraft_doc::hatch::HatchDirection::None
+            && group.is_none()
+            && roots.len() == 1
+            && d.node(roots[0]).is_some_and(|n| matches!(n.kind, NodeKind::Path { .. } | NodeKind::Compound { .. }))
+        {
+            let target_id = roots[0];
+            let node = d.node_mut(target_id).ok_or(EngineError::NoNode(target_id))?;
+            if !paint.is_none() {
+                node.appearance.set_fill(paint.clone());
+            }
+            if use_cut_face {
+                node.hatch = Some(vectorcraft_doc::hatch::HatchStyle::cut_face());
+                if let Some(st) = node.appearance.stroke_mut() {
+                    st.width = vectorcraft_doc::hatch::DEFAULT_CUT_BORDER_PT;
+                } else {
+                    node.appearance
+                        .items
+                        .push(AppearanceItem::Stroke(StrokeLayer::new(Paint::solid(Color::BLACK), vectorcraft_doc::hatch::DEFAULT_CUT_BORDER_PT)));
+                }
+            } else {
+                node.hatch = Some(vectorcraft_doc::hatch::HatchStyle {
+                    direction: hatch_dir,
+                    spacing_mm: vectorcraft_doc::hatch::DEFAULT_HATCH_SPACING_MM,
+                    weight_pt: vectorcraft_doc::hatch::DEFAULT_HATCH_WEIGHT_PT,
+                    flipped: false,
+                    resolved_direction: None,
+                });
+            }
+            crate::cmd::hatch::update_document_hatch_directions(d);
+            sel.set([target_id]);
+            return Ok((target_id, target_id));
+        }
+
         let gid = match group {
             Some(g) => {
                 if !d.node(g).is_some_and(is_live_paint) {
@@ -590,7 +637,22 @@ fn lp_fill(s: &mut Session, p: &Value) -> Result<Value> {
         };
         let fid =
             d.node(gid).and_then(|n| face_at(n, pt)).map(|f| f.id).ok_or_else(|| EngineError::Other("no Live Paint face at that point".into()))?;
-        d.node_mut(fid).ok_or(EngineError::NoNode(fid))?.appearance.set_fill(paint.clone());
+        let face_node = d.node_mut(fid).ok_or(EngineError::NoNode(fid))?;
+        face_node.appearance.set_fill(paint.clone());
+        if hatch_dir != vectorcraft_doc::hatch::HatchDirection::None {
+            face_node.hatch = Some(if use_cut_face {
+                vectorcraft_doc::hatch::HatchStyle::cut_face()
+            } else {
+                vectorcraft_doc::hatch::HatchStyle {
+                    direction: hatch_dir,
+                    spacing_mm: vectorcraft_doc::hatch::DEFAULT_HATCH_SPACING_MM,
+                    weight_pt: vectorcraft_doc::hatch::DEFAULT_HATCH_WEIGHT_PT,
+                    flipped: false,
+                    resolved_direction: None,
+                }
+            });
+            crate::cmd::hatch::update_document_hatch_directions(d);
+        }
         Ok((gid, fid))
     })?;
     s.remember_paint(&paint);

@@ -904,6 +904,10 @@ pub struct Session {
     pub link_stamps: std::collections::HashMap<(u64, String), link_watch::Stamp>,
     /// The stamps being taken on a worker thread ([`Session::start_link_scan`]).
     pub link_scan: Option<link_watch::LinkScan>,
+    /// Active default hatch direction for new shapes and the Bucket (`칠통`) tool when no object is selected.
+    pub default_hatch: vectorcraft_doc::hatch::HatchDirection,
+    /// Whether the active default hatch is a Cut Face (`잘린 면`, 0.8pt border + Alternate hatch).
+    pub default_cut_face: bool,
 }
 
 impl Default for Session {
@@ -961,6 +965,8 @@ impl Session {
             search_threads: None,
             link_stamps: Default::default(),
             link_scan: None,
+            default_hatch: vectorcraft_doc::hatch::HatchDirection::None,
+            default_cut_face: false,
         }
     }
 
@@ -1431,6 +1437,8 @@ mod tests;
 mod tests_adjust;
 #[cfg(test)]
 mod tests_appearance;
+#[cfg(test)]
+mod tests_archaeology;
 #[cfg(test)]
 mod tests_areafit;
 #[cfg(test)]

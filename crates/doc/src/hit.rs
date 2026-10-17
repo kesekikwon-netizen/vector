@@ -75,7 +75,7 @@ pub fn objects_at(doc: &Document, p: Point, opt: HitOptions, scope: Option<NodeI
     let opt = HitOptions { scope: scope.or(opt.scope), ..opt };
     let mut tops: Vec<NodeId> = vec![];
     // Each round leaves out the objects found so far (and everything inside them).
-    while let Some(top) = hit_test_skipping(doc, p, opt, &|id| tops.contains(&id)).map(|h| h.top_object(scope)) {
+    while let Some(top) = hit_test_skipping(doc, p, opt, &|n| tops.contains(&n.id)).map(|h| h.top_object(scope)) {
         if tops.contains(&top) {
             break;
         }
@@ -84,8 +84,9 @@ pub fn objects_at(doc: &Document, p: Point, opt: HitOptions, scope: Option<NodeI
     tops
 }
 
-/// [`hit_test`] passing over the nodes `skip` names (and their contents).
-fn hit_test_skipping(doc: &Document, p: Point, opt: HitOptions, skip: &dyn Fn(NodeId) -> bool) -> Option<Hit> {
+/// [`hit_test`] passing over the nodes `skip` picks (and their contents). It is given each node as
+/// the walk meets it, so looking at it costs nothing more (not a [`Document::node`] lookup).
+pub fn hit_test_skipping(doc: &Document, p: Point, opt: HitOptions, skip: &dyn Fn(&Node) -> bool) -> Option<Hit> {
     let finish = |mut h: Hit| {
         h.contents_of = h.ancestry.iter().rev().copied().find(|a| doc.node(*a).is_some_and(edits_contents));
         h.layers = h.ancestry.iter().take_while(|a| doc.node(**a).is_some_and(Node::is_layer)).count();
@@ -136,7 +137,7 @@ fn clip_contains(clip: &Node, p: Point) -> bool {
     clip.clip_shapes(Some(&frame)).iter().any(|(bp, rule)| fill_contains(bp, *rule, p))
 }
 
-fn hit_children(parent: &Node, p: Point, opt: HitOptions, skip: &dyn Fn(NodeId) -> bool, chain: &mut Vec<NodeId>) -> Option<Hit> {
+fn hit_children(parent: &Node, p: Point, opt: HitOptions, skip: &dyn Fn(&Node) -> bool, chain: &mut Vec<NodeId>) -> Option<Hit> {
     let children = parent.children()?;
     // A clip group (or a layer with a clipping mask) only hits inside its clipping path.
     if parent.clips()
@@ -153,7 +154,7 @@ fn hit_children(parent: &Node, p: Point, opt: HitOptions, skip: &dyn Fn(NodeId) 
             }
         }
         // Hidden, locked and template sublayers block clicks like top-level layers do.
-        if !c.visible || c.locked || c.is_template() || skip(c.id) {
+        if !c.visible || c.locked || c.is_template() || skip(c) {
             continue;
         }
         // (An envelope's content sits where it was, not where the envelope draws it.)

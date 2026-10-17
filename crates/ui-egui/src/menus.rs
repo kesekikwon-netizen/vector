@@ -53,6 +53,31 @@ use Item::Sep;
 /// UI-level commands: (id, label, shortcut, params doc).
 pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     (
+        "trowel.layout.reset",
+        "Reset Panel Layout",
+        "",
+        "{} Trowel's window: every panel back where it first was (design 3.1 §13), at its first size, the hidden ones shown and the columns folding as the window's width says. Drawings are not touched",
+    ),
+    (
+        "trowel.layout.panel",
+        "Show or Hide a Panel",
+        "",
+        "{panel: set|legend|pen|props|layers, shown?: bool} hide a panel of Trowel's window, or show it again where it was, opening that column if it is folded (without `shown`: the other way round) → {shown}",
+    ),
+    (
+        "trowel.layout.move",
+        "Move a Panel",
+        "",
+        "{panel: set|legend|pen|props|layers, column: left|right|edge, index?} put a panel of Trowel's window in a column, at a place there (0: the top; none: the bottom) → {column, index}",
+    ),
+    (
+        "trowel.layout.size",
+        "Size a Column",
+        "",
+        "{column: left|right|edge, width?, folded?: bool|null} a column's width (kept in its range: left 140–450, right 220–560, edge 112–240, at least as wide as its widest panel needs: the pen 274, the legend and the properties 220) and fold (null: as the window's width says) → {width, folded}",
+    ),
+    ("trowel.layout.get", "Panel Layout", "", "{} → Trowel's panel layout: each column's panels, widths, heights given, folds and hidden panels"),
+    (
         "app.language",
         "Interface Language",
         "",
@@ -860,6 +885,7 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
     }
     if let Some(r) = crate::shortcut_editor::run_command(app, id, p)
         .or_else(|| crate::workspaces::run_command(app, id, p))
+        .or_else(|| crate::trowel_layout::run_command(&mut app.ui, id, p, app.trowel_window))
         .or_else(|| crate::floating::command(app, id, p))
     {
         return Some(r);
@@ -1070,6 +1096,9 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
             }
             Ok(Value::Null)
         }
+        // Trowel's window has no Control bar (design 3.0 §5): its menu item is off, and the
+        // palette and control channel leave the classic window's setting as it is (off here).
+        "window.control" if app.ui.trowel => Ok(json!(false)),
         "window.control" => flag(&mut app.ui.control_bar),
         "window.toolbar" => flag(&mut app.ui.toolbar),
         "window.toolbarColumns" => opt_bool(p, "double").map(|on| {
@@ -1435,7 +1464,11 @@ pub fn checked(app: &VectorcraftApp, id: &str, p: &Value) -> Option<bool> {
         "view.snapToGrid" => v.snap_to_grid,
         "view.snapToPoint" => v.snap_to_point,
         "view.rulers" => v.rulers,
-        "window.control" => app.ui.control_bar,
+        // Trowel's window has no Control bar (design 3.0 §5).
+        "window.control" => app.ui.control_bar && !app.ui.trowel,
+        "trowel.layout.panel" => {
+            p.get("panel").and_then(Value::as_str).and_then(crate::trowel_layout::Panel::parse).is_some_and(|x| app.ui.trowel_layout.is_shown(x))
+        }
         "window.toolbar" => app.ui.toolbar,
         "window.toolbarAdvanced" => app.ui.toolbar_advanced,
         "window.toolbarColumns" => app.ui.toolbar_double,
@@ -1605,7 +1638,8 @@ pub fn display_label(app: &VectorcraftApp, id: &str, label: &str) -> String {
 /// Menu slots that are left out while they have nothing to show (unused saved views, recent files,
 /// User Defined swatch and graphic style libraries).
 fn hidden_when_disabled(id: &str) -> bool {
-    id.starts_with("view.goto")
+    id.starts_with("trowel.layout.")
+        || id.starts_with("view.goto")
         || saved_selection_slot(id).is_some()
         || id.starts_with("file.openRecent")
         || id.starts_with(crate::panels::swatches::USER_SLOT)
@@ -1853,6 +1887,10 @@ pub fn enabled(app: &VectorcraftApp, id: &str) -> bool {
         return (c.enabled)(&app.session).is_ok() || app.system_paste && id.starts_with("edit.paste");
     }
     match id {
+        // Trowel's window has no Control bar (design 3.0 §5): what it held has one place each.
+        "window.control" => !app.ui.trowel,
+        // Its panels' layout is its own (design 3.1 §13).
+        _ if id.starts_with("trowel.layout.") => app.ui.trowel,
         // Save is off for a clean document that already has its own file.
         "file.save" => app.session.active().is_some_and(|d| d.path.is_none() || d.converted || d.is_dirty()),
         "type.bold" | "type.italic" => crate::panels::character::text_style(app).is_some(),
@@ -2496,6 +2534,14 @@ pub fn menu_tree_named(english_names: bool) -> Vec<(&'static str, Vec<Item>)> {
         (
             "Window",
             vec![
+                // Trowel's panels (design 3.1 §13); left out of the classic window.
+                c("Reset Panel Layout", "trowel.layout.reset"),
+                cp("Drawing Set and Elements", "trowel.layout.panel", json!({ "panel": "set" })),
+                cp("Legend", "trowel.layout.panel", json!({ "panel": "legend" })),
+                cp("Pen", "trowel.layout.panel", json!({ "panel": "pen" })),
+                cp("Properties", "trowel.layout.panel", json!({ "panel": "props" })),
+                cp("Layer Strip", "trowel.layout.panel", json!({ "panel": "layers" })),
+                Sep,
                 c("New Window", "window.newWindow"),
                 sub("Arrange", vec![todo("Cascade"), todo("Tile"), todo("Float in Window"), todo("Consolidate All Windows")]),
                 sub("Workspace", crate::workspaces::menu_items()),
@@ -2863,7 +2909,19 @@ fn menu_body(app: &VectorcraftApp, ui: &mut egui::Ui, items: &[Item], clicked: &
 /// room for one).
 fn render_items(app: &VectorcraftApp, ui: &mut egui::Ui, items: &[Item], checks: bool, clicked: &mut Option<(String, Value)>) {
     let t = Tokens::get(ui.ctx());
-    for e in items.iter().filter_map(|it| entry(app, it)) {
+    // A separator only between items: none first, last or twice (left out items leave them so).
+    let shown: Vec<Entry> = items.iter().filter_map(|it| entry(app, it)).collect();
+    let mut entries: Vec<Entry> = Vec::with_capacity(shown.len());
+    for e in shown {
+        if matches!(e, Entry::Sep) && entries.last().is_none_or(|l| matches!(l, Entry::Sep)) {
+            continue;
+        }
+        entries.push(e);
+    }
+    if entries.last().is_some_and(|l| matches!(l, Entry::Sep)) {
+        entries.pop();
+    }
+    for e in entries {
         match e {
             Entry::Sep => {
                 ui.separator();
@@ -3024,6 +3082,16 @@ pub fn invoke(app: &mut VectorcraftApp, id: &str, p: Value) {
     if waits_for_ime(app, id) {
         return;
     }
+    // A Trowel line still being drawn has its points outside the drawing: Undo (Ctrl+Z, the menu,
+    // the pen bar) takes the last one back rather than an earlier step (review J024 N2).
+    if id == "edit.undo" && vectorcraft_tools::catalog::is_trowel_tool(app.session.tool_id()) {
+        let view = app.view_info();
+        if app.session.tool_claims_key(vectorcraft_tools::ToolKey::Backspace, view) {
+            let r = app.session.tool_key(vectorcraft_tools::ToolKey::Backspace, vectorcraft_tools::Mods::default(), view);
+            crate::canvas::apply_requests(app, r);
+            return;
+        }
+    }
     if let Some((kind, fields)) = menu_dialog(id)
         && p.as_object().is_none_or(|o| o.is_empty())
     {
@@ -3152,7 +3220,7 @@ pub fn invoke(app: &mut VectorcraftApp, id: &str, p: Value) {
         return;
     }
     if let Err(e) = app.run(id, p) {
-        app.status(e);
+        app.status_error(e);
     } else if matches!(id, "object.pattern.make" | "object.pattern.edit") {
         app.ui.open_panel = Some("patternOptions".into());
     }
@@ -3509,6 +3577,10 @@ pub fn menu_strings() -> std::collections::BTreeSet<String> {
     fn user_data(id: &str) -> bool {
         hidden_when_disabled(id) || id.starts_with("type.recentFont")
     }
+    // Trowel's own items are drawn in Korean first (as its engine commands, below).
+    fn trowel_only(id: &str) -> bool {
+        id.starts_with("trowel.")
+    }
     fn walk(items: &[Item], under: &str, out: &mut BTreeSet<String>) {
         for it in items {
             match it {
@@ -3516,7 +3588,7 @@ pub fn menu_strings() -> std::collections::BTreeSet<String> {
                     let size = l.strip_suffix(" pt").is_some_and(|n| n.chars().all(|c| c.is_ascii_digit()));
                     // VectorCraft › Language lists each language by its own name.
                     let language_name = *id == "app.language" && crate::i18n::Lang::all().any(|lang| lang.name() == *l);
-                    if !user_data(id) && !size && !language_name && *l != "—" {
+                    if !user_data(id) && !trowel_only(id) && !size && !language_name && *l != "—" {
                         out.insert(l.to_string());
                     }
                 }
@@ -3542,7 +3614,7 @@ pub fn menu_strings() -> std::collections::BTreeSet<String> {
     out.extend(crate::native_menu::MAC_LABELS.iter().map(|s| s.to_string()));
     out.extend(DYNAMIC_LABELS.iter().map(|s| s.to_string()));
     out.extend(CONTEXT_LABELS.iter().map(|s| s.to_string()));
-    out.extend(UI_COMMANDS.iter().map(|c| c.1.to_string()));
+    out.extend(UI_COMMANDS.iter().filter(|c| !trowel_only(c.0)).map(|c| c.1.to_string()));
     fn is_trowel_command(c: &vectorcraft_engine::cmd::CommandSpec) -> bool {
         c.menu.first().is_some_and(|m| *m == "Trowel")
             || c.menu.contains(&"해발선")

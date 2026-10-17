@@ -1,7 +1,8 @@
-//! The menu bar: the app's menus with the Drawing menu (design 2.1 §3) before View. Its first two
-//! items run (J005): Change Weights at Once… opens its card, Revert to the Legend puts the
-//! selected lines back to their row's look, or every line set apart when nothing is selected. The
-//! others come with later jobs; until then they show dimmed, each with its job.
+//! The menu bar: the app's menus with the Drawing menu (design 2.1 §3, 3.0 §5 ②) before View.
+//! Change Weights at Once… opens its card, Revert to the Legend puts the selected lines back to
+//! their row's look (or every line set apart when nothing is selected), Scale and Coordinate
+//! System… and Insert Legend Table do what the ribbon's tiles do. The others come with later jobs;
+//! until then they show dimmed, each with its job.
 
 use std::cell::Cell;
 
@@ -15,6 +16,7 @@ use super::*;
 enum Item {
     Weights,
     Revert,
+    Scale,
     InsertLegend,
     PlateLayout,
     StyleTemplate,
@@ -42,15 +44,14 @@ pub(super) fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
             Some(Item::Revert) => {
                 let selected = app.session.active().is_some_and(|st| !st.selection.objects.is_empty());
                 if let Err(e) = revert(app, if selected { json!({}) } else { json!({ "all": true }) }) {
-                    app.status(e);
+                    app.status_error(e);
                 }
             }
-            Some(Item::InsertLegend) => {
-                let _ = app.run("style.generateLegend", json!({ "filterUnused": true, "replaceExisting": true }));
-            }
+            Some(Item::Scale) => super::scale_dialog::open(app, ui.ctx()),
+            Some(Item::InsertLegend) => super::ribbon::legend_table(app, ui.ctx()),
             Some(Item::PlateLayout) => super::plate::toggle_dialog(ui.ctx()),
             Some(Item::StyleTemplate) => super::style_dialog::toggle_dialog(ui.ctx()),
-            Some(Item::GpkgSurvey) => super::gpkg_browser::toggle_dialog(ui.ctx()),
+            Some(Item::GpkgSurvey) => super::gpkg_browser::open_dialog(ui.ctx()),
             None => {}
         }
     });
@@ -61,7 +62,8 @@ fn drawing_menu(ui: &mut Ui, open: bool, chosen: &Cell<Option<Item>>) {
     let live = [
         (tw!("Change Weights at Once…"), tw!("Change every line's weight at once"), Item::Weights),
         (tw!("Revert to the Legend"), tw!("The selected lines, or every line set apart when nothing is selected"), Item::Revert),
-        ("캔버스 범례표 삽입", "도면에서 실제 사용된 줄로 자동 범례표를 삽입합니다 (J018)", Item::InsertLegend),
+        (tw!("Scale and Coordinate System…"), tw!("The drawing's scale (1:10 to 1:200) and coordinate system (EPSG:5186 and others)"), Item::Scale),
+        (tw!("Insert Legend Table"), tw!("A legend table of the lines the drawing uses"), Item::InsertLegend),
         ("보고서 도판 배치 및 표제란…", "출판용 도판 배치·표제란·축척 막대·벡터 PDF 내보내기 (J012)", Item::PlateLayout),
         ("도면 양식 템플릿 관리 (.trowel-style)…", "기관별 표준 양식 비교 및 병합 (J018)", Item::StyleTemplate),
         ("Strata GeoPackage 발굴조사 데이터…", "현장 측량 데이터 레이어 불러오기 및 동기화 (J019)", Item::GpkgSurvey),
@@ -72,10 +74,7 @@ fn drawing_menu(ui: &mut Ui, open: bool, chosen: &Cell<Option<Item>>) {
             ui.close();
         }
     }
-    let groups: [&[(&str, &str)]; 2] = [
-        &[(tw!("Cut Face"), "J014"), (tw!("Make Level Lines"), "J015")],
-        &[(tw!("Scale and Coordinate System…"), "J006"), (tw!("Align Underlay…"), "J008")],
-    ];
+    let groups: [&[(&str, &str)]; 2] = [&[(tw!("Cut Face"), "J014"), (tw!("Make Level Lines"), "J015")], &[(tw!("Align Underlay…"), "J008")]];
     for group in groups {
         ui.separator();
         for (label, job) in group.iter() {

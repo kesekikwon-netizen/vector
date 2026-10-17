@@ -392,10 +392,39 @@ fn revert_brings_overrides_back() {
     run(&mut s, "legend.revert", json!({}));
     assert_eq!((s.new_art_stroke().width, LineType::of(&s.new_art_stroke())), (0.2, LineType::DashDot));
     assert_eq!((doc_json(&s), depth(&s)), before, "the pen is not the document");
+    // With `pen`, the selected lines and the pen both take it.
+    run(&mut s, "stroke.set", json!({"weight": 3, "dash": null}));
+    set_weight(&mut s, &[a], 0.5);
+    run(&mut s, "select.set", json!({"ids": [a.0]}));
+    run(&mut s, "layer.setCurrent", json!({"id": row.0}));
+    let r = run(&mut s, "legend.revert", json!({"pen": true}));
+    assert_eq!(r["lines"], json!(1));
+    assert_eq!(weight(&s, a), 0.2);
+    assert_eq!((s.new_art_stroke().width, LineType::of(&s.new_art_stroke())), (0.2, LineType::DashDot));
     // Nothing to revert: no undo step.
     let before = depth(&s);
     run(&mut s, "legend.revert", json!({"all": true}));
     assert_eq!(depth(&s), before);
+}
+
+/// Trowel's pen on selected lines (`stroke.set` with `newArt: false`): the lines take the weight,
+/// the next line keeps its own; without it the next line takes it too, as before.
+#[test]
+fn stroke_set_can_leave_the_next_lines_weight() {
+    let mut s = session();
+    layer(&mut s, "row");
+    let a = open_line(&mut s, 0.0);
+    run(&mut s, "select.none", json!({}));
+    run(&mut s, "stroke.set", json!({"weight": 0.6}));
+    run(&mut s, "select.set", json!({"ids": [a.0]}));
+    run(&mut s, "stroke.set", json!({"weight": 0.8, "newArt": false}));
+    assert_eq!((weight(&s, a), s.new_art_stroke().width), (0.8, 0.6));
+    run(&mut s, "stroke.set", json!({"weight": 0.5}));
+    assert_eq!((weight(&s, a), s.new_art_stroke().width), (0.5, 0.5));
+    // Nothing selected, `newArt: false` doesn't stop the pen: it is what the weight is for then.
+    run(&mut s, "select.none", json!({}));
+    run(&mut s, "stroke.set", json!({"weight": 0.3, "newArt": false}));
+    assert_eq!(s.new_art_stroke().width, 0.3);
 }
 
 // ---------- legend.weights ----------
@@ -516,13 +545,13 @@ fn weights_step_along_the_chip_ladder() {
     run(&mut s, "legend.set", json!({"id": row.0, "weight": 0.5}));
     run(&mut s, "legend.weights", json!({"how": "step", "step": 1}));
     let up: Vec<f64> = lines.iter().map(|l| weight(&s, *l)).collect();
-    assert_eq!(up, vec![0.8, 0.8, 1.0, 0.2, 0.1, 0.3, 2.0]);
-    assert_eq!((row_weight(&s, row), weight(&s, rl)), (Some(0.8), 0.8));
+    assert_eq!(up, vec![0.6, 0.8, 1.0, 0.15, 0.1, 0.3, 2.0]);
+    assert_eq!((row_weight(&s, row), weight(&s, rl)), (Some(0.6), 0.6));
     run(&mut s, "edit.undo", json!({}));
     run(&mut s, "legend.weights", json!({"how": "step", "step": -1}));
     let down: Vec<f64> = lines.iter().map(|l| weight(&s, *l)).collect();
-    assert_eq!(down, vec![0.3, 0.5, 0.8, 0.1, 0.0, 0.2, 1.0]);
-    assert_eq!(row_weight(&s, row), Some(0.3));
+    assert_eq!(down, vec![0.4, 0.5, 0.8, 0.1, 0.0, 0.2, 1.0]);
+    assert_eq!(row_weight(&s, row), Some(0.4));
 }
 
 #[test]

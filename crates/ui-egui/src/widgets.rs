@@ -207,6 +207,26 @@ pub fn num_field(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug, value:
     if commit { read.parse(&buf) } else { stepped.or(scrubbed).map(|v| unit.to_pt(v)) }
 }
 
+/// Compact inline numeric field (Control bar X/Y/W/H) that displays `value` rounded to at most 1 decimal
+/// place without repeating the unit suffix inside every box (a single unit suffix is shown after the group).
+pub fn num_field_compact(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug, value: Option<f64>, unit: Unit, width: f32) -> Option<f64> {
+    let id = ui.id().with(id);
+    let fmt_compact = |pt: f64| -> String {
+        let u = round_to(unit.from_pt(pt), 1);
+        if (u - u.round()).abs() < 1e-4 { format!("{:.0}", u.round()) } else { format!("{u:.1}") }
+    };
+    let shown = value.map(fmt_compact).unwrap_or_default();
+    take_dialog_focus(ui, id, &shown);
+    let (mut buf, resp, rect) = recessed_text(ui, id, &shown, width, 1);
+    select_all_on_focus(ui, &resp, &buf);
+    let read = typed_unit(ui.ctx(), unit);
+    let stepped = step_value(ui, &resp, &mut buf, |b| Some(unit.from_pt(read.parse(b)?)), |v| fmt_compact(unit.to_pt(v)));
+    let scrubbed = scrub::field(ui, id, rect, &buf, value.map(|v| unit.from_pt(v)), 1);
+    let commit = resp.lost_focus() && buf != shown;
+    ui.data_mut(|d| d.insert_temp(id, buf.clone()));
+    if commit { read.parse(&buf) } else { stepped.or(scrubbed).map(|v| unit.to_pt(v)) }
+}
+
 /// The places a stepped value in a unit field keeps (no 12.300000001).
 const STEP_DECIMALS: i32 = 3;
 

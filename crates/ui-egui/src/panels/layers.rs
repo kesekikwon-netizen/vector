@@ -122,7 +122,11 @@ const GHOST_OPACITY: f32 = 0.5;
 
 /// The colour of the layer holding `id`.
 pub(crate) fn layer_colour(doc: &Document, id: NodeId) -> Color32 {
-    let [r, g, b] = doc.layer_color(id);
+    rgb_colour(doc.layer_color(id))
+}
+
+/// A layer's colour as the document keeps it.
+pub(crate) fn rgb_colour([r, g, b]: [u8; 3]) -> Color32 {
     Color32::from_rgb(r, g, b)
 }
 

@@ -422,10 +422,11 @@ const SYSTEM_FALLBACKS: &[&str] = &[
     "Noto Color Emoji",
 ];
 
-/// Korean families, for where none of the CJK ones above is installed (Linux without Noto CJK).
+/// Korean families, for where none of the CJK ones above is installed (Linux without Noto CJK)
+/// and for Korean field report fonts (윤고딕 / YoonGothic).
 /// Tried for Hangul only, so that Hanja, kana and the rest keep the fonts they had.
 #[cfg(not(target_arch = "wasm32"))]
-const HANGUL_FALLBACKS: &[&str] = &["Noto Sans CJK KR", "Noto Sans KR", "NanumGothic"];
+const HANGUL_FALLBACKS: &[&str] = &["Noto Sans CJK KR", "Noto Sans KR", "NanumGothic", "윤고딕", "YDIYGO120", "YDIYGO320", "YoonGothic"];
 
 /// Hangul: jamo, its tone marks, compatibility jamo, the parenthesized and circled letters (㈀, ㉠),
 /// jamo extended A and B, syllables, halfwidth letters.

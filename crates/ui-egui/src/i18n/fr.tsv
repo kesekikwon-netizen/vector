@@ -1712,6 +1712,7 @@
 	Nonbreaking Hyphen	Trait d’union insécable
 	Nonbreaking Space	Espace insécable
 	None	Aucun
+	None (Delete)	Aucun (supprimer)
 	None (/)	Aucun (/)
 	None (keep transparency)	Aucun (conserver la transparence)
 	None.	Aucun.
@@ -4112,3 +4113,5 @@ lighting	Light	Lumière
 	Change Weights at Once	Modifier les épaisseurs en une fois
 	Add Legend Group	Ajouter un groupe de légende
 	Add to Legend	Ajouter à la légende
+@msg	Rule layer added: {name}	Calque de règle ajouté : {name}
+@msg	Removed empty unused layers: {removed}	Calques vides inutilisés supprimés : {removed}

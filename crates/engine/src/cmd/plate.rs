@@ -426,7 +426,8 @@ pub fn synthesize_plate_document(source_doc: &Document, sheet: &PlateSheet) -> D
                 continue;
             }
 
-            for line_node in vectorcraft_doc::legend::lines(layer) {
+            // Every line, the level lines and section marks too (review J024 r2 A).
+            for line_node in vectorcraft_doc::legend::all_lines(layer) {
                 // Clone node and transform geometry
                 let mut transformed = line_node.clone();
                 transformed.id = syn_doc.alloc_id();

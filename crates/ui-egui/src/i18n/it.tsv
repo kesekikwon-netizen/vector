@@ -1715,6 +1715,7 @@
 	Nonbreaking Hyphen	Trattino indivisibile
 	Nonbreaking Space	Spazio indivisibile
 	None	Nessuno
+	None (Delete)	Nessuno (elimina)
 	None (/)	Nessuno (/)
 	None (keep transparency)	Nessuno (mantieni trasparenza)
 	None.	Nessuno.
@@ -4104,3 +4105,5 @@ lighting	Light	Luce
 	Change Weights at Once	Cambia gli spessori in una volta
 	Add Legend Group	Aggiungi gruppo di legenda
 	Add to Legend	Aggiungi alla legenda
+@msg	Rule layer added: {name}	Livello regola aggiunto: {name}
+@msg	Removed empty unused layers: {removed}	Livelli vuoti inutilizzati rimossi: {removed}
