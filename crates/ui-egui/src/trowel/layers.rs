@@ -1,5 +1,5 @@
 //! The layer strip (design 3.1 §4 ⑪, §13): the drawing's layers, top first, with their sublayers
-//! and named objects (the elements placed from the element box, …) under them, each 10 further in.
+//! and named objects (the elements placed from the element box, …) under them, each 14 further in.
 //! A click on a layer draws on it with its legend row's look (as a click on the row in the legend:
 //! the selection doesn't move), a click on an object selects it (Shift: adds it). The eye and the
 //! padlock are the legend row's own switches, so the two show the same; Alt+eye shows a layer
@@ -11,7 +11,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use serde_json::json;
-use vectorcraft_doc::{Node, NodeId};
+use vectorcraft_doc::{Document, Node, NodeId, NodeKind};
 
 use super::*;
 
@@ -92,6 +92,11 @@ fn open_of(ctx: &egui::Context, uid: u64) -> Open {
 /// The rows worked out last, with what they came from.
 type Rows = Arc<(Vec<Row>, Vec<Row>)>;
 
+/// What the rows were worked out from: the drawing, the document itself (a new one on every edit,
+/// kept here so its address can't come back for another), the open rows and the current layer.
+/// Not the revision, which moves with the selection and the view too.
+type RowsKey = (u64, Arc<Document>, u64, Option<NodeId>);
+
 fn rows_id() -> egui::Id {
     wid("strip-rows", ())
 }
@@ -99,14 +104,17 @@ fn rows_id() -> egui::Id {
 /// The strip's rows of `st`, top first, then the empty layers waiting at its foot: from the last
 /// pass while the drawing and the open rows are the same.
 fn rows(ctx: &egui::Context, st: &vectorcraft_engine::DocState, open: &Open) -> Rows {
-    let key = (st.uid, st.revision, open.generation, st.current_layer().map(|c| c.0));
-    if let Some((was, rows)) = ctx.data(|d| d.get_temp::<((u64, u64, u64, Option<u64>), Rows)>(rows_id()))
-        && was == key
+    let current = st.current_layer();
+    if let Some(((uid, doc, generation, was), rows)) = ctx.data(|d| d.get_temp::<(RowsKey, Rows)>(rows_id()))
+        && uid == st.uid
+        && Arc::ptr_eq(&doc, &st.doc)
+        && generation == open.generation
+        && was == current
     {
         return rows;
     }
     let rows = Arc::new(build(st, open));
-    ctx.data_mut(|d| d.insert_temp(rows_id(), (key, rows.clone())));
+    ctx.data_mut(|d| d.insert_temp(rows_id(), ((st.uid, st.doc.clone(), open.generation, current), rows.clone())));
     rows
 }
 
@@ -116,27 +124,44 @@ fn has_row(n: &Node) -> bool {
 }
 
 /// The layers of `st` that hold something (and the current one) with what shows inside the open
-/// ones, top first; then the others, empty.
+/// ones, top first; then the others, empty. One walk over the rows: each takes the colour and the
+/// visibility of what holds it from the walk, not from a search of the drawing.
 fn build(st: &vectorcraft_engine::DocState, open: &Open) -> (Vec<Row>, Vec<Row>) {
     let doc = &st.doc;
     let current = st.current_layer();
     let path: HashSet<NodeId> = current.and_then(|c| doc.ancestry(c)).unwrap_or_default().into_iter().collect();
+    let cx = Walk { open, path: &path, current };
     let (mut rows, mut empties) = (vec![], vec![]);
     for l in doc.layers.iter().rev() {
         let empty = l.children().is_none_or(|c| c.is_empty());
         let into = if empty && Some(l.id) != current { &mut empties } else { &mut rows };
-        push(l, 0, l.id, true, (st, open, &path), into);
+        push(l, 0, l.id, (true, None), &cx, into);
     }
     (rows, empties)
 }
 
-/// Add the row of `n` (`depth` in, in layer `top`; `shown`: what holds it is visible) and those of
-/// what shows inside it when it is open.
-fn push(n: &Arc<Node>, depth: usize, top: NodeId, shown: bool, cx: (&vectorcraft_engine::DocState, &Open, &HashSet<NodeId>), out: &mut Vec<Row>) {
-    let (st, open, path) = cx;
+/// What every row of one walk needs.
+struct Walk<'a> {
+    open: &'a Open,
+    path: &'a HashSet<NodeId>,
+    current: Option<NodeId>,
+}
+
+/// The colour bar of a layer.
+fn colour_of_layer(n: &Node) -> Option<Color32> {
+    match &n.kind {
+        NodeKind::Layer { color, .. } => Some(crate::panels::layers::rgb_colour(color.rgb())),
+        _ => None,
+    }
+}
+
+/// Add the row of `n` (`depth` in, in layer `top`) and those of what shows inside it when it is
+/// open. `held`: whether what holds it is visible, and the colour of the innermost layer it is in.
+fn push(n: &Arc<Node>, depth: usize, top: NodeId, held: (bool, Option<Color32>), cx: &Walk, out: &mut Vec<Row>) {
+    let (shown, inherited) = held;
     let kids: Vec<&Arc<Node>> = n.children().map(|c| c.iter().rev().filter(|c| has_row(c)).collect()).unwrap_or_default();
-    let is_open = !kids.is_empty() && open.is_open(n.id, path);
-    let colour_of = if n.is_layer() { Some(n.id) } else { st.doc.layer_containing(n.id) };
+    let is_open = !kids.is_empty() && cx.open.is_open(n.id, cx.path);
+    let colour = if n.is_layer() { colour_of_layer(n) } else { inherited };
     out.push(Row {
         id: n.id,
         depth,
@@ -148,12 +173,12 @@ fn push(n: &Arc<Node>, depth: usize, top: NodeId, shown: bool, cx: (&vectorcraft
         visible: n.visible,
         locked: n.locked,
         dim: !n.visible || !shown || n.is_template(),
-        colour: colour_of.map(|l| crate::panels::layers::layer_colour(&st.doc, l)),
-        current: n.is_layer() && st.current_layer() == Some(n.id),
+        colour,
+        current: n.is_layer() && cx.current == Some(n.id),
     });
     if is_open {
         for k in kids {
-            push(k, depth + 1, top, shown && n.visible, cx, out);
+            push(k, depth + 1, top, (shown && n.visible, colour), cx, out);
         }
     }
 }
@@ -181,6 +206,11 @@ fn rename_id() -> egui::Id {
 /// The row being dragged.
 fn drag_id() -> egui::Id {
     wid("strip-drag", ())
+}
+
+/// Forget the row being dragged: the strip isn't there to drop it on (folded, hidden or gone).
+pub(super) fn forget_drag(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.remove::<NodeId>(drag_id()));
 }
 
 /// The layer strip in `r`.
@@ -244,7 +274,12 @@ fn list(ui: &mut Ui, area: Rect, all: &[&Row], t: &Tokens) -> Option<Act> {
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::top_down(egui::Align::Min)));
     child.spacing_mut().scroll.fade.strength = 0.0;
     let scroll = egui::ScrollArea::vertical().id_salt(wid("strip-scroll", ())).auto_shrink([false, false]).min_scrolled_height(0.0);
-    let dragging: Option<NodeId> = ui.data(|d| d.get_temp(drag_id()));
+    let mut dragging: Option<NodeId> = ui.data(|d| d.get_temp(drag_id()));
+    // Esc gives the move up, as it does a panel's.
+    if dragging.is_some() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        forget_drag(ui.ctx());
+        dragging = None;
+    }
     let mut target = None;
     scroll.show_viewport(&mut child, |ui, view| {
         ui.set_height(all.len() as f32 * ROW_H);
@@ -433,10 +468,12 @@ fn run(app: &mut VectorcraftApp, ctx: &egui::Context, act: Option<Act>) {
     };
     let result = match act {
         // As the legend's row: the current layer, the pen with its row's look; a sublayer takes
-        // its layer's look and is drawn on itself.
+        // its layer's look and is drawn on itself. A hidden or locked layer (the legend won't
+        // draw on it) just becomes the current one, as in the Layers panel.
         Act::Pick(id, top, top_level) => {
-            let picked = app.run("legend.pick", json!({ "id": top.0 })).map(drop);
-            if top_level { picked } else { picked.and_then(|()| app.run("layer.setCurrent", json!({ "id": id.0 })).map(drop)) }
+            let editable = app.session.doc().is_ok_and(|st| st.doc.is_editable(id));
+            let picked = if editable { app.run("legend.pick", json!({ "id": top.0 })).map(drop) } else { Ok(()) };
+            if top_level && editable { picked } else { picked.and_then(|()| app.run("layer.setCurrent", json!({ "id": id.0 })).map(drop)) }
         }
         Act::Select(id, add) => app.run("layer.selectAll", json!({ "id": id.0, "add": add })).map(drop),
         Act::Toggle(id) => {
@@ -497,4 +534,41 @@ pub(super) fn current_colour(app: &VectorcraftApp) -> Option<Color32> {
     let st = app.session.active()?;
     let c = st.current_layer()?;
     Some(crate::panels::layers::layer_colour(&st.doc, c))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vectorcraft_engine::Session;
+
+    /// The rows are worked out again when the drawing or the current layer changes, not when only
+    /// the selection or the view does, so a drawing of thousands of named objects is no slower to
+    /// select in; and an object's row takes the colour of the layer it is in from the walk.
+    #[test]
+    fn the_rows_are_kept_until_the_drawing_changes() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({ "width": 400, "height": 300 })).unwrap();
+        for i in 0..3 {
+            let r = s.execute("shape.rectangle", &json!({ "x": 10 * i, "y": 10, "width": 5, "height": 5 })).unwrap();
+            s.execute("layer.setProps", &json!({ "ids": [r["id"]], "name": format!("돌 {i}") })).unwrap();
+        }
+        let ctx = egui::Context::default();
+        let open = |s: &Session| open_of(&ctx, s.doc().unwrap().uid);
+        let first = rows(&ctx, s.doc().unwrap(), &open(&s));
+        let layer = first.0.first().cloned().unwrap();
+        assert!(layer.layer && layer.current && layer.open);
+        assert_eq!(first.0.len(), 4, "the layer and its three named objects");
+        assert!(first.0.iter().skip(1).all(|r| !r.layer && r.depth == 1 && r.colour == layer.colour && r.colour.is_some()));
+        // The selection moves the revision, not the rows.
+        let revision = s.doc().unwrap().revision;
+        s.execute("select.set", &json!({ "ids": [first.0.get(1).unwrap().id.0] })).unwrap();
+        assert!(s.doc().unwrap().revision > revision);
+        let again = rows(&ctx, s.doc().unwrap(), &open(&s));
+        assert!(Arc::ptr_eq(&first, &again), "kept");
+        // A rename is a new drawing: new rows.
+        s.execute("layer.setProps", &json!({ "ids": [layer.id.0], "name": "평면" })).unwrap();
+        let renamed = rows(&ctx, s.doc().unwrap(), &open(&s));
+        assert!(!Arc::ptr_eq(&first, &renamed));
+        assert_eq!(renamed.0.first().map(|r| r.name.as_str()), Some("평면"));
+    }
 }

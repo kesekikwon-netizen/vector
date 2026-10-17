@@ -35,15 +35,18 @@ pub struct Workspace {
     pub toolbar_pos: Option<[f32; 2]>,
     /// Trowel's own window (design 2.1 §3) instead of the classic chrome.
     pub trowel: bool,
-    /// Where Trowel's panels go (built-in workspaces: the first layout, design 3.1 §13).
-    #[serde(deserialize_with = "crate::trowel_layout::lenient")]
-    pub trowel_layout: crate::trowel_layout::Layout,
+    /// Where Trowel's panels go, in a workspace the user saved. The built-in ones, and those saved
+    /// before there was a layout, have none: going to them keeps the user's own (the user,
+    /// 2026-10-16: 「저장하면 다음에도 그렇게 열리게」), and only resetting one brings back the first
+    /// layout (design 3.1 §13).
+    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "crate::trowel_layout::lenient_some")]
+    pub trowel_layout: Option<crate::trowel_layout::Layout>,
 }
 
 impl Default for Workspace {
     fn default() -> Self {
         let ui = UiState::default();
-        capture(&ui, "Essentials")
+        Workspace { trowel_layout: None, ..capture(&ui, "Essentials") }
     }
 }
 
@@ -65,9 +68,11 @@ pub fn start_trowel(ui: &mut UiState, lang: crate::i18n::Lang) {
     // to from Window › Workspace; one as it comes needs no copy. Named in `lang`: nothing has set
     // the language `tw!` reads yet.
     let name = crate::i18n::tr_ctx(lang, "trowel", KEPT_LAYOUT);
-    let changed = find(ui, &ui.workspace).is_none_or(|w| Workspace { name: String::new(), ..w } != capture(ui, ""));
+    // Without Trowel's panels, which weren't part of that layout.
+    let changed =
+        find(ui, &ui.workspace).is_none_or(|w| Workspace { name: String::new(), ..w } != Workspace { trowel_layout: None, ..capture(ui, "") });
     if changed && find(ui, name).is_none() {
-        let kept = capture(ui, name);
+        let kept = Workspace { trowel_layout: None, ..capture(ui, name) };
         ui.custom_workspaces.push(kept);
     }
     if let Some(w) = find(ui, TROWEL) {
@@ -170,7 +175,7 @@ pub fn capture(ui: &UiState, name: &str) -> Workspace {
         floating_panels: ui.floating_panels.clone(),
         toolbar_pos: ui.toolbar_pos,
         trowel: ui.trowel,
-        trowel_layout: ui.trowel_layout.clone(),
+        trowel_layout: Some(ui.trowel_layout.clone()),
     }
 }
 
@@ -191,14 +196,39 @@ pub fn apply(ui: &mut UiState, w: &Workspace) {
     ui.floating_panels = w.floating_panels.clone();
     ui.toolbar_pos = w.toolbar_pos;
     ui.trowel = w.trowel;
-    ui.trowel_layout = w.trowel_layout.clone();
-    ui.trowel_layout.sanitize();
+    if let Some(layout) = &w.trowel_layout {
+        ui.trowel_layout = layout.clone();
+        ui.trowel_layout.sanitize();
+    }
     if w.trowel {
         ui.brightness = crate::theme::Brightness::Plate;
     }
     FloatingPanels::sanitize(&mut ui.floating_panels, &mut ui.toolbar_pos);
     ui.flyout = None;
     ui.workspace = w.name.clone();
+}
+
+/// Go to workspace `name` (Window › Workspace); its name. Choosing the one already in use again
+/// keeps Trowel's panels where the user put them.
+pub fn choose(ui: &mut UiState, name: &str) -> Result<String, String> {
+    let w = find(ui, name).ok_or_else(|| format!("unknown workspace (one of {})", names(ui).join(", ")))?;
+    let kept = (w.name == ui.workspace).then(|| ui.trowel_layout.clone());
+    apply(ui, &w);
+    if let Some(layout) = kept {
+        ui.trowel_layout = layout;
+    }
+    Ok(w.name)
+}
+
+/// Window › Workspace › Reset: the workspace in use as it was saved, or as it comes. Trowel's
+/// panels go back to the workspace's layout, or to the first one (design 3.1 §13).
+pub fn reset(ui: &mut UiState) -> String {
+    let w = find(ui, &ui.workspace.clone()).unwrap_or_default();
+    apply(ui, &w);
+    if w.trowel_layout.is_none() {
+        ui.trowel_layout = crate::trowel_layout::Layout::default();
+    }
+    w.name
 }
 
 /// A workspace by name (user workspaces shadow nothing: names are unique across both lists).
@@ -329,18 +359,8 @@ pub fn popup(app: &mut VectorcraftApp, ui: &mut egui::Ui) {
 pub fn run_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<Result<Value, String>> {
     let s = |k: &str| p.get(k).and_then(Value::as_str).map(str::to_string);
     let r = match id {
-        "window.workspace" => match s("name").and_then(|n| find(&app.ui, &n)) {
-            Some(w) => {
-                apply(&mut app.ui, &w);
-                Ok(json!({"workspace": w.name}))
-            }
-            None => Err(format!("unknown workspace (one of {})", names(&app.ui).join(", "))),
-        },
-        "window.workspace.reset" => {
-            let w = find(&app.ui, &app.ui.workspace.clone()).unwrap_or_default();
-            apply(&mut app.ui, &w);
-            Ok(json!({"workspace": w.name}))
-        }
+        "window.workspace" => choose(&mut app.ui, &s("name").unwrap_or_default()).map(|name| json!({"workspace": name})),
+        "window.workspace.reset" => Ok(json!({"workspace": reset(&mut app.ui)})),
         "window.workspace.new" => match s("name") {
             Some(n) => save_as(&mut app.ui, &n).map(|_| json!({"workspace": n})),
             None => {
@@ -467,7 +487,8 @@ mod tests {
     #[test]
     fn essentials_is_the_default_layout() {
         let ui = UiState::default();
-        assert_eq!(capture(&ui, ESSENTIALS), builtins()[0]);
+        // Trowel's panels aside: a built-in workspace has no layout of them (`choose`).
+        assert_eq!(Workspace { trowel_layout: None, ..capture(&ui, ESSENTIALS) }, builtins()[0]);
         assert_eq!(ui.workspace, ESSENTIALS);
     }
 
@@ -532,7 +553,7 @@ mod tests {
         start_trowel(&mut ui, en());
         assert!(ui.trowel);
         let kept = find(&ui, "Layout before Trowel").expect("the layout kept");
-        assert_eq!(Workspace { name: String::new(), ..kept.clone() }, before);
+        assert_eq!(Workspace { name: String::new(), ..kept.clone() }, Workspace { trowel_layout: None, ..before });
         apply(&mut ui, &kept);
         assert!(!ui.trowel && ui.open_panel.as_deref() == Some("swatches"));
     }

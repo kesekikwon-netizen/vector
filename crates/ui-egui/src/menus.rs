@@ -62,7 +62,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "trowel.layout.panel",
         "Show or Hide a Panel",
         "",
-        "{panel: set|legend|pen|props|layers, shown?: bool} hide a panel of Trowel's window, or show it again where it was (without `shown`: the other way round) → {shown}",
+        "{panel: set|legend|pen|props|layers, shown?: bool} hide a panel of Trowel's window, or show it again where it was, opening that column if it is folded (without `shown`: the other way round) → {shown}",
     ),
     (
         "trowel.layout.move",
@@ -74,7 +74,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "trowel.layout.size",
         "Size a Column",
         "",
-        "{column: left|right|edge, width?, folded?: bool|null} a column's width (kept in its range: left 140–450, right 220–560, edge 112–240) and fold (null: as the window's width says) → {width, folded}",
+        "{column: left|right|edge, width?, folded?: bool|null} a column's width (kept in its range: left 140–450, right 220–560, edge 112–240, at least as wide as its widest panel needs: the pen 274, the legend and the properties 220) and fold (null: as the window's width says) → {width, folded}",
     ),
     ("trowel.layout.get", "Panel Layout", "", "{} → Trowel's panel layout: each column's panels, widths, heights given, folds and hidden panels"),
     (
@@ -885,7 +885,7 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
     }
     if let Some(r) = crate::shortcut_editor::run_command(app, id, p)
         .or_else(|| crate::workspaces::run_command(app, id, p))
-        .or_else(|| crate::trowel_layout::run_command(&mut app.ui, id, p))
+        .or_else(|| crate::trowel_layout::run_command(&mut app.ui, id, p, app.trowel_window))
         .or_else(|| crate::floating::command(app, id, p))
     {
         return Some(r);

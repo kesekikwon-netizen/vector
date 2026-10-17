@@ -382,6 +382,9 @@ pub struct VectorcraftApp {
     /// Trowel's height box (design 3.0 §5 ④), while a Level Lines or Spot Height click asks for a
     /// height ([`trowel::ask`]). Not in [`UiState`], which other crates build field by field.
     pub(crate) trowel_ask: Option<trowel::ask::Ask>,
+    /// The width of Trowel's window and of its tool column in the last frame, so a panel shown
+    /// again from the Window menu can open the column it goes back to when that is folded.
+    pub(crate) trowel_window: Option<(f32, f32)>,
     /// When `system_paste` was last checked in line (app time, s; at most once per frame).
     system_paste_at: f64,
     /// The thread that checks the system clipboard for `system_paste` instead
@@ -488,6 +491,7 @@ impl VectorcraftApp {
             place: Default::default(),
             system_paste: false,
             trowel_ask: None,
+            trowel_window: None,
             system_paste_at: f64::NEG_INFINITY,
             clipboard_probe: None,
             picks: picks::Picks::default(),

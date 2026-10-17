@@ -52,6 +52,7 @@ pub(super) fn columns(app: &mut VectorcraftApp, ui: &mut Ui) {
     let screen = ctx.content_rect();
     let tools_w = if app.ui.toolbar { TOOLS_W } else { 0.0 };
     let shown = app.ui.trowel_layout.shown(screen.width(), tools_w);
+    app.trowel_window = Some((screen.width(), tools_w));
     ctx.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id()));
     let mut drawn = vec![];
     let mut heads = vec![];
@@ -60,6 +61,9 @@ pub(super) fn columns(app: &mut VectorcraftApp, ui: &mut Ui) {
         if let Some(s) = shown.get(model::column_index(c)).copied().flatten() {
             drawn.push(column(app, ui, c, s, &mut heads));
         }
+    }
+    if !drawn.iter().any(|d| !d.folded && d.slots.iter().any(|(p, _)| *p == Panel::Layers)) {
+        layers::forget_drag(&ctx);
     }
     // The dock's own panels pop out left of the right-hand columns, level with their top.
     let keep = ctx.data_mut(|d| d.remove_temp::<Vec<Rect>>(keep_id())).unwrap_or_default();

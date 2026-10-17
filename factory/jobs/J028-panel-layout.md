@@ -1,4 +1,4 @@
-상태: build
+상태: rework
 
 # J028 (디자인 3.0 D4+): 칸 배치 — 레이어 띠, 옮기기·크기 바꾸기, 배치 처음대로
 
@@ -98,3 +98,33 @@
 - 모델: `the_first_layout_is_the_mockups`, `a_narrow_canvas_narrows_the_columns_then_folds_the_strip_then_the_drawer`, `a_column_is_as_wide_as_its_widest_panel_needs`, `panels_move_hide_and_come_back_where_they_were`, `a_saved_layout_reads_leniently`, `the_layout_is_kept_with_the_preferences`.
 - 화면: `the_first_layout_is_sheet_13_in_each_window`(1440 × 880, 1366 × 768, 1280 × 720, 1100 × 700), `the_layer_strip_lists_what_is_drawn_and_folds_the_empty_layers`, `the_strip_picks_shows_and_locks_as_the_legend_does`, `the_strip_renames_and_reorders_its_rows`, `a_panel_moves_by_its_head_within_the_side_columns`, `columns_and_panels_size_by_their_edges`, `either_reset_brings_back_the_first_layout`, `the_window_menu_lists_the_panels_only_in_trowel`.
 
+
+## 검증 1차 (verify, `71e00d3`)
+| 명령 | 종료 코드 | 결과 |
+|---|---|---|
+| `cargo fmt --all -- --check` | 0 | 차이 없음 |
+| `cargo clippy --workspace --all-targets -- -D warnings` | 0 | 경고 없음 |
+| `cargo test -p vectorcraft-ui-egui --lib` | 0 | 1,080 통과 |
+| `cargo test -p vectorcraft` | 0 | 66 통과 |
+| `cargo xtask layers` | 0 | 위반 없음 |
+| GitHub 「Trowel CI」 `71e00d3` (run 38983756919) | - | success |
+| 릴리스를 새 HOME으로 띄워 1440 × 880, 1366 × 768, 1280 × 720 캡처, 옮기기 → 껐다 켜기 → 처음대로 | - | 13장 막대와 같음. 껐다 켜면 옮긴 배치(펜 왼쪽, 오른쪽 열 403) 그대로, 처음대로 뒤 칸 사각형은 처음 캡처와 같음(캔버스 확대율만 다름) |
+
+## 검토 1차 (review)
+- 코드 검토(정확성·보안, 보고 `scratchpad/review/j028-code.md`): **수정 필요**. 막는 것 0, 고칠 것 3, 사소 8, 사람 결정 1.
+- 화면 검토: 진행 중.
+
+## 재작업 1 (rework)
+코드 검토 지적과 처리:
+1. (고칠 것) 띠 줄 목록이 줄 수 × 노드 수로 느리고 선택만 바뀌어도 다시 만들었다 → 한 번 훑으며 레이어 색과 지금 레이어를 내려 준다. 다시 만드는 기준은 리비전 대신 문서 자체(편집마다 새 `Arc`, 주소 재사용을 막으려 하나 쥐고 비교)·지금 레이어·펼친 줄. 검토자 시험으로 다시 잼: 이름 있는 객체 5,000개, 띠 펴짐 91.4 ms → 2.5 ms(접힘 2.2 ms). 시험 `the_rows_are_kept_until_the_drawing_changes`.
+2. (고칠 것) 설정 파일 칸 높이 상한 없음 → `MAX_PANEL_H` 4096으로 자름(`set_height`, `sanitize`). 검토자 시험: NaN 패닉 0회(전에는 15회). 시험 `a_saved_layout_reads_leniently`에 3e38·1e39 사례.
+3. (고칠 것 ◆) 작업 공간을 바꾸면 배치가 사라졌다 → 기본 제공 작업 공간과 배치 필드가 없는 예전 사용자 작업 공간은 배치를 갖지 않는다(`Workspace.trowel_layout: Option`). 그리로 가도 사용자 배치는 그대로, 지금 작업 공간을 다시 골라도 그대로. 배치를 담아 저장한 사용자 작업 공간은 그 배치로 간다. 「<작업 공간> 재설정」은 저장한 배치, 기본 제공이면 처음 배치. 「Trowel 이전 배치」(첫 실행에 남기는 클래식 배치)도 배치를 갖지 않는다. 시험 `the_workspaces_keep_the_users_layout_until_reset`. 기존 시험 2개(`essentials_is_the_default_layout`, `trowel_keeps_a_changed_layout_to_go_back_to`)는 비교에서 Trowel 배치만 뺐다: 기본 제공 작업 공간이 배치를 갖지 않는 것이 이번 결정이라서.
+4. (사소) `trowel.layout.size` 너비 ±1e300 → 범위 끝(560, 274)으로. NaN만 처음 너비. 명령 설명에 「안에 든 칸이 최소 너비를 넓힘」을 적음.
+5. (사소) 숨겼거나 잠긴 레이어 줄을 누르면 오류 → 그 레이어를 지금 레이어로만 하고 오류를 띄우지 않는다(범례는 그런 레이어에 그리지 않으므로 펜은 그대로).
+6. (사소) 창이 좁아 접힌 열로 칸을 다시 열면 안 보임 → 창 메뉴·`trowel.layout.panel`로 다시 열 때 그 열이 접혀 보이면 편다(`open_to_show`, 지난 프레임의 창 너비 사용).
+7. (사소) 접힌 열에 칸을 넣으면 손으로 편 열이 됨 → 그대로 둔다(결정): 사용자가 칸을 넣은 열은 보이게 연다. 「배치 처음대로」가 저절로 접기로 돌린다.
+8. (사소) 손으로 편 열이 창보다 넓으면 겹침 → 캔버스가 `CANVAS_LEAST_W` 160보다 좁아지면 손으로 편 열도 띠, 서랍 순서로 접어 보인다(저장 값은 그대로). 검토자 시험 400 × 300: 오른쪽 열 98–372, 띠 372–400으로 겹치지 않음.
+9. (사소) 띠가 사라진 뒤 줄 끌기 상태가 남음 → 띠가 펴져 그려지지 않는 프레임에 지우고, Esc로도 그만둔다.
+10. (사소) 클래식 메뉴 가름줄 정리도 바뀜 → 그대로 둔다(macOS 메뉴 `tidy`와 같은 규칙, 시험 1,080개 통과). 범위 밖 변경으로 기록.
+11. (사람 결정 ◆) 설정을 하나라도 못 읽으면 배치 전체를 버림 → 읽히는 것은 남긴다: 모르는 칸(다음 버전이 더한 칸)·높이·숨긴 칸 항목과 형이 틀린 필드만 빼고, 빠진 칸은 `sanitize`가 제자리로 돌린다.
+- 검토자 임시 시험(`scratchpad/review/zz_j028_review_tmp.rs`)을 재작업 뒤 다시 돌림: 종료 0, 5개 통과(3840 × 2160의 텍스처 2048 debug 패닉은 시험 하네스 탓, J028과 무관). 임시 파일은 지움.

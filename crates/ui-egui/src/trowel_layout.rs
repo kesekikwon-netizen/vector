@@ -129,6 +129,13 @@ pub const FOLDED_W: f32 = 28.0;
 /// The canvas keeps at least this width: the columns that fold by themselves fold for it, the
 /// layer strip first, then the drawer.
 pub const CANVAS_MIN_W: f32 = 480.0;
+/// The least the canvas keeps even beside columns opened by hand: past it they fold too, the
+/// strip first (a window narrower than they are, as 800 at twice the size).
+pub const CANVAS_LEAST_W: f32 = 160.0;
+
+/// The tallest a panel can be given (a hand-edited file can say more; a column of panels that tall
+/// would reach past what a float can hold).
+pub const MAX_PANEL_H: f32 = 4096.0;
 
 /// A hidden panel and where it was, where showing it puts it back.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -240,9 +247,10 @@ impl Layout {
         self.keep_width(c, w, lo, hi);
     }
 
-    /// Keep `w` as column `c`'s width, within `lo`–`hi` (not a number: its first width).
+    /// Keep `w` as column `c`'s width, within `lo`–`hi` (not a number: its first width; too large
+    /// to hold, the end of the range it is past).
     fn keep_width(&mut self, c: Column, w: f32, lo: f32, hi: f32) {
-        let w = if w.is_finite() { w.clamp(lo, hi) } else { c.default_width() };
+        let w = if w.is_nan() { c.default_width() } else { w.clamp(lo, hi) };
         match c {
             Column::Left => self.left_width = w,
             Column::Right => self.right_width = w,
@@ -318,11 +326,20 @@ impl Layout {
         self.heights.iter().find(|h| h.panel == p).map(|h| h.height)
     }
 
-    /// Give panel `p` a height (`None`: its own again).
+    /// Give panel `p` a height (`None`: its own again), up to [`MAX_PANEL_H`].
     pub fn set_height(&mut self, p: Panel, height: Option<f32>) {
         self.heights.retain(|h| h.panel != p);
         if let Some(height) = height.filter(|h| h.is_finite() && *h > 0.0) {
-            self.heights.push(Height { panel: p, height });
+            self.heights.push(Height { panel: p, height: height.min(MAX_PANEL_H) });
+        }
+    }
+
+    /// Open the column panel `p` is in when, in a window `window_w` wide with a tool column
+    /// `tools_w` wide, it shows folded: a panel shown again from the Window menu is seen.
+    pub fn open_to_show(&mut self, p: Panel, window_w: f32, tools_w: f32) {
+        let Some((c, _)) = self.place_of(p) else { return };
+        if self.shown(window_w, tools_w).get(column_index(c)).copied().flatten().is_some_and(|s| s.folded) {
+            self.set_folded(c, Some(false));
         }
     }
 
@@ -369,6 +386,15 @@ impl Layout {
                 (out, over) = fit(&folded);
             }
         }
+        for c in [Column::Edge, Column::Left] {
+            if over <= CANVAS_MIN_W - CANVAS_LEAST_W {
+                break;
+            }
+            if let Some(f) = folded.get_mut(column_index(c)).filter(|f| !**f && !self.panels(c).is_empty()) {
+                *f = true;
+                (out, over) = fit(&folded);
+            }
+        }
         out
     }
 
@@ -391,12 +417,21 @@ impl Layout {
         }
         let mut sized = std::collections::BTreeSet::new();
         self.heights.retain(|h| h.height.is_finite() && h.height > 0.0 && sized.insert(h.panel));
+        for h in &mut self.heights {
+            h.height = h.height.min(MAX_PANEL_H);
+        }
     }
 }
 
 /// The layout commands (`trowel.layout.*`, [`crate::menus::UI_COMMANDS`]): they change only the
 /// UI preferences, never a drawing, so they are no undo steps.
-pub fn run_command(ui: &mut crate::state::UiState, id: &str, p: &serde_json::Value) -> Option<Result<serde_json::Value, String>> {
+/// `window`: the window's width and its tool column's in the last frame, when there was one.
+pub fn run_command(
+    ui: &mut crate::state::UiState,
+    id: &str,
+    p: &serde_json::Value,
+    window: Option<(f32, f32)>,
+) -> Option<Result<serde_json::Value, String>> {
     use serde_json::{Value, json};
     let s = |k: &str| p.get(k).and_then(Value::as_str);
     let panel = || s("panel").and_then(Panel::parse).ok_or_else(|| crate::tw!("panel must be one of set, legend, pen, props, layers").to_string());
@@ -415,6 +450,9 @@ pub fn run_command(ui: &mut crate::state::UiState, id: &str, p: &serde_json::Val
             };
             if shown {
                 l.show(panel);
+                if let Some((window_w, tools_w)) = window {
+                    l.open_to_show(panel, window_w, tools_w);
+                }
             } else {
                 l.hide(panel);
             }
@@ -459,13 +497,53 @@ pub fn column_index(c: Column) -> usize {
     }
 }
 
-/// Read a saved layout, or the default when it doesn't read (an older or hand-edited file): the
-/// rest of the preferences still load.
+/// Read a saved layout, keeping what reads of one that doesn't all read (an older, newer or
+/// hand-edited file): the rest of the preferences still load.
 pub fn lenient<'de, D: Deserializer<'de>>(d: D) -> Result<Layout, D::Error> {
     let value = serde_json::Value::deserialize(d)?;
-    let mut layout: Layout = serde_json::from_value(value).unwrap_or_default();
+    let mut layout = read(value);
     layout.sanitize();
     Ok(layout)
+}
+
+/// [`lenient`] for a workspace's layout: none when there is none.
+pub fn lenient_some<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Layout>, D::Error> {
+    let value = serde_json::Value::deserialize(d)?;
+    if value.is_null() {
+        return Ok(None);
+    }
+    let mut layout = read(value);
+    layout.sanitize();
+    Ok(Some(layout))
+}
+
+/// The layout in `value`. When some of it doesn't read, the rest is kept: a panel, a height or a
+/// hidden panel this version doesn't know (one a newer version added) is left out, as is a field
+/// that isn't what it should be; [`Layout::sanitize`] brings back the panels left out. So a newer
+/// version's layout isn't thrown away whole by an older one.
+fn read(value: serde_json::Value) -> Layout {
+    use serde_json::Value;
+    if let Ok(layout) = serde_json::from_value::<Layout>(value.clone()) {
+        return layout;
+    }
+    let Value::Object(fields) = value else { return Layout::default() };
+    let mut kept = serde_json::Map::new();
+    for (k, mut v) in fields {
+        if let Value::Array(items) = &mut v {
+            items.retain(|item| match k.as_str() {
+                "left" | "right" | "edge" => serde_json::from_value::<Panel>(item.clone()).is_ok(),
+                "heights" => serde_json::from_value::<Height>(item.clone()).is_ok(),
+                "hidden" => serde_json::from_value::<Hidden>(item.clone()).is_ok(),
+                _ => true,
+            });
+        }
+        let mut one = serde_json::Map::new();
+        one.insert(k.clone(), v.clone());
+        if serde_json::from_value::<Layout>(Value::Object(one)).is_ok() {
+            kept.insert(k, v);
+        }
+    }
+    serde_json::from_value(Value::Object(kept)).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -505,6 +583,15 @@ mod tests {
         // Opened by hand at 1300 it stays open, at its least, and the drawer gives the rest.
         l.set_folded(Column::Edge, Some(false));
         assert_eq!(widths(l.shown(1300.0, 50.0)), [Some((140.0, false)), Some((518.0, false)), Some((112.0, false))]);
+        // Unless the canvas would be narrower than CANVAS_LEAST_W: at 600 the columns opened by
+        // hand fold too, the strip first (24, then 108 of canvas; folded, 220). Kept opened.
+        l.set_folded(Column::Left, Some(false));
+        l.set_width(Column::Right, 220.0);
+        assert_eq!(widths(l.shown(800.0, 50.0)), [Some((140.0, false)), Some((274.0, false)), Some((112.0, false))]);
+        assert_eq!(widths(l.shown(600.0, 50.0)), [Some((FOLDED_W, true)), Some((274.0, false)), Some((FOLDED_W, true))]);
+        assert_eq!((l.left_folded, l.edge_folded), (Some(false), Some(false)));
+        l.set_width(Column::Right, 560.0);
+        l.set_folded(Column::Left, None);
         l.set_folded(Column::Edge, None);
         // 1250 with the right column at its least, 274 for the pen's colour row (not 220): 720 for
         // 450 + 274 + 28, the drawer gives 32.
@@ -557,6 +644,18 @@ mod tests {
         l.set_folded(Column::Edge, Some(true));
         l.move_panel(Panel::Layers, Column::Edge, 0);
         assert_eq!(l.edge_folded, Some(false));
+        // Shown again from the Window menu into a column the window's width folded (the strip at
+        // 1366), the column opens, so the panel is seen; one that shows open stays as it was.
+        let mut l = Layout::default();
+        l.hide(Panel::Layers);
+        l.show(Panel::Layers);
+        l.open_to_show(Panel::Layers, 1366.0, 50.0);
+        assert_eq!(l.edge_folded, Some(false));
+        assert_eq!(l.shown(1366.0, 50.0)[2], Some(Shown { width: 132.0, folded: false }));
+        let mut l = Layout::default();
+        l.open_to_show(Panel::Layers, 1440.0, 50.0);
+        l.open_to_show(Panel::Pen, 1366.0, 50.0);
+        assert_eq!(l, Layout::default());
     }
 
     #[test]
@@ -567,10 +666,39 @@ mod tests {
             layout: Layout,
         }
         let read = |s: &str| serde_json::from_str::<Holder>(s).map(|h| h.layout);
-        // None saved, nonsense, an unknown panel: the default.
+        // None saved, nonsense, a column of unknown panels: the default.
         assert_eq!(read("{}").ok(), Some(Layout::default()));
         assert_eq!(read(r#"{"layout": 7}"#).ok(), Some(Layout::default()));
         assert_eq!(read(r#"{"layout": {"left": ["toolbox"]}}"#).ok(), Some(Layout::default()));
+        // A newer version's layout, with a panel this one doesn't know and a field gone wrong:
+        // the rest is kept, not thrown away whole.
+        let l = read(
+            r#"{"layout": {"left": ["set", "elements", "pen"], "right": ["legend", "props"], "rightWidth": "wide",
+                "edgeWidth": 200, "heights": [{"panel": "elements", "height": 90}, {"panel": "pen", "height": 150}],
+                "hidden": [{"panel": "elements", "column": "left", "index": 1}]}}"#,
+        )
+        .ok()
+        .unwrap_or_default();
+        assert_eq!(
+            (l.left.as_slice(), l.right.as_slice(), l.edge.as_slice()),
+            ([Panel::Set, Panel::Pen].as_slice(), [Panel::Legend, Panel::Props].as_slice(), [Panel::Layers].as_slice())
+        );
+        assert_eq!((l.right_width, l.edge_width), (304.0, 200.0));
+        assert_eq!(l.heights, [Height { panel: Panel::Pen, height: 150.0 }]);
+        assert!(l.hidden.is_empty());
+        // Heights too large to add up: at most MAX_PANEL_H (a column of them stays a number).
+        let l = read(
+            r#"{"layout": {"heights": [{"panel": "pen", "height": 3e38}, {"panel": "props", "height": 3e38}, {"panel": "legend", "height": 1e39}]}}"#,
+        )
+        .ok()
+        .unwrap_or_default();
+        assert_eq!(l.height(Panel::Pen), Some(MAX_PANEL_H));
+        assert_eq!(l.height(Panel::Props), Some(MAX_PANEL_H));
+        assert!(l.height(Panel::Legend).is_none(), "1e39 isn't a float: that height is left out");
+        assert!(l.heights.iter().map(|h| h.height).sum::<f32>().is_finite());
+        let mut tall = Layout::default();
+        tall.set_height(Panel::Pen, Some(f32::MAX));
+        assert_eq!(tall.height(Panel::Pen), Some(MAX_PANEL_H));
         // Twice the same panel, lost panels, a width out of range.
         let l = read(r#"{"layout": {"left": ["pen", "pen"], "right": ["legend"], "edge": [], "rightWidth": 9000, "heights": [{"panel": "pen", "height": -3}]}}"#)
             .ok()
@@ -613,12 +741,68 @@ mod tests {
             assert_eq!(back.trowel_layout, Layout::default(), "{old:?}");
             assert!(!back.toolbar, "{old:?}: the rest as saved");
         }
-        // A workspace keeps it too, and Reset Essentials brings back the first one.
+        // A workspace the user saves keeps it too.
         let w = crate::workspaces::capture(&ui, "Mine");
         let mut other = UiState::default();
         crate::workspaces::apply(&mut other, &w);
         assert_eq!(other.trowel_layout, ui.trowel_layout);
-        crate::workspaces::apply(&mut other, &crate::workspaces::Workspace::default());
-        assert_eq!(other.trowel_layout, Layout::default());
+    }
+
+    /// A width out of range, or too large to hold, is kept at the end of the range it is past.
+    #[test]
+    fn the_size_command_keeps_widths_in_range() {
+        let mut ui = crate::state::UiState::default();
+        let mut size = |w: serde_json::Value| {
+            run_command(&mut ui, "trowel.layout.size", &serde_json::json!({ "column": "right", "width": w }), None)
+                .and_then(Result::ok)
+                .and_then(|v| v.get("width").and_then(serde_json::Value::as_f64))
+        };
+        assert_eq!(size(serde_json::json!(1e300)), Some(560.0));
+        assert_eq!(size(serde_json::json!(-1e300)), Some(274.0), "the pen's least");
+        assert_eq!(size(serde_json::json!(9000)), Some(560.0));
+        assert_eq!(size(serde_json::json!(400)), Some(400.0));
+    }
+
+    /// Going to another workspace and back, or choosing the one in use again, keeps the panels
+    /// where the user put them: a built-in workspace, or one saved before there was a layout, has
+    /// none of its own. Resetting the workspace brings back the first layout (design 3.1 §13).
+    #[test]
+    fn the_workspaces_keep_the_users_layout_until_reset() {
+        use crate::state::UiState;
+        use crate::workspaces::{TROWEL, choose, reset};
+        let mut ui = UiState::default();
+        crate::workspaces::start_trowel(&mut ui, crate::i18n::Lang::from_code("en").unwrap());
+        ui.trowel_layout.move_panel(Panel::Pen, Column::Left, 1);
+        ui.trowel_layout.set_width(Column::Right, 420.0);
+        let mine = ui.trowel_layout.clone();
+        assert_eq!(choose(&mut ui, "Essentials").unwrap(), "Essentials");
+        assert!(!ui.trowel);
+        choose(&mut ui, TROWEL).unwrap();
+        assert!(ui.trowel);
+        assert_eq!(ui.trowel_layout, mine, "away and back");
+        choose(&mut ui, TROWEL).unwrap();
+        assert_eq!(ui.trowel_layout, mine, "the one in use again");
+        // A workspace saved before there was a layout (no field).
+        let old: crate::workspaces::Workspace = serde_json::from_value(serde_json::json!({"name": "Old", "trowel": true})).unwrap();
+        assert!(old.trowel_layout.is_none());
+        ui.custom_workspaces.push(old);
+        choose(&mut ui, "Old").unwrap();
+        assert_eq!(ui.trowel_layout, mine, "an older workspace");
+        // One saved with a layout brings it back, as saved.
+        crate::workspaces::save_as(&mut ui, "Mine").unwrap();
+        ui.trowel_layout = Layout::default();
+        choose(&mut ui, TROWEL).unwrap();
+        choose(&mut ui, "Mine").unwrap();
+        assert_eq!(ui.trowel_layout, mine, "a workspace saved with it");
+        // Reset: the saved one's own, a built-in's first layout.
+        ui.trowel_layout.hide(Panel::Props);
+        reset(&mut ui);
+        assert_eq!(ui.trowel_layout, mine);
+        choose(&mut ui, TROWEL).unwrap();
+        assert_eq!(reset(&mut ui), TROWEL);
+        assert_eq!(ui.trowel_layout, Layout::default());
+        // Saved and read back with the preferences.
+        let back: UiState = serde_json::from_value(serde_json::to_value(&ui).unwrap()).unwrap();
+        assert_eq!(back.custom_workspaces, ui.custom_workspaces);
     }
 }
